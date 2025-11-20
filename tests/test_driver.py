@@ -49,8 +49,8 @@ async def test_model_driver_text_only():
         events.append(event)
     
     # Verify we got text deltas and usage
-    text_events = [e for e in events if e.type == EventType.TEXT_DELTA]
-    usage_events = [e for e in events if e.type == EventType.USAGE]
+    text_events = [e for e in events if e.type == ModelEventType.TEXT_DELTA]
+    usage_events = [e for e in events if e.type == ModelEventType.USAGE]
     
     assert len(text_events) == 2
     assert text_events[0].content == "Hello"
@@ -94,9 +94,9 @@ async def test_model_driver_with_tool_call():
         events.append(event)
     
     # Verify we got tool call events
-    tool_start_events = [e for e in events if e.type == EventType.TOOL_CALL_STARTED]
-    tool_finish_events = [e for e in events if e.type == EventType.TOOL_CALL_FINISHED]
-    text_events = [e for e in events if e.type == EventType.TEXT_DELTA]
+    tool_start_events = [e for e in events if e.type == ModelEventType.TOOL_CALL_STARTED]
+    tool_finish_events = [e for e in events if e.type == ModelEventType.TOOL_CALL_FINISHED]
+    text_events = [e for e in events if e.type == ModelEventType.TEXT_DELTA]
     
     assert len(tool_start_events) == 1
     assert len(tool_finish_events) == 1
@@ -130,7 +130,7 @@ async def test_model_driver_max_steps():
         events.append(event)
     
     # Should stop after 3 steps
-    tool_start_events = [e for e in events if e.type == EventType.TOOL_CALL_STARTED]
+    tool_start_events = [e for e in events if e.type == ModelEventType.TOOL_CALL_STARTED]
     assert len(tool_start_events) == 3
 
 

@@ -6,6 +6,7 @@ from agio.protocol.events import (
     create_tool_call_completed_event,
     create_usage_update_event,
     create_error_event,
+    create_metrics_snapshot_event,
 )
 from agio.domain.tools import ToolResult
 
@@ -68,6 +69,12 @@ class EventConverter:
                 completion_tokens=usage.get("completion_tokens", 0),
                 total_tokens=usage.get("total_tokens", 0),
                 step=model_event.step
+            )
+        
+        elif model_event.type == ModelEventType.METRICS_SNAPSHOT:
+            return create_metrics_snapshot_event(
+                run_id=run_id,
+                metrics=model_event.metadata
             )
         
         elif model_event.type == ModelEventType.ERROR:

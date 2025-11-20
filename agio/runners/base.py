@@ -219,6 +219,15 @@ class AgentRunner:
                         )
                     )
 
+                elif event.type == ModelEventType.METRICS_SNAPSHOT:
+                    # 发送 metrics 快照事件
+                    yield await self._store_and_yield(
+                        create_metrics_snapshot_event(
+                            run_id=run.id,
+                            metrics=event.metadata
+                        )
+                    )
+                
                 elif event.type == ModelEventType.ERROR:
                     log_error(f"ModelDriver error: {event.content}")
                     run.status = RunStatus.FAILED

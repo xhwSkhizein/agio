@@ -13,6 +13,7 @@ class ModelEventType(str, Enum):
     TOOL_CALL_STARTED = "tool_call_started"
     TOOL_CALL_FINISHED = "tool_call_finished"
     USAGE = "usage"
+    METRICS_SNAPSHOT = "metrics_snapshot"
     ERROR = "error"
 
 
