@@ -1,0 +1,29 @@
+from agio.agent.hooks.base import AgentHook
+from agio.domain.run import AgentRun, AgentRunStep
+from agio.db.base import Storage
+from agio.utils.logger import log_error
+
+class StorageHook(AgentHook):
+    """
+    Hook responsible for persisting Agent Run state to the Storage backend.
+    """
+    def __init__(self, storage: Storage):
+        self.storage = storage
+
+    async def on_run_start(self, run: AgentRun) -> None:
+        await self._upsert(run, "run_start")
+
+    async def on_step_end(self, run: AgentRun, step: AgentRunStep) -> None:
+        await self._upsert(run, "step_end")
+
+    async def on_run_end(self, run: AgentRun) -> None:
+        await self._upsert(run, "run_end")
+    
+    async def on_error(self, run: AgentRun, error: Exception) -> None:
+        await self._upsert(run, "error")
+
+    async def _upsert(self, run: AgentRun, phase: str):
+        try:
+            await self.storage.upsert_run(run)
+        except Exception as e:
+            log_error(f"StorageHook failed at {phase}: {e}")
