@@ -1,9 +1,7 @@
 from abc import ABC
-from typing import Any
 from agio.domain.run import AgentRun, AgentRunStep
 from agio.domain.messages import Message
 from agio.domain.tools import ToolResult
-from agio.models.base import ModelDelta
 
 class AgentHook(ABC):
     """
@@ -18,10 +16,6 @@ class AgentHook(ABC):
         pass
 
     async def on_model_start(self, run: AgentRun, step: AgentRunStep, messages: list[Message]) -> None:
-        pass
-    
-    async def on_model_chunk(self, run: AgentRun, chunk: ModelDelta) -> None:
-        """Called for each streaming chunk received from the model"""
         pass
 
     async def on_model_end(self, run: AgentRun, step: AgentRunStep) -> None:

@@ -1,173 +1,161 @@
+"""
+OpenAI Model 实现 - Pure LLM Interface
+"""
+
 import os
-from typing import Any, AsyncIterator
+from typing import AsyncIterator
 from pydantic import Field, SecretStr, ConfigDict
 
 try:
-    from openai import AsyncOpenAI, APIConnectionError, RateLimitError, InternalServerError, APITimeoutError
-    from openai.types.chat import ChatCompletion, ChatCompletionChunk
+    from openai import (
+        AsyncOpenAI,
+        APIConnectionError,
+        RateLimitError,
+        InternalServerError,
+        APITimeoutError,
+    )
 except ImportError:
     raise ImportError("Please install openai package: pip install openai")
 
 from agio.config import settings
-from agio.models.base import Model, ModelResponse, ModelDelta
-from agio.domain.messages import Message, SystemMessage, UserMessage, AssistantMessage, ToolMessage
+from agio.models.base import Model, StreamChunk
 from agio.utils.retry import retry_async
 
-# Define specific retryable exceptions for OpenAI
+# Retryable exceptions for OpenAI
 OPENAI_RETRYABLE = (
     APIConnectionError,
     RateLimitError,
     InternalServerError,
-    APITimeoutError
+    APITimeoutError,
 )
 
+
 class OpenAIModel(Model):
+    """
+    OpenAI Model 实现。
+
+    支持 GPT-4, GPT-3.5-turbo 等所有兼容 OpenAI API 的模型。
+
+    Examples:
+        >>> model = OpenAIModel(
+        ...     id="openai/gpt-4",
+        ...     name="gpt-4",
+        ...     api_key="sk-xxx"
+        ... )
+        >>> messages = [
+        ...     {"role": "system", "content": "You are a helpful assistant."},
+        ...     {"role": "user", "content": "Hello!"}
+        ... ]
+        >>> async for chunk in model.arun_stream(messages):
+        ...     if chunk.content:
+        ...         print(chunk.content, end="")
+    """
+
     model_config = ConfigDict(arbitrary_types_allowed=True, protected_namespaces=())
 
-    id: str = Field(default="openai")
-    name: str = Field(default="gpt-4o")
+    # OpenAI specific fields
     api_key: SecretStr | None = Field(default=None, exclude=True)
     base_url: str | None = Field(default=None)
     client: AsyncOpenAI | None = Field(default=None, exclude=True)
-    
-    # Model Config
-    temperature: float = 0.7
-    max_tokens: int | None = None
-    top_p: float = 1.0
-    frequency_penalty: float = 0.0
-    presence_penalty: float = 0.0
-    
-    def model_post_init(self, __context: Any) -> None:
-        """
-        Pydantic V2 hook called after the model is initialized.
-        We use this to initialize the AsyncOpenAI client if it wasn't provided.
-        """
-        # Resolve API Key: 1. Argument 2. Config/Env
+
+    # Optional model parameters
+    frequency_penalty: float = Field(default=0.0, ge=-2.0, le=2.0)
+    presence_penalty: float = Field(default=0.0, ge=-2.0, le=2.0)
+
+    def model_post_init(self, __context) -> None:
+        """Initialize AsyncOpenAI client after model creation."""
+        # Resolve API Key: argument > config > env
         resolved_api_key = None
         if self.api_key:
             resolved_api_key = self.api_key.get_secret_value()
         elif settings.openai_api_key:
             resolved_api_key = settings.openai_api_key.get_secret_value()
         else:
-            resolved_api_key = os.getenv("OPENAI_API_KEY") # Fallback to direct env var if settings failed
-            
-        # Resolve Base URL
-        resolved_base_url = self.base_url or settings.openai_base_url or os.getenv("OPENAI_BASE_URL")
+            resolved_api_key = os.getenv("OPENAI_API_KEY")
 
+        # Resolve Base URL
+        resolved_base_url = (
+            self.base_url or settings.openai_base_url or os.getenv("OPENAI_BASE_URL")
+        )
+
+        # Create client if not provided
         if self.client is None:
             self.client = AsyncOpenAI(
                 api_key=resolved_api_key,
                 base_url=resolved_base_url,
             )
-        
+
         super().model_post_init(__context)
-            
-    def _format_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
-        formatted = []
-        for msg in messages:
-            if isinstance(msg, SystemMessage):
-                formatted.append({"role": "system", "content": msg.content})
-            elif isinstance(msg, UserMessage):
-                formatted.append({"role": "user", "content": msg.content})
-            elif isinstance(msg, AssistantMessage):
-                d = {"role": "assistant", "content": msg.content}
-                if msg.tool_calls:
-                    d["tool_calls"] = msg.tool_calls
-                formatted.append(d)
-            elif isinstance(msg, ToolMessage):
-                formatted.append({
-                    "role": "tool", 
-                    "tool_call_id": msg.tool_call_id,
-                    "content": msg.content
-                })
-        return formatted
 
     @retry_async(exceptions=OPENAI_RETRYABLE)
-    async def aresponse(self, messages: list[Message], tools: list[Any] | None = None, **kwargs) -> ModelResponse:
-        formatted_msgs = self._format_messages(messages)
-        
-        openai_tools = None
-        if tools:
-            openai_tools = [t.to_openai_schema() for t in tools]
+    async def arun_stream(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+    ) -> AsyncIterator[StreamChunk]:
+        """
+        调用 OpenAI API 并返回标准化的流式输出。
 
+        Args:
+            messages: OpenAI 格式的消息列表
+            tools: OpenAI 格式的工具定义
+
+        Yields:
+            StreamChunk: 标准化的流式输出块
+        """
         params = {
             "model": self.name,
-            "messages": formatted_msgs,
-            "temperature": kwargs.get("temperature", self.temperature),
-            "max_tokens": kwargs.get("max_tokens", self.max_tokens),
-            "top_p": kwargs.get("top_p", self.top_p),
-            "frequency_penalty": kwargs.get("frequency_penalty", self.frequency_penalty),
-            "presence_penalty": kwargs.get("presence_penalty", self.presence_penalty),
-        }
-        if openai_tools:
-            params["tools"] = openai_tools
-
-        response: ChatCompletion = await self.client.chat.completions.create(**params)
-        
-        choice = response.choices[0]
-        content = choice.message.content or ""
-        
-        usage = {
-            "prompt_tokens": response.usage.prompt_tokens if response.usage else 0,
-            "completion_tokens": response.usage.completion_tokens if response.usage else 0,
-            "total_tokens": response.usage.total_tokens if response.usage else 0,
-        }
-
-        return ModelResponse(
-            content=content,
-            raw_response=response.model_dump(),
-            usage=usage,
-            first_token_timestamp=None 
-        )
-
-    # Note: Retrying a stream is tricky. If it fails mid-stream, we might duplicate content if we just retry.
-    # Usually, for streams, we retry only on the connection establishment. Once streaming starts, if it breaks, 
-    # the caller needs to handle it (e.g., resume). 
-    # Here, tenacity will retry the whole function call if it fails before yielding anything or if an error bubbles up.
-    @retry_async(exceptions=OPENAI_RETRYABLE)
-    async def astream(self, messages: list[Message], tools: list[Any] | None = None, **kwargs) -> AsyncIterator[ModelDelta]:
-        formatted_msgs = self._format_messages(messages)
-        
-        openai_tools = None
-        if tools:
-            openai_tools = [t.to_openai_schema() for t in tools]
-
-        params = {
-            "model": self.name,
-            "messages": formatted_msgs,
-            "temperature": kwargs.get("temperature", self.temperature),
-            "max_tokens": kwargs.get("max_tokens", self.max_tokens),
-            "top_p": kwargs.get("top_p", self.top_p),
-            "frequency_penalty": kwargs.get("frequency_penalty", self.frequency_penalty),
-            "presence_penalty": kwargs.get("presence_penalty", self.presence_penalty),
+            "messages": messages,
+            "temperature": self.temperature,
+            "top_p": self.top_p,
+            "frequency_penalty": self.frequency_penalty,
+            "presence_penalty": self.presence_penalty,
             "stream": True,
-            "stream_options": {"include_usage": True}
+            "stream_options": {"include_usage": True},
         }
-        if openai_tools:
-            params["tools"] = openai_tools
 
+        if self.max_tokens:
+            params["max_tokens"] = self.max_tokens
+
+        if tools:
+            params["tools"] = tools
+
+        # Call OpenAI API
         stream = await self.client.chat.completions.create(**params)
-        
+
+        # Convert OpenAI stream to StandardChunk
         async for chunk in stream:
-            delta = ModelDelta()
-            
+            stream_chunk = StreamChunk()
+
+            # Extract usage if available
             if chunk.usage:
-                delta.usage = {
+                stream_chunk.usage = {
                     "prompt_tokens": chunk.usage.prompt_tokens,
                     "completion_tokens": chunk.usage.completion_tokens,
-                    "total_tokens": chunk.usage.total_tokens
+                    "total_tokens": chunk.usage.total_tokens,
                 }
-            
+
+            # Extract content and tool calls
             if chunk.choices and len(chunk.choices) > 0:
                 choice = chunk.choices[0]
-                if choice.delta.content:
-                    delta.content = choice.delta.content
-                if choice.delta.tool_calls:
-                    # OpenAI returns tool calls as list of ChoiceDeltaToolCall
-                    delta.tool_calls = [tc.model_dump() for tc in choice.delta.tool_calls]
-                if choice.delta.role:
-                    delta.role = choice.delta.role
-            
-            # Only yield if there is something (usage or content or tool_calls)
-            if delta.content is not None or delta.tool_calls is not None or delta.usage is not None:
-                yield delta
+                delta = choice.delta
+
+                if delta.content:
+                    stream_chunk.content = delta.content
+
+                if delta.tool_calls:
+                    # Convert tool calls to dict format
+                    stream_chunk.tool_calls = [
+                        tc.model_dump() for tc in delta.tool_calls
+                    ]
+
+                if choice.finish_reason:
+                    stream_chunk.finish_reason = choice.finish_reason
+
+            # Only yield if there's actual data
+            if (
+                stream_chunk.content is not None
+                or stream_chunk.tool_calls is not None
+                or stream_chunk.usage is not None
+            ):
+                yield stream_chunk

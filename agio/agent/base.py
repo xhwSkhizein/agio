@@ -1,4 +1,4 @@
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator
 import uuid
 
 from agio.models.base import Model
@@ -10,7 +10,7 @@ from agio.agent.hooks.base import AgentHook
 from agio.agent.hooks.storage import StorageHook
 from agio.agent.hooks.logging import LoggingHook
 from agio.sessions.base import AgentSession
-from agio.runners.base import AgentRunner
+
 from agio.protocol.events import AgentEvent
 from agio.db.repository import AgentRunRepository
 
@@ -48,13 +48,14 @@ class Agent:
         if self.storage:
              self.hooks.append(StorageHook(self.storage))
         self.hooks.append(LoggingHook())
-
     async def arun(
         self, query: str, user_id: str | None = None, session_id: str | None = None
     ) -> AsyncIterator[str]:
         """
         执行 Agent，返回文本流（向后兼容）。
         """
+        from agio.runners.base import AgentRunner
+
         current_session_id = session_id or str(uuid.uuid4())
         current_user_id = user_id or self.user_id
         
@@ -74,6 +75,8 @@ class Agent:
         """
         执行 Agent，返回事件流（新 API）。
         """
+        from agio.runners.base import AgentRunner
+
         current_session_id = session_id or str(uuid.uuid4())
         current_user_id = user_id or self.user_id
         
