@@ -5,6 +5,8 @@ Example knowledge tools.
 
 class KnowledgeSearchTool:
     """Knowledge base search tool."""
+
+    name = "knowledge_search"
     
     def __init__(
         self,

@@ -2,7 +2,7 @@
 Redis storage backend
 """
 
-from agio.domain.messages import Message
+from agio.domain.step import Step
 from .base import MemoryStorage
 from agio.utils.logging import get_logger
 
@@ -33,15 +33,15 @@ class RedisStorage(MemoryStorage):
             self.client = await redis.from_url(self.redis_url, **self.kwargs)
         return self.client
 
-    async def save_messages(
-        self, session_id: str, messages: list[Message], ttl: int | None = 3600
+    async def save_steps(
+        self, session_id: str, steps: list[Step], ttl: int | None = 3600
     ):
-        """Save messages to Redis."""
+        """Save steps to Redis."""
         client = await self._get_client()
-        key = f"session:{session_id}:messages"
+        key = f"session:{session_id}:steps"
 
-        # Serialize messages
-        serialized = [msg.model_dump_json() for msg in messages]
+        # Serialize steps
+        serialized = [step.model_dump_json() for step in steps]
 
         # Push to Redis list
         if serialized:
@@ -51,33 +51,31 @@ class RedisStorage(MemoryStorage):
         if ttl:
             await client.expire(key, ttl)
 
-    async def get_messages(
-        self, session_id: str, limit: int | None = None
-    ) -> list[Message]:
-        """Get messages from Redis."""
+    async def get_steps(self, session_id: str, limit: int | None = None) -> list[Step]:
+        """Get steps from Redis."""
         client = await self._get_client()
-        key = f"session:{session_id}:messages"
+        key = f"session:{session_id}:steps"
 
-        # Get messages
+        # Get steps
         if limit:
             data = await client.lrange(key, -limit, -1)
         else:
             data = await client.lrange(key, 0, -1)
 
         # Deserialize
-        messages = []
+        steps = []
         for item in data:
             try:
-                messages.append(Message.model_validate_json(item))
+                steps.append(Step.model_validate_json(item))
             except Exception as e:
-                logger.error("Failed to deserialize message", err=e)
+                logger.error("Failed to deserialize step", err=e)
 
-        return messages
+        return steps
 
-    async def clear_messages(self, session_id: str):
-        """Clear all messages for a session."""
+    async def clear_steps(self, session_id: str):
+        """Clear all steps for a session."""
         client = await self._get_client()
-        key = f"session:{session_id}:messages"
+        key = f"session:{session_id}:steps"
         await client.delete(key)
 
     async def close(self):

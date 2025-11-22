@@ -4,7 +4,9 @@ Example ticketing tools.
 
 
 class CreateTicketTool:
-    """Support ticket creation tool."""
+    """Ticket creation tool."""
+
+    name = "create_ticket"
     
     def __init__(
         self,

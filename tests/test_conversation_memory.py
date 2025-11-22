@@ -4,7 +4,7 @@ Tests for ConversationMemory
 
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
-from agio.domain.messages import Message
+from agio.domain.step import Step, MessageRole
 from agio.memory.conversation import ConversationMemory
 from agio.memory.storage import InMemoryStorage
 
@@ -18,6 +18,16 @@ def memory():
     )
 
 
+def create_step(role: str, content: str, sequence: int = 1) -> Step:
+    return Step(
+        role=MessageRole(role),
+        content=content,
+        session_id="test_session",
+        run_id="test_run",
+        sequence=sequence,
+    )
+
+
 def test_init(memory):
     """Test initialization."""
     assert isinstance(memory.storage, InMemoryStorage)
@@ -27,41 +37,40 @@ def test_init(memory):
 
 def test_count_tokens(memory):
     """Test token counting."""
-    messages = [
-        Message(role="user", content="Hello world"), # ~2 tokens + 4 overhead = 6
-        Message(role="assistant", content="Hi")      # ~1 token + 4 overhead = 5
+    steps = [
+        create_step(role="user", content="Hello world"),  # ~2 tokens + 4 overhead = 6
+        create_step(role="assistant", content="Hi"),  # ~1 token + 4 overhead = 5
     ]
     # Exact count depends on tiktoken, but should be > 0
-    count = memory._count_tokens(messages)
+    count = memory._count_tokens(steps)
     assert count > 0
 
 
-def test_trim_messages(memory):
-    """Test message trimming."""
-    # Create 10 messages
-    messages = [
-        Message(role="user", content=f"Msg {i}") 
-        for i in range(10)
+def test_trim_steps(memory):
+    """Test step trimming."""
+    # Create 10 steps
+    steps = [
+        create_step(role="user", content=f"Msg {i}", sequence=i) for i in range(10)
     ]
     
     # Trim by count (max 5)
-    trimmed = memory._trim_messages(messages)
+    trimmed = memory._trim_steps(steps)
     assert len(trimmed) == 5
     assert trimmed[0].content == "Msg 5"
     assert trimmed[-1].content == "Msg 9"
 
 
 @pytest.mark.asyncio
-async def test_add_and_get_messages(memory):
-    """Test adding and retrieving messages."""
+async def test_add_and_get_steps(memory):
+    """Test adding and retrieving steps."""
     session_id = "test_session"
-    
-    msgs = [
-        Message(role="user", content="Hello"),
-        Message(role="assistant", content="Hi")
+
+    steps = [
+        create_step(role="user", content="Hello", sequence=1),
+        create_step(role="assistant", content="Hi", sequence=2),
     ]
-    
-    await memory.add_messages(session_id, msgs)
+
+    await memory.add_steps(session_id, steps)
     
     history = await memory.get_recent_history(session_id)
     assert len(history) == 2
@@ -71,16 +80,20 @@ async def test_add_and_get_messages(memory):
 
 @pytest.mark.asyncio
 async def test_auto_trimming(memory):
-    """Test auto-trimming when adding messages."""
+    """Test auto-trimming when adding steps."""
     session_id = "test_session"
-    
-    # Add 4 messages
-    msgs1 = [Message(role="user", content=f"Msg {i}") for i in range(4)]
-    await memory.add_messages(session_id, msgs1)
+
+    # Add 4 steps
+    steps1 = [
+        create_step(role="user", content=f"Msg {i}", sequence=i) for i in range(4)
+    ]
+    await memory.add_steps(session_id, steps1)
     
     # Add 3 more (total 7 > max 5)
-    msgs2 = [Message(role="user", content=f"Msg {i}") for i in range(4, 7)]
-    await memory.add_messages(session_id, msgs2)
+    steps2 = [
+        create_step(role="user", content=f"Msg {i}", sequence=i) for i in range(4, 7)
+    ]
+    await memory.add_steps(session_id, steps2)
     
     history = await memory.get_recent_history(session_id)
     assert len(history) == 5

@@ -24,6 +24,8 @@ def search(query: str, max_results: int = 5) -> str:
 
 class WebScraperTool:
     """Web scraping tool."""
+
+    name = "web_scraper"
     
     def __init__(self, timeout: int = 30, user_agent: str = "Agio/1.0", max_content_length: int = 100000):
         self.timeout = timeout

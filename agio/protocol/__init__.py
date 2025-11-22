@@ -1,7 +1,4 @@
-# Old event system (DEPRECATED)
-from agio.protocol.events import AgentEvent, EventType
-
-# New Step-based event system (RECOMMENDED)
+# Step-based event system
 from agio.protocol.step_events import (
     StepEvent,
     StepEventType,
@@ -15,10 +12,6 @@ from agio.protocol.step_events import (
 )
 
 __all__ = [
-    # Old (deprecated)
-    "AgentEvent",
-    "EventType",
-    # New (recommended)
     "StepEvent",
     "StepEventType",
     "StepDelta",

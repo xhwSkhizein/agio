@@ -1,5 +1,6 @@
 from agio.agent.hooks.base import AgentHook
-from agio.domain.run import AgentRun, AgentRunStep
+from agio.domain.run import AgentRun
+from agio.domain.step import Step
 from agio.db.base import Storage
 from agio.utils.logging import get_logger
 
@@ -17,7 +18,7 @@ class StorageHook(AgentHook):
     async def on_run_start(self, run: AgentRun) -> None:
         await self._upsert(run, "run_start")
 
-    async def on_step_end(self, run: AgentRun, step: AgentRunStep) -> None:
+    async def on_step_end(self, run: AgentRun, step: Step) -> None:
         await self._upsert(run, "step_end")
 
     async def on_run_end(self, run: AgentRun) -> None:

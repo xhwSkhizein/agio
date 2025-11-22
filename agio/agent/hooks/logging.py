@@ -1,6 +1,6 @@
 from agio.agent.hooks.base import AgentHook
-from agio.domain.run import AgentRun, AgentRunStep
-from agio.domain.messages import Message
+from agio.domain.run import AgentRun
+from agio.domain.step import Step
 from agio.domain.tools import ToolResult
 from agio.utils.logging import get_logger
 
@@ -15,22 +15,20 @@ class LoggingHook(AgentHook):
     async def on_run_start(self, run: AgentRun) -> None:
         logger.info("Agent Run Started", run_id=run.id, user_id=run.user_id)
 
-    async def on_step_start(self, run: AgentRun, step: AgentRunStep) -> None:
-        logger.info("Step Started", step_num=step.step_num)
+    async def on_step_start(self, run: AgentRun, step: Step) -> None:
+        logger.info("Step Started", sequence=step.sequence)
 
     async def on_model_start(
-        self, run: AgentRun, step: AgentRunStep, messages: list[Message]
+        self, run: AgentRun, step: Step, messages: list[dict]
     ) -> None:
         logger.info(f"Calling Model: {len(messages)} messages in context")
 
-    async def on_tool_start(
-        self, run: AgentRun, step: AgentRunStep, tool_call: dict
-    ) -> None:
+    async def on_tool_start(self, run: AgentRun, step: Step, tool_call: dict) -> None:
         fn_name = tool_call.get("function", {}).get("name", "unknown")
         logger.info(f"Executing Tool: {fn_name}")
 
     async def on_tool_end(
-        self, run: AgentRun, step: AgentRunStep, tool_result: ToolResult
+        self, run: AgentRun, step: Step, tool_result: ToolResult
     ) -> None:
         status = "Success" if tool_result.is_success else "Failed"
         logger.info(

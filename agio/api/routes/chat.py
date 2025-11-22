@@ -7,6 +7,7 @@ from sse_starlette.sse import EventSourceResponse
 import json
 from agio.registry import get_registry
 from agio.api.schemas.chat import ChatRequest, ChatResponse
+from agio.protocol.step_events import StepEventType
 
 router = APIRouter(prefix="/api/chat", tags=["Chat"])
 
@@ -61,16 +62,11 @@ async def stream_chat_events(
             user_id=user_id,
             session_id=session_id
         ):
-            # Convert AgentEvent to SSE format
-            yield {
-                "event": event.type,
-                "data": json.dumps(event.data)
-            }
+            # Convert StepEvent to dict for SSE
+            yield event.model_dump(mode="json")
+
     except Exception as e:
-        yield {
-            "event": "error",
-            "data": json.dumps({"error": str(e)})
-        }
+        yield {"event": "error", "data": json.dumps({"error": str(e)})}
 
 
 async def chat_non_streaming(
@@ -89,14 +85,16 @@ async def chat_non_streaming(
         user_id=user_id,
         session_id=session_id
     ):
-        if event.type == "run_started":
-            run_id = event.data.get("run_id")
-        
-        elif event.type == "content_delta":
-            response_content += event.data.get("content", "")
-        
-        elif event.type == "run_completed":
-            metrics = event.data.get("metrics", {})
+        if event.type == StepEventType.RUN_STARTED:
+            run_id = event.run_id
+
+        elif event.type == StepEventType.STEP_DELTA:
+            if event.delta and event.delta.content:
+                response_content += event.delta.content
+
+        elif event.type == StepEventType.RUN_COMPLETED:
+            if event.data and "metrics" in event.data:
+                metrics = event.data["metrics"]
     
     return ChatResponse(
         run_id=run_id or "unknown",

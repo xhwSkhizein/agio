@@ -1,19 +1,21 @@
 from agio.memory.base import ChatHistoryManager, SemanticMemoryManager, Memory
-from agio.domain.messages import Message
+from agio.domain.step import Step
 from agio.domain.memory import AgentMemoriedContent, MemoryCategory
 from typing import List
 
 class SimpleChatHistory(ChatHistoryManager):
     def __init__(self):
-        # Dict[session_id, List[Message]]
+        # Dict[session_id, List[Step]]
         self._storage = {}
 
-    async def add_messages(self, session_id: str, messages: List[Message]):
+    async def add_steps(self, session_id: str, steps: List[Step]):
         if session_id not in self._storage:
             self._storage[session_id] = []
-        self._storage[session_id].extend(messages)
+        self._storage[session_id].extend(steps)
 
-    async def get_recent_history(self, session_id: str, limit: int = 10, max_tokens: int | None = None) -> List[Message]:
+    async def get_recent_history(
+        self, session_id: str, limit: int = 10, max_tokens: int | None = None
+    ) -> List[Step]:
         # TODO: Implement max_tokens logic
         if session_id not in self._storage:
             return []

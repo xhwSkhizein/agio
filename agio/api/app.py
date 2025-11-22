@@ -32,12 +32,11 @@ def create_app() -> FastAPI:
     )
     
     # Register routes
-    from .routes import agents, chat, runs, checkpoints, health, config, metrics
+    from .routes import agents, chat, runs, health, config, metrics
     
     app.include_router(agents.router)
     app.include_router(chat.router)
     app.include_router(runs.router)
-    app.include_router(checkpoints.router)
     app.include_router(health.router)
     app.include_router(config.router)
     app.include_router(metrics.router)

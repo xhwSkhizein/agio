@@ -11,15 +11,14 @@ from agio.agent.hooks.storage import StorageHook
 from agio.agent.hooks.logging import LoggingHook
 from agio.sessions.base import AgentSession
 
-from agio.protocol.events import AgentEvent  # DEPRECATED
-from agio.protocol.step_events import StepEvent  # NEW
+from agio.protocol.step_events import StepEvent
 from agio.db.repository import AgentRunRepository
 
 class Agent:
     """
     Agent Configuration Container.
     Holds the configuration for Model, Tools, Memory, etc.
-    Delegates execution to AgentRunner or StepRunner.
+    Delegates execution to StepRunner.
     """
     def __init__(
         self,
@@ -50,84 +49,24 @@ class Agent:
              self.hooks.append(StorageHook(self.storage))
         self.hooks.append(LoggingHook())
 
-    # --- Old API (DEPRECATED - kept for backward compatibility) ---
-
     async def arun(
         self, query: str, user_id: str | None = None, session_id: str | None = None
     ) -> AsyncIterator[str]:
         """
-        执行 Agent，返回文本流（向后兼容）。
+        执行 Agent，返回文本流。
 
-        DEPRECATED: Use arun_step() for new code.
-        """
-        from agio.runners.base import AgentRunner
-
-        current_session_id = session_id or str(uuid.uuid4())
-        current_user_id = user_id or self.user_id
-        
-        session = AgentSession(
-            session_id=current_session_id,
-            user_id=current_user_id
-        )
-        
-        runner = AgentRunner(agent=self, hooks=self.hooks, repository=self.repository)
-        
-        async for chunk in runner.run(session, query):
-            yield chunk
-    
-    async def arun_stream(
-        self, query: str, user_id: str | None = None, session_id: str | None = None
-    ) -> AsyncIterator[AgentEvent]:
-        """
-        执行 Agent，返回事件流（旧 API）。
-
-        DEPRECATED: Use arun_step_stream() for new code.
-        """
-        from agio.runners.base import AgentRunner
-
-        current_session_id = session_id or str(uuid.uuid4())
-        current_user_id = user_id or self.user_id
-        
-        session = AgentSession(
-            session_id=current_session_id,
-            user_id=current_user_id
-        )
-        
-        runner = AgentRunner(agent=self, hooks=self.hooks, repository=self.repository)
-        
-        async for event in runner.run_stream(session, query):
-            yield event
-    
-    async def get_run_history(self, run_id: str) -> AsyncIterator[AgentEvent]:
-        """
-        获取历史 Run 的事件流（回放）。
-
-        DEPRECATED: Use get_session_steps() for new code.
-        """
-        if not self.repository:
-            raise ValueError("Repository not configured")
-        
-        events = await self.repository.get_events(run_id)
-        for event in events:
-            yield event
-
-    # --- New Step-based API ---
-
-    async def arun_step(
-        self, query: str, user_id: str | None = None, session_id: str | None = None
-    ) -> AsyncIterator[str]:
-        """
-        执行 Agent，返回文本流（Step-based）。
-
-        This is the new recommended API that uses the Step-based architecture.
+        This uses the Step-based architecture for zero-conversion context building.
         """
         from agio.runners.step_runner import StepRunner, StepRunnerConfig
         from agio.protocol.step_events import StepEventType
 
         current_session_id = session_id or str(uuid.uuid4())
         current_user_id = user_id or self.user_id
-
-        session = AgentSession(session_id=current_session_id, user_id=current_user_id)
+        
+        session = AgentSession(
+            session_id=current_session_id,
+            user_id=current_user_id
+        )
 
         runner = StepRunner(
             agent=self,
@@ -145,13 +84,13 @@ class Agent:
             ):
                 yield event.delta.content
 
-    async def arun_step_stream(
+    async def arun_stream(
         self, query: str, user_id: str | None = None, session_id: str | None = None
     ) -> AsyncIterator[StepEvent]:
         """
-        执行 Agent，返回 StepEvent 流（新 API）。
+        执行 Agent，返回 StepEvent 流。
 
-        This is the new recommended API that uses the Step-based architecture.
+        This is the recommended API for full control over the execution flow.
         """
         from agio.runners.step_runner import StepRunner, StepRunnerConfig
 
@@ -170,7 +109,7 @@ class Agent:
         async for event in runner.run_stream(session, query):
             yield event
 
-    async def get_session_steps(self, session_id: str):
+    async def get_steps(self, session_id: str):
         """
         获取 Session 的所有 Steps。
 
@@ -230,8 +169,6 @@ class Agent:
             raise ValueError("Repository not configured")
 
         return await fork_session(session_id, sequence, self.repository)
-
-    # --- Common methods ---
 
     async def list_runs(
         self, 

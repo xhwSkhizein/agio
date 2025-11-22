@@ -3,7 +3,7 @@ Production-grade Conversation Memory implementation
 """
 
 import tiktoken
-from agio.domain.messages import Message
+from agio.domain.step import Step
 from agio.memory.base import ChatHistoryManager, Memory
 from agio.memory.storage import InMemoryStorage, RedisStorage
 
@@ -43,80 +43,77 @@ class ConversationMemory(ChatHistoryManager, Memory):
             self.encoding = tiktoken.get_encoding("cl100k_base")
         except Exception:
             self.encoding = None
-    
-    def _count_tokens(self, messages: list[Message]) -> int:
-        """Count total tokens in messages."""
+
+    def _count_tokens(self, steps: list[Step]) -> int:
+        """Count total tokens in steps."""
         if not self.encoding:
             # Fallback: estimate 4 chars per token
-            total_chars = sum(len(msg.content or "") for msg in messages)
+            total_chars = sum(len(step.content or "") for step in steps)
             return total_chars // 4
         
         total_tokens = 0
-        for msg in messages:
+        for step in steps:
             # Count message overhead (role, etc.)
             total_tokens += 4
             
             # Count content tokens
-            if msg.content:
-                total_tokens += len(self.encoding.encode(msg.content))
+            if step.content:
+                total_tokens += len(self.encoding.encode(step.content))
         
         return total_tokens
-    
-    def _trim_messages(self, messages: list[Message]) -> list[Message]:
-        """Trim messages to fit within max_tokens and max_history_length."""
+
+    def _trim_steps(self, steps: list[Step]) -> list[Step]:
+        """Trim steps to fit within max_tokens and max_history_length."""
         # First, trim by count
-        if len(messages) > self.max_history_length:
-            messages = messages[-self.max_history_length:]
+        if len(steps) > self.max_history_length:
+            steps = steps[-self.max_history_length :]
         
         # Then, trim by tokens
-        while len(messages) > 1:
-            token_count = self._count_tokens(messages)
+        while len(steps) > 1:
+            token_count = self._count_tokens(steps)
             if token_count <= self.max_tokens:
                 break
-            # Remove oldest message
-            messages = messages[1:]
-        
-        return messages
-    
-    async def add_messages(self, session_id: str, messages: list[Message]):
-        """Add messages to history with auto-trimming."""
-        # Get existing messages
-        existing = await self.storage.get_messages(session_id)
+            # Remove oldest step
+            steps = steps[1:]
+
+        return steps
+
+    async def add_steps(self, session_id: str, steps: list[Step]):
+        """Add steps to history with auto-trimming."""
+        # Get existing steps
+        existing = await self.storage.get_steps(session_id)
         
         # Combine and trim
-        all_messages = existing + messages
-        trimmed = self._trim_messages(all_messages)
+        all_steps = existing + steps
+        trimmed = self._trim_steps(all_steps)
         
         # Clear and save
-        await self.storage.clear_messages(session_id)
-        await self.storage.save_messages(session_id, trimmed)
+        await self.storage.clear_steps(session_id)
+        await self.storage.save_steps(session_id, trimmed)
     
     async def get_recent_history(
-        self,
-        session_id: str,
-        limit: int = 10,
-        max_tokens: int | None = None
-    ) -> list[Message]:
+        self, session_id: str, limit: int = 10, max_tokens: int | None = None
+    ) -> list[Step]:
         """Get recent history with optional token limit."""
-        messages = await self.storage.get_messages(session_id)
+        steps = await self.storage.get_steps(session_id)
         
         # Apply limit
         if limit:
-            messages = messages[-limit:]
+            steps = steps[-limit:]
         
         # Apply token limit
         if max_tokens:
-            while len(messages) > 1:
-                token_count = self._count_tokens(messages)
+            while len(steps) > 1:
+                token_count = self._count_tokens(steps)
                 if token_count <= max_tokens:
                     break
-                messages = messages[1:]
-        
-        return messages
+                steps = steps[1:]
+
+        return steps
     
     async def clear_history(self, session_id: str):
         """Clear all history for a session."""
-        await self.storage.clear_messages(session_id)
+        await self.storage.clear_steps(session_id)
     
     async def close(self):
         """Close storage connection."""

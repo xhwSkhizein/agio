@@ -7,6 +7,8 @@ from pathlib import Path
 
 class CodeSearchTool:
     """Code search tool."""
+
+    name = "code_search"
     
     def __init__(
         self,

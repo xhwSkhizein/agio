@@ -5,6 +5,8 @@ Example email tools.
 
 class SendEmailTool:
     """Email sending tool."""
+
+    name = "send_email"
     
     def __init__(
         self,

@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from agio.domain.messages import Message
+from agio.domain.step import Step
 from agio.domain.memory import AgentMemoriedContent, MemoryCategory
 
 class ChatHistoryManager(ABC):
@@ -8,11 +8,13 @@ class ChatHistoryManager(ABC):
     职责：存储原始对话流，提供滑动窗口或 Token 截断。
     """
     @abstractmethod
-    async def add_messages(self, session_id: str, messages: list[Message]):
+    async def add_steps(self, session_id: str, steps: list[Step]):
         pass
         
     @abstractmethod
-    async def get_recent_history(self, session_id: str, limit: int = 10, max_tokens: int | None = None) -> list[Message]:
+    async def get_recent_history(
+        self, session_id: str, limit: int = 10, max_tokens: int | None = None
+    ) -> list[Step]:
         pass
         
     @abstractmethod

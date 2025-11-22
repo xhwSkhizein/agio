@@ -5,6 +5,8 @@ Example text processing tools.
 
 class TextSummarizerTool:
     """Text summarization tool."""
+
+    name = "text_summarizer"
     
     def __init__(self, model: str = "gpt35", max_summary_length: int = 500, style: str = "concise"):
         self.model = model
