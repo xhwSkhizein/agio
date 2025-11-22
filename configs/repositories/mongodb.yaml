@@ -1,0 +1,10 @@
+type: repository
+name: mongodb_repo
+description: "MongoDB persistence layer for agent runs and events"
+repository_type: mongodb
+uri: "${AGIO_MONGO_URI}"
+enabled: true
+tags:
+  - persistence
+  - mongodb
+  - production

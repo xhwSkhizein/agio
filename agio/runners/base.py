@@ -16,10 +16,6 @@ AgentRunner - Agent 运行编排器
 
 import time
 from typing import AsyncIterator, TYPE_CHECKING
-
-from agio.agent.hooks.base import AgentHook
-from agio.domain.run import AgentRun, RunStatus
-from agio.utils.logger import log_error
 from agio.sessions.base import AgentSession
 from agio.runners.context import ContextBuilder
 from agio.runners.config import AgentRunConfig
@@ -35,6 +31,12 @@ from agio.db.repository import AgentRunRepository
 
 if TYPE_CHECKING:
     from agio.agent.base import Agent
+from agio.agent.hooks.base import AgentHook
+from agio.domain.run import AgentRun, RunStatus
+
+from agio.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class AgentRunner:
@@ -213,7 +215,7 @@ class AgentRunner:
                 pass
 
         except Exception as e:
-            log_error(f"Run failed: {e}")
+            logger.error("agent_run_failed", run_id=run.id, error=str(e), exc_info=True)
             run.status = RunStatus.FAILED
             # Note: AgentRun doesn't have error field, errors are tracked in steps
 

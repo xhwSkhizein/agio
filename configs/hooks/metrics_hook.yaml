@@ -1,0 +1,12 @@
+type: hook
+name: metrics_hook
+description: "Hook for collecting agent metrics"
+class_path: agio.hooks.metrics.MetricsHook
+params:
+  metrics_backend: prometheus
+  push_interval: 60
+enabled: false  # Disabled by default
+tags:
+  - hook
+  - metrics
+  - monitoring

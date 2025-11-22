@@ -1,0 +1,28 @@
+type: agent
+name: research_agent
+description: "Research agent with web search and analysis capabilities"
+model: gpt-4o-mini
+system_prompt: |
+  You are a research assistant specialized in:
+  - Conducting thorough web searches
+  - Analyzing and synthesizing information
+  - Fact-checking and verification
+  - Providing well-sourced answers
+  
+  Always cite your sources and indicate confidence levels.
+tools:
+  - web_search
+  - scrape_webpage
+  - summarize_text
+memory: semantic_memory
+knowledge: research_database
+repository: mongodb_repo
+hooks:
+  - logging_hook
+max_steps: 25
+enable_memory_update: true
+enabled: true
+tags:
+  - research
+  - analysis
+  - web

@@ -1,475 +1,276 @@
-<div align="center">
+# Agio - Agent Framework
 
-# 🚀 Agio
+[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/React-18+-61dafb.svg)](https://reactjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5+-blue.svg)](https://www.typescriptlang.org/)
+[![uv](https://img.shields.io/badge/uv-managed-blue.svg)](https://github.com/astral-sh/uv)
 
-**Production-Ready AI Agent Framework for Python**
+**Agio** 是一个现代化的 Agent 框架，提供完整的配置管理、执行控制、API 接口和可观测平台。
 
-[![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/)
-[![Code Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)](tests/)
+## ✨ 核心特性
 
-[English](README.md) | [中文文档](README_CN.md)
+### 🎯 配置系统
+- **YAML 配置驱动** - 声明式定义 Agent、Model、Tool
+- **动态热重载** - 无需重启即可更新配置
+- **环境变量支持** - `${ENV_VAR}` 语法
+- **配置继承** - `extends` 复用配置
 
-</div>
+### 💾 执行控制
+- **Checkpoint 快照** - 保存完整执行状态
+- **Resume/Fork** - 从任意点恢复或分支
+- **Pause/Resume/Cancel** - 灵活控制执行
+- **时光旅行调试** - 回到任意执行步骤
 
----
+### 🚀 FastAPI Backend
+- **RESTful API** - 完整的 CRUD 操作
+- **SSE 流式传输** - 实时 Chat 交互
+- **自动文档** - Swagger UI + ReDoc
+- **执行控制 API** - Pause/Resume/Cancel 端点
 
-## ✨ Why Agio?
+### 🎨 React Frontend
+- **现代化 UI** - TailwindCSS + 深色模式
+- **实时 Chat** - SSE 流式消息
+- **Agent 管理** - 可视化配置界面
+- **仪表盘** - 系统概览和指标
 
-Agio is a **modern, production-ready AI agent framework** that makes building intelligent agents simple, observable, and scalable. Unlike other frameworks, Agio is designed from the ground up with:
+## 🚀 快速开始
 
-- **🎯 Event-Driven Architecture** - Real-time streaming + complete history replay
-- **🔄 Model-Driven Loop** - Clean separation between orchestration and execution
-- **📊 Built-in Observability** - Metrics, tracing, and debugging out of the box
-- **⚡ Async-Native** - Fully asynchronous for maximum performance
-- **🔌 Pluggable Everything** - Tools, storage, memory, and more
-- **🛡️ Type-Safe** - Strict typing with Pydantic for reliability
+### 前置要求
 
----
+- Python 3.11+
+- [uv](https://github.com/astral-sh/uv) (Python 包管理器)
+- Node.js 18+
 
-## 🎬 Quick Start
-
-### Installation
+### 安装 uv
 
 ```bash
-pip install agio
+# macOS/Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-### Your First Agent (30 seconds)
-
-```python
-import asyncio
-from agio import Agent
-from agio.models import OpenAIModel
-from agio.tools import tool
-
-@tool
-def get_weather(city: str) -> str:
-    """Get the current weather for a city."""
-    return f"The weather in {city} is sunny ☀️"
-
-async def main():
-    agent = Agent(
-        model=OpenAIModel(),
-        tools=[get_weather],
-        instruction="You are a helpful weather assistant."
-    )
-    
-    # Simple text streaming
-    async for chunk in agent.arun("What's the weather in Beijing?"):
-        print(chunk, end="", flush=True)
-
-asyncio.run(main())
-```
-
-### Event Streaming (Advanced)
-
-```python
-from agio.protocol import EventType
-
-async def main():
-    agent = Agent(...)
-    
-    async for event in agent.arun_stream("Your query"):
-        match event.type:
-            case EventType.TEXT_DELTA:
-                print(event.data["content"], end="")
-            case EventType.TOOL_CALL_STARTED:
-                print(f"\n🔧 Calling {event.data['tool_name']}...")
-            case EventType.METRICS_SNAPSHOT:
-                print(f"\n📊 Tokens: {event.data['total_tokens']}")
-            case EventType.RUN_COMPLETED:
-                print(f"\n✅ Done in {event.data['duration']:.2f}s")
-```
-
----
-
-## 🌟 Key Features
-
-### 1. Event-Driven Architecture
-
-Every action in Agio generates events - perfect for real-time UIs and debugging:
-
-```python
-# 15 event types covering the entire agent lifecycle
-EventType.RUN_STARTED          # Agent starts
-EventType.TEXT_DELTA           # Streaming text
-EventType.TOOL_CALL_STARTED    # Tool execution begins
-EventType.TOOL_CALL_COMPLETED  # Tool execution ends
-EventType.METRICS_SNAPSHOT     # Performance metrics
-EventType.RUN_COMPLETED        # Agent finishes
-# ... and more
-```
-
-### 2. Complete History & Replay
-
-Every run is automatically persisted with full event history:
-
-```python
-# Get historical run
-async for event in agent.get_run_history(run_id):
-    # Replay the entire conversation
-    print(event)
-
-# List all runs
-runs = await agent.list_runs(limit=10)
-for run in runs:
-    print(f"{run.id}: {run.status} - {run.input_query}")
-```
-
-### 3. Built-in Observability
-
-Comprehensive metrics at every level:
-
-```python
-{
-    "total_tokens": 1500,
-    "total_prompt_tokens": 800,
-    "total_completion_tokens": 700,
-    "current_step": 2,
-    "tool_calls_count": 3,
-    "step_duration": 2.5,
-    "response_latency": 0.8
-}
-```
-
-### 4. Flexible Tool System
-
-Multiple ways to define tools:
-
-```python
-# 1. Function decorator
-@tool
-def search_web(query: str) -> str:
-    """Search the web for information."""
-    return search_api(query)
-
-# 2. Class-based tool
-class DatabaseTool(Tool):
-    def execute(self, query: str) -> str:
-        return self.db.query(query)
-
-# 3. MCP (Model Context Protocol) support
-from agio.tools.mcp import MCPTool
-tool = MCPTool.from_server("filesystem")
-```
-
-### 5. Pluggable Storage
-
-Choose your storage backend:
-
-```python
-from agio.db import InMemoryRepository, PostgreSQLRepository
-
-# Development
-agent = Agent(
-    model=...,
-    repository=InMemoryRepository()
-)
-
-# Production
-agent = Agent(
-    model=...,
-    repository=PostgreSQLRepository(
-        connection_string="postgresql://..."
-    )
-)
-```
-
----
-
-## 🏗️ Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                        Agent                            │
-│  (Configuration Container + Execution Entry Point)      │
-└────────────────────┬────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────┐
-│                    AgentRunner                          │
-│  (Orchestrator: Manages lifecycle, dispatches hooks)    │
-└────────────────────┬────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────┐
-│                   ModelDriver                           │
-│  (Execution Engine: LLM ↔ Tool loop)                    │
-│                                                          │
-│  ┌──────────┐    ┌──────────┐    ┌──────────┐         │
-│  │   LLM    │───▶│   Tool   │───▶│   LLM    │         │
-│  │  Call    │    │ Execute  │    │  Call    │         │
-│  └──────────┘    └──────────┘    └──────────┘         │
-└─────────────────────────────────────────────────────────┘
-                     │
-                     ▼
-              ┌─────────────┐
-              │   Events    │
-              │   Stream    │
-              └─────────────┘
-```
-
-### Data Flow
-
-```
-User Query
-    ↓
-Context Builder (System + History + RAG + Memory)
-    ↓
-ModelDriver Loop
-    ├─→ LLM Call
-    ├─→ Tool Execution
-    ├─→ Event Emission
-    └─→ Repeat until done
-    ↓
-Event Stream (Real-time + Persisted)
-    ↓
-Response
-```
-
----
-
-## 📚 Documentation
-
-- **[Getting Started](docs/getting-started.md)** - Installation and first steps
-- **[Core Concepts](docs/concepts.md)** - Understanding Agio's architecture
-- **[API Reference](docs/api/)** - Complete API documentation
-- **[Examples](examples/)** - Real-world examples and templates
-- **[Advanced Guides](docs/guides/)** - Custom drivers, storage, and more
-
----
-
-## 🎯 Use Cases
-
-### Chatbots & Assistants
-```python
-# Build a customer support bot with memory
-agent = Agent(
-    model=OpenAIModel(),
-    tools=[search_kb, create_ticket],
-    memory=ConversationMemory(),
-    instruction="You are a helpful customer support agent."
-)
-```
-
-### RAG Applications
-```python
-# Build a document Q&A system
-agent = Agent(
-    model=OpenAIModel(),
-    knowledge=VectorKnowledge(
-        embedding_model="text-embedding-3-small",
-        vector_store=ChromaDB()
-    ),
-    instruction="Answer questions based on the provided documents."
-)
-```
-
-### Code Assistants
-```python
-# Build a coding assistant
-agent = Agent(
-    model=OpenAIModel(),
-    tools=[read_file, write_file, execute_code, search_docs],
-    instruction="You are an expert coding assistant."
-)
-```
-
-### Data Analysis
-```python
-# Build a data analyst agent
-agent = Agent(
-    model=OpenAIModel(),
-    tools=[query_database, plot_chart, calculate_stats],
-    instruction="You are a data analysis expert."
-)
-```
-
----
-
-## 🔧 Advanced Features
-
-### Custom ModelDriver
-
-```python
-from agio.core import ModelDriver, LoopConfig
-
-class CustomDriver(ModelDriver):
-    async def run(self, messages, tools, config):
-        # Your custom LLM integration
-        async for event in your_llm_stream(...):
-            yield ModelEvent(...)
-```
-
-### Custom Repository
-
-```python
-from agio.db import AgentRunRepository
-
-class RedisRepository(AgentRunRepository):
-    async def save_run(self, run):
-        await self.redis.set(f"run:{run.id}", run.json())
-    
-    async def get_run(self, run_id):
-        data = await self.redis.get(f"run:{run_id}")
-        return AgentRun.parse_raw(data)
-```
-
-### Hooks for Custom Logic
-
-```python
-from agio.agent.hooks import AgentHook
-
-class MetricsHook(AgentHook):
-    async def on_run_start(self, run):
-        self.prometheus.inc("agent_runs_total")
-    
-    async def on_tool_start(self, run, step, tool_call):
-        self.prometheus.inc(f"tool_calls_total", {"tool": tool_call["name"]})
-```
-
----
-
-## 🌐 Web Integration
-
-### FastAPI + SSE
-
-```python
-from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
-
-app = FastAPI()
-
-@app.post("/chat")
-async def chat(query: str):
-    async def event_stream():
-        async for event in agent.arun_stream(query):
-            yield f"data: {event.json()}\n\n"
-    
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
-```
-
-### Gradio UI
-
-```python
-import gradio as gr
-
-async def chat(message, history):
-    response = ""
-    async for chunk in agent.arun(message):
-        response += chunk
-        yield response
-
-gr.ChatInterface(chat).launch()
-```
-
----
-
-## 🧪 Testing
+### 一键启动
 
 ```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=agio --cov-report=html
-
-# Run specific test
-pytest tests/test_agent.py -v
+# 启动服务（后端 + 前端）
+./start.sh
 ```
 
----
+启动脚本会自动:
+1. 安装 uv (如果未安装)
+2. 使用 uv 同步 Python 依赖
+3. 安装前端依赖
+4. 启动后端和前端服务
 
-## 🤝 Contributing
+访问:
+- **前端**: http://localhost:3000
+- **API 文档**: http://localhost:8000/docs
+- **健康检查**: http://localhost:8000/api/health
 
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+### 手动启动
 
-### Quick Start for Contributors
+#### 后端 (使用 uv)
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/agio.git
-cd agio
+# 同步依赖
+uv sync
 
-# Install development dependencies
-pip install -e ".[dev]"
+# 启动服务
+uv run uvicorn agio.api.app:app --reload
 
-# Run tests
-pytest
-
-# Format code
-ruff format .
-
-# Type check
-mypy agio
+# 或使用 Python 脚本
+uv run python main.py
 ```
 
+#### 前端
+
+```bash
+cd agio-frontend
+npm install
+npm run dev
+```
+
+### 停止服务
+
+```bash
+./stop.sh
+```
+
+## 📁 项目结构
+
+```
+agio/
+├── agio/
+│   ├── agent/              # Agent 核心
+│   ├── models/             # LLM 模型
+│   ├── tools/              # 工具集成
+│   ├── memory/             # 记忆系统
+│   ├── knowledge/          # 知识库
+│   ├── registry/           # 配置系统 ⭐
+│   │   ├── models.py       # Pydantic 配置模型
+│   │   ├── base.py         # 组件注册表
+│   │   ├── loader.py       # YAML 加载器
+│   │   ├── factory.py      # 组件工厂
+│   │   └── README.md
+│   ├── execution/          # 执行控制 ⭐
+│   │   ├── checkpoint.py   # Checkpoint 模型
+│   │   ├── control.py      # 执行控制器
+│   │   ├── resume.py       # 恢复执行
+│   │   ├── fork.py         # Fork 管理
+│   │   └── README.md
+│   └── api/                # FastAPI Backend ⭐
+│       ├── app.py          # FastAPI 应用
+│       ├── routes/         # API 路由
+│       └── README.md
+├── agio-frontend/          # React Frontend ⭐
+│   ├── src/
+│   │   ├── components/     # 组件
+│   │   ├── pages/          # 页面
+│   │   └── services/       # API 服务
+│   └── README.md
+├── configs/                # 配置文件
+│   ├── models/             # Model 配置
+│   ├── agents/             # Agent 配置
+│   └── tools/              # Tool 配置
+├── tests/                  # 测试
+├── pyproject.toml          # uv 项目配置
+├── start.sh                # 一键启动脚本
+└── README.md
+```
+
+## 📝 配置示例
+
+### Model 配置
+
+```yaml
+# configs/models/gpt4.yaml
+type: model
+name: gpt4
+provider: openai
+model: gpt-4-turbo-preview
+api_key: ${OPENAI_API_KEY}
+temperature: 0.7
+```
+
+### Agent 配置
+
+```yaml
+# configs/agents/assistant.yaml
+type: agent
+name: assistant
+model: gpt4
+system_prompt: "You are a helpful assistant."
+tools:
+  - search_tool
+  - calculator
+```
+
+## 🔧 使用示例
+
+### Python API
+
+```python
+from agio.registry import load_from_config, get_registry
+
+# 加载配置
+load_from_config("./configs")
+
+# 获取 Agent
+registry = get_registry()
+agent = registry.get("assistant")
+
+# 运行
+async for chunk in agent.arun("Hello!"):
+    print(chunk, end="", flush=True)
+```
+
+### REST API
+
+```bash
+# 列出 Agents
+curl http://localhost:8000/api/agents
+
+# Chat (流式)
+curl -X POST http://localhost:8000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"agent_id": "assistant", "message": "Hello", "stream": true}'
+
+# 暂停执行
+curl -X POST http://localhost:8000/api/runs/{run_id}/pause
+```
+
+## 📊 测试
+
+```bash
+# 运行所有测试
+uv run pytest
+
+# 配置系统测试
+uv run pytest tests/test_registry.py -v
+
+# 执行控制测试
+uv run pytest tests/test_execution.py -v
+
+# API 测试
+uv run pytest tests/test_api.py -v
+```
+
+**测试结果**: 24+ tests passing ✅
+
+## 🛠️ 开发
+
+### 安装开发依赖
+
+```bash
+uv sync --all-extras
+```
+
+### 代码格式化
+
+```bash
+uv run black agio/
+uv run isort agio/
+```
+
+### 类型检查
+
+```bash
+uv run mypy agio/
+```
+
+## 📚 文档
+
+- [配置系统文档](agio/registry/README.md)
+- [执行控制文档](agio/execution/README.md)
+- [API 文档](agio/api/README.md)
+- [前端文档](agio-frontend/README.md)
+- [项目总结](PROJECT_SUMMARY.md)
+
+详细设计文档:
+- [配置系统设计](agio/registry/DESIGN.md)
+- [执行控制设计](agio/execution/DESIGN.md)
+- [API 设计](agio/api/DESIGN.md)
+- [前端设计](agio-frontend/DESIGN.md)
+
+## 🤝 贡献
+
+欢迎贡献！请查看 [CONTRIBUTING.md](CONTRIBUTING.md) 了解详情。
+
+## 📄 许可证
+
+MIT License - 详见 [LICENSE](LICENSE)
+
+## 🙏 致谢
+
+- [uv](https://github.com/astral-sh/uv) - 极速 Python 包管理器
+- [FastAPI](https://fastapi.tiangolo.com/) - 现代化 Python Web 框架
+- [React](https://reactjs.org/) - UI 库
+- [TailwindCSS](https://tailwindcss.com/) - CSS 框架
+- [Pydantic](https://pydantic.dev/) - 数据验证
+
 ---
 
-## 📊 Benchmarks
-
-| Operation | Agio | LangChain | AutoGPT |
-|-----------|------|-----------|---------|
-| Simple Query | 0.8s | 1.2s | 2.5s |
-| With Tools (3 calls) | 2.5s | 3.8s | 6.2s |
-| Memory Usage | 45MB | 120MB | 250MB |
-| Event Overhead | <1ms | N/A | N/A |
-
-*Benchmarks run on Python 3.12, M1 Mac, GPT-4*
-
----
-
-## 🗺️ Roadmap
-
-- [x] **Phase 1-5**: Core framework, events, persistence, observability
-- [ ] **Phase 6**: Documentation, examples, community
-- [ ] **v1.0**: First stable release
-- [ ] **v1.1**: Multi-agent collaboration
-- [ ] **v1.2**: Advanced RAG features
-- [ ] **v2.0**: Distributed agents
-
-See [plans.md](plans.md) for detailed roadmap.
-
----
-
-## 📖 Learn More
-
-- **Blog**: [Building Production AI Agents](https://blog.agio.dev)
-- **Discord**: [Join our community](https://discord.gg/agio)
-- **Twitter**: [@AgioFramework](https://twitter.com/AgioFramework)
-- **Examples**: [Real-world examples](examples/)
-
----
-
-## 🌟 Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=yourusername/agio&type=Date)](https://star-history.com/#yourusername/agio&Date)
-
----
-
-## 📄 License
-
-Agio is released under the [MIT License](LICENSE).
-
----
-
-## 🙏 Acknowledgments
-
-Built with ❤️ by the Agio team and [contributors](CONTRIBUTORS.md).
-
-Special thanks to:
-- OpenAI for GPT models
-- The Python community
-- All our contributors and users
-
----
-
-<div align="center">
-
-**[⬆ Back to Top](#-agio)**
-
-Made with ❤️ for the AI community
-
-</div>
+**Built with ❤️ by the Agio Team**

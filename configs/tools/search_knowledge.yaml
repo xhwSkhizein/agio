@@ -1,0 +1,14 @@
+type: tool
+name: search_knowledge
+description: "Search the knowledge base for relevant information"
+tool_type: class
+class_path: agio.tools.example.knowledge.KnowledgeSearchTool
+class_params:
+  knowledge_base: product_docs
+  max_results: 5
+  similarity_threshold: 0.7
+enabled: true
+tags:
+  - knowledge
+  - search
+  - rag

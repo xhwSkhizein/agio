@@ -1,40 +1,109 @@
-# Byte-compiled / optimized / DLL files
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
 # Virtual environments
-.venv/
+.env
+.venv
+env/
 venv/
 ENV/
+env.bak/
+venv.bak/
+.uv/
 
-# Environment & secrets
-.env
-.env.*
+# PyCharm
+.idea/
 
-# Testing & coverage
+# VS Code
+.vscode/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pytest
 .pytest_cache/
 .coverage
-.coverage.*
 htmlcov/
+*.cover
+.hypothesis/
 
-# Type checker caches
+# mypy
 .mypy_cache/
-.pyre/
-.pytype/
-
-# IDE & tooling metadata
-.vscode/
-.idea/
-*.code-workspace
-
-# OS artifacts
-.DS_Store
-Thumbs.db
+.dmypy.json
+dmypy.json
 
 # Logs
 *.log
+logs/
+*.pid
 
-# Project-specific data outputs
-chroma_data/
-.chroma_data/
+# Node.js / Frontend
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Frontend build outputs
+agio-frontend/dist/
+agio-frontend/dist-ssr/
+agio-frontend/.vite/
+agio-frontend/.next/
+agio-frontend/out/
+agio-frontend/build/
+
+# Frontend environment
+agio-frontend/.env
+agio-frontend/.env.local
+agio-frontend/.env.development.local
+agio-frontend/.env.test.local
+agio-frontend/.env.production.local
+
+# Editor directories and files
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+configs/local/
+.secrets/

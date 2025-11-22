@@ -1,0 +1,10 @@
+type: tool
+name: web_search
+description: "Search the web for information"
+tool_type: function
+function_path: agio.tools.example.web.search
+enabled: true
+tags:
+  - search
+  - web
+  - research

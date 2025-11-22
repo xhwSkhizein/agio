@@ -1,0 +1,14 @@
+type: tool
+name: summarize_text
+description: "Summarize long text documents"
+tool_type: class
+class_path: agio.tools.example.text.TextSummarizerTool
+class_params:
+  model: gpt35
+  max_summary_length: 500
+  style: concise
+enabled: true
+tags:
+  - text
+  - summarization
+  - nlp

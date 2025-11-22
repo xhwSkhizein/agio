@@ -1,0 +1,13 @@
+type: storage
+name: redis_storage
+description: "Redis storage backend for production"
+storage_type: redis
+redis_url: "${AGIO_REDIS_URL}"
+redis_params:
+  decode_responses: true
+  max_connections: 50
+enabled: false  # Disabled by default, enable when Redis is configured
+tags:
+  - storage
+  - redis
+  - production

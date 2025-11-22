@@ -1,0 +1,14 @@
+type: tool
+name: scrape_webpage
+description: "Scrape content from web pages"
+tool_type: class
+class_path: agio.tools.example.web.WebScraperTool
+class_params:
+  timeout: 30
+  user_agent: "Agio Research Agent/1.0"
+  max_content_length: 100000
+enabled: true
+tags:
+  - web
+  - scraping
+  - research

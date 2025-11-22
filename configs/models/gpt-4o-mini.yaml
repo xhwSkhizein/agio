@@ -1,0 +1,20 @@
+# Model Configurations
+
+type: model
+name: gpt-4o-mini
+description: "OpenAI GPT-4o Mini model for complex reasoning tasks"
+provider: openai
+model: gpt-4o-mini
+api_key: ${OPENAI_API_KEY}
+temperature: 0.7
+max_tokens: 4096
+top_p: 1.0
+frequency_penalty: 0.0
+presence_penalty: 0.0
+timeout: 60
+max_retries: 3
+enabled: true
+tags:
+  - production
+  - openai
+  - gpt-4o-mini

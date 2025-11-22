@@ -1,0 +1,10 @@
+type: tool
+name: calculator
+description: "Perform mathematical calculations"
+tool_type: function
+function_path: agio.tools.example.math.calculator
+enabled: true
+tags:
+  - math
+  - calculation
+  - utility

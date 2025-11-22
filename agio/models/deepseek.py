@@ -10,7 +10,7 @@ from agio.models.openai import OpenAIModel
 from agio.config import settings
 
 
-class Deepseek(OpenAIModel):
+class DeepSeekModel(OpenAIModel):
     """
     DeepSeek Model 实现。
 

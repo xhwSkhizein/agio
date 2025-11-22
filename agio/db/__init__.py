@@ -1,4 +1,13 @@
-from .base import Storage, DB
-from .mongo import MongoStorage
+from .base import Storage
 
-__all__ = ["Storage", "DB", "MongoStorage"]
+# Import MongoDBRepository and alias as MongoStorage for backward compatibility
+from .mongo import MongoDBRepository, MongoDBRepository as MongoStorage
+from .repository import AgentRunRepository, InMemoryRepository
+
+__all__ = [
+    "Storage",
+    "MongoStorage",
+    "MongoDBRepository",
+    "AgentRunRepository",
+    "InMemoryRepository",
+]

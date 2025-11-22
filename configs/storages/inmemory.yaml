@@ -1,0 +1,9 @@
+type: storage
+name: inmemory_storage
+description: "In-memory storage backend for development"
+storage_type: memory
+enabled: true
+tags:
+  - storage
+  - inmemory
+  - development

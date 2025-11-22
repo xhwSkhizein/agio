@@ -1,0 +1,15 @@
+type: memory
+name: semantic_memory
+description: "Semantic memory with vector storage for long-term context"
+class_path: agio.memory.semantic.SemanticMemory
+max_history_length: 100
+vector_store: chroma
+embedding_model: text-embedding-ada-002
+params:
+  collection_name: agent_memory
+  similarity_threshold: 0.75
+enabled: true  # Enabled for testing
+tags:
+  - memory
+  - semantic
+  - vector

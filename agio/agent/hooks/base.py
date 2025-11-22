@@ -9,6 +9,10 @@ class AgentHook(ABC):
     Most methods include `run` context to allow full access to state.
     """
 
+    def __init__(self, **kwargs):
+        """Initialize hook with optional parameters."""
+        pass
+
     async def on_run_start(self, run: AgentRun) -> None:
         pass
 

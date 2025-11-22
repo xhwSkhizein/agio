@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #09090b;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  @apply bg-background text-gray-100;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-surfaceHighlight rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-border;
+}
+
+/* Markdown Styles */
+.prose {
+  @apply text-gray-300;
+}
+
+.prose pre {
+  @apply bg-surface border border-border rounded-lg p-4 overflow-x-auto;
+}
+
+.prose code {
+  @apply font-mono text-sm bg-surfaceHighlight px-1 py-0.5 rounded text-primary-300;
+}
+
+.prose pre code {
+  @apply bg-transparent p-0 text-gray-200;
+}
+
+.prose a {
+  @apply text-primary-400 hover:text-primary-300 underline decoration-primary-400/30 underline-offset-2;
+}
+
+.prose ul {
+  @apply list-disc list-outside ml-4 space-y-1;
+}
+
+.prose ol {
+  @apply list-decimal list-outside ml-4 space-y-1;
+}
+
+.prose h1, .prose h2, .prose h3, .prose h4 {
+  @apply font-semibold text-white mt-6 mb-3;
+}
+
+.prose p {
+  @apply mb-4 leading-relaxed;
+}

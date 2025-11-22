@@ -1,0 +1,11 @@
+type: memory
+name: conversation_memory
+description: "Simple conversation memory for maintaining context"
+class_path: agio.memory.conversation.ConversationMemory
+max_history_length: 20
+max_tokens: 4000
+enabled: true
+tags:
+  - memory
+  - conversation
+  - context

@@ -1,0 +1,16 @@
+type: knowledge
+name: product_docs
+description: "Product documentation knowledge base"
+class_path: agio.knowledge.vector_knowledge.VectorKnowledge
+vector_store: chroma
+embedding_model: text-embedding-ada-002
+params:
+  collection_name: product_docs
+  chunk_size: 1000
+  chunk_overlap: 200
+  data_path: ./data/product_docs
+enabled: true
+tags:
+  - knowledge
+  - documentation
+  - rag

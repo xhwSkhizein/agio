@@ -1,176 +1,182 @@
+# ============================================================================
+# DEPRECATION NOTICE
+# ============================================================================
+#
+# This file is DEPRECATED and will be removed in a future version.
+#
+# Replacement:
+#   - Old: agio/protocol/events.py (AgentEvent system)
+#   - New: agio/protocol/step_events.py (StepEvent system)
+#
+# Migration Guide:
+#   See docs/STEP_INTEGRATION_GUIDE.md for migration instructions.
+#
+# Why Deprecated?
+#   The old event system required complex conversion logic to transform
+#   events into LLM messages. The new Step-based system stores data in
+#   native LLM message format, eliminating conversion overhead.
+#
+# Timeline:
+#   - Deprecated: 2025-11-22
+#   - Removal: TBD (after full migration)
+#
+# ============================================================================
+
+
+"""
+Agent Event Protocol - DEPRECATED
+
+Use agio.protocol.step_events instead.
+"""
+
 from enum import Enum
-from typing import Any, Dict, Optional
-from pydantic import BaseModel, Field
 from datetime import datetime
+from pydantic import BaseModel, Field
+from typing import Any
 
 
 class EventType(str, Enum):
-    """统一的事件类型枚举"""
-    
-    # Run 级别事件
+    """Event types - DEPRECATED"""
+
+    # Run lifecycle
     RUN_STARTED = "run_started"
     RUN_COMPLETED = "run_completed"
     RUN_FAILED = "run_failed"
-    RUN_CANCELLED = "run_cancelled"
-    
-    # Step 级别事件
+
+    # Step lifecycle
     STEP_STARTED = "step_started"
     STEP_COMPLETED = "step_completed"
-    
-    # 流式输出事件
+
+    # Streaming
     TEXT_DELTA = "text_delta"
-    TEXT_COMPLETED = "text_completed"
-    
-    # 工具事件
     TOOL_CALL_STARTED = "tool_call_started"
+    TOOL_CALL_DELTA = "tool_call_delta"
     TOOL_CALL_COMPLETED = "tool_call_completed"
-    TOOL_CALL_FAILED = "tool_call_failed"
-    
-    # Metrics 事件
-    USAGE_UPDATE = "usage_update"
-    METRICS_SNAPSHOT = "metrics_snapshot"
-    
-    # 错误事件
+    TOOL_EXECUTION_STARTED = "tool_execution_started"
+    TOOL_EXECUTION_COMPLETED = "tool_execution_completed"
+
+    # Errors
     ERROR = "error"
-    WARNING = "warning"
-    
-    # 调试事件
-    DEBUG = "debug"
 
 
 class AgentEvent(BaseModel):
     """
-    统一的 Agent 事件模型。
-    用于实时流式输出和历史回放。
+    Agent Event - DEPRECATED
+
+    Use StepEvent instead for new code.
     """
-    
+
     type: EventType
     run_id: str
     timestamp: datetime = Field(default_factory=datetime.now)
-    
-    # 事件负载（根据类型不同而不同）
-    data: Dict[str, Any] = Field(default_factory=dict)
-    
-    # 可选的元数据
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-    
-    def to_json(self) -> dict:
-        """转换为 JSON 格式"""
-        return self.model_dump(mode='json')
-    
+    step: int | None = None
+    data: dict[str, Any] = Field(default_factory=dict)
+
     def to_sse(self) -> str:
-        """转换为 Server-Sent Events 格式"""
+        """Convert to Server-Sent Event format"""
         import json
-        data = self.to_json()
-        return f"data: {json.dumps(data)}\n\n"
+
+        return f"data: {json.dumps(self.model_dump(mode='json'))}\n\n"
 
 
-# 便捷的事件构造函数
-
-def create_run_started_event(run_id: str, query: str, **metadata) -> AgentEvent:
-    """创建 Run 开始事件"""
-    return AgentEvent(
-        type=EventType.RUN_STARTED,
-        run_id=run_id,
-        data={"query": query},
-        metadata=metadata
-    )
+# Event creation helpers - DEPRECATED
 
 
-def create_run_completed_event(run_id: str, response: str, metrics: dict, **metadata) -> AgentEvent:
-    """创建 Run 完成事件"""
+def run_started(run_id: str, query: str) -> AgentEvent:
+    """DEPRECATED: Use create_run_started_event from step_events"""
+    return AgentEvent(type=EventType.RUN_STARTED, run_id=run_id, data={"query": query})
+
+
+def run_completed(
+    run_id: str, response: str, metrics: dict | None = None
+) -> AgentEvent:
+    """DEPRECATED: Use create_run_completed_event from step_events"""
     return AgentEvent(
         type=EventType.RUN_COMPLETED,
         run_id=run_id,
-        data={"response": response, "metrics": metrics},
-        metadata=metadata
+        data={"response": response, "metrics": metrics or {}},
     )
 
 
-def create_text_delta_event(run_id: str, content: str, step: int = 0) -> AgentEvent:
-    """创建文本增量事件"""
+def run_failed(run_id: str, error: str) -> AgentEvent:
+    """DEPRECATED: Use create_run_failed_event from step_events"""
+    return AgentEvent(type=EventType.RUN_FAILED, run_id=run_id, data={"error": error})
+
+
+def step_started(run_id: str, step: int) -> AgentEvent:
+    """DEPRECATED: Steps are now created directly"""
+    return AgentEvent(type=EventType.STEP_STARTED, run_id=run_id, step=step)
+
+
+def step_completed(run_id: str, step: int) -> AgentEvent:
+    """DEPRECATED: Use create_step_completed_event from step_events"""
+    return AgentEvent(type=EventType.STEP_COMPLETED, run_id=run_id, step=step)
+
+
+def text_delta(run_id: str, content: str, step: int) -> AgentEvent:
+    """DEPRECATED: Use create_step_delta_event from step_events"""
     return AgentEvent(
-        type=EventType.TEXT_DELTA,
-        run_id=run_id,
-        data={"content": content, "step": step}
+        type=EventType.TEXT_DELTA, run_id=run_id, step=step, data={"content": content}
     )
 
 
-def create_tool_call_started_event(
-    run_id: str, 
-    tool_name: str, 
-    tool_call_id: str,
-    arguments: dict,
-    step: int = 0
-) -> AgentEvent:
-    """创建工具调用开始事件"""
+def tool_call_started(run_id: str, tool_name: str, step: int) -> AgentEvent:
+    """DEPRECATED: Tool calls are now part of Step"""
     return AgentEvent(
         type=EventType.TOOL_CALL_STARTED,
         run_id=run_id,
-        data={
-            "tool_name": tool_name,
-            "tool_call_id": tool_call_id,
-            "arguments": arguments,
-            "step": step
-        }
+        step=step,
+        data={"tool_name": tool_name},
     )
 
 
-def create_tool_call_completed_event(
-    run_id: str,
-    tool_name: str,
-    tool_call_id: str,
-    result: str,
-    duration: float,
-    step: int = 0
-) -> AgentEvent:
-    """创建工具调用完成事件"""
+def tool_call_delta(run_id: str, delta: dict, step: int) -> AgentEvent:
+    """DEPRECATED: Use create_step_delta_event from step_events"""
+    return AgentEvent(
+        type=EventType.TOOL_CALL_DELTA, run_id=run_id, step=step, data=delta
+    )
+
+
+def tool_call_completed(run_id: str, tool_call: dict, step: int) -> AgentEvent:
+    """DEPRECATED: Tool calls are now part of Step"""
     return AgentEvent(
         type=EventType.TOOL_CALL_COMPLETED,
         run_id=run_id,
-        data={
-            "tool_name": tool_name,
-            "tool_call_id": tool_call_id,
-            "result": result,
-            "duration": duration,
-            "step": step
-        }
+        step=step,
+        data={"tool_call": tool_call},
     )
 
 
-def create_usage_update_event(
-    run_id: str,
-    prompt_tokens: int,
-    completion_tokens: int,
-    total_tokens: int,
-    step: int = 0
+def tool_execution_started(run_id: str, tool_name: str, step: int) -> AgentEvent:
+    """DEPRECATED: Tool execution creates Tool Steps"""
+    return AgentEvent(
+        type=EventType.TOOL_EXECUTION_STARTED,
+        run_id=run_id,
+        step=step,
+        data={"tool_name": tool_name},
+    )
+
+
+def tool_execution_completed(
+    run_id: str, tool_name: str, result: str, step: int
 ) -> AgentEvent:
-    """创建 Token 使用更新事件"""
+    """DEPRECATED: Tool execution creates Tool Steps"""
     return AgentEvent(
-        type=EventType.USAGE_UPDATE,
+        type=EventType.TOOL_EXECUTION_COMPLETED,
         run_id=run_id,
-        data={
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "step": step
-        }
+        step=step,
+        data={"tool_name": tool_name, "result": result},
     )
 
 
-def create_error_event(run_id: str, error: str, error_type: str = "unknown") -> AgentEvent:
-    """创建错误事件"""
+def error_event(run_id: str, error: str, step: int | None = None) -> AgentEvent:
+    """DEPRECATED: Use create_run_failed_event from step_events"""
     return AgentEvent(
-        type=EventType.ERROR,
-        run_id=run_id,
-        data={"error": error, "error_type": error_type}
+        type=EventType.ERROR, run_id=run_id, step=step, data={"error": error}
     )
 
 
-def create_metrics_snapshot_event(run_id: str, metrics: dict) -> AgentEvent:
-    """创建 Metrics 快照事件"""
-    return AgentEvent(
-        type=EventType.METRICS_SNAPSHOT,
-        run_id=run_id,
-        data=metrics
-    )
+# Aliases for backward compatibility
+create_run_started_event = run_started
+create_run_completed_event = run_completed
+create_run_failed_event = run_failed

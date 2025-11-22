@@ -21,7 +21,11 @@ class AgioSettings(BaseSettings):
     
     # Vector DB settings
     vector_db_path: str | None = None
-    
+
+    # Repository and Storage settings
+    default_repository: str = "mongodb_repo"
+    default_storage: str = "inmemory_storage"
+
     # Model Provider Settings
     # OpenAI
     openai_api_key: SecretStr | None = None

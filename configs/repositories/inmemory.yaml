@@ -1,0 +1,9 @@
+type: repository
+name: inmemory_repo
+description: "In-memory repository for testing and development"
+repository_type: inmemory
+enabled: true
+tags:
+  - testing
+  - inmemory
+  - development

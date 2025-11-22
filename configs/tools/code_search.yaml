@@ -1,0 +1,21 @@
+type: tool
+name: code_search
+description: "Search through codebase for specific patterns or functions"
+tool_type: class
+class_path: agio.tools.example.code.CodeSearchTool
+class_params:
+  repository_path: ${REPO_PATH}
+  file_extensions:
+    - .py
+    - .js
+    - .ts
+    - .java
+  exclude_dirs:
+    - node_modules
+    - .git
+    - __pycache__
+enabled: true
+tags:
+  - code
+  - search
+  - development

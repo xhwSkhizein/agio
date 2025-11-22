@@ -5,8 +5,10 @@ from tenacity import (
     retry_if_exception_type,
     before_sleep_log
 )
-from agio.utils.logger import logger
+from agio.utils.logging import get_logger
 import logging
+
+logger = get_logger(__name__)
 
 # Common retryable exceptions for LLM APIs
 # We will catch generic Exception for now or specific ones if we import them from openai
