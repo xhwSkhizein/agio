@@ -6,12 +6,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from agio.api.app import create_app
-from agio.api.dependencies import get_container
+from agio.config import get_config_system
 
 
 @pytest.fixture(scope="module", autouse=True)
-def setup_container():
-    """Initialize the dependency container before tests."""
+def setup_config_system():
+    """Initialize the config system before tests."""
     import asyncio
     import tempfile
     import os
@@ -22,10 +22,10 @@ def setup_container():
         for subdir in ["models", "tools", "agents"]:
             os.makedirs(os.path.join(tmpdir, subdir), exist_ok=True)
 
-        # Initialize container
-        container = get_container()
+        # Initialize config system
+        config_sys = get_config_system()
         asyncio.get_event_loop().run_until_complete(
-            container.initialize_async(config_dir=tmpdir)
+            config_sys.load_from_directory(tmpdir)
         )
         yield
 

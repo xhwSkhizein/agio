@@ -3,8 +3,8 @@
 import pytest
 from pathlib import Path
 
-from agio.components.tools.builtin_tools.file_edit_tool import FileEditTool
-from agio.execution.abort_signal import AbortSignal
+from agio.providers.tools.builtin.file_edit_tool import FileEditTool
+from agio.runtime import AbortSignal
 
 
 class TestFileEditTool:

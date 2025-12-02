@@ -7,7 +7,7 @@ from typing import Any
 import yaml
 
 from agio.config.exceptions import ConfigError
-from agio.core.config import ComponentType
+from agio.config.schema import ComponentType
 
 logger = logging.getLogger(__name__)
 

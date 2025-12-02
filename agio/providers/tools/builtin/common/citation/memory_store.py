@@ -1,0 +1,162 @@
+"""内存存储实现
+
+用于测试和不需要持久化的场景。
+"""
+
+from typing import Any
+
+from agio.providers.tools.builtin.common.citation.models import (
+    CitationSourceRaw,
+    CitationSourceSimplified,
+)
+
+
+class InMemoryCitationStore:
+    """内存中的 Citation 存储实现"""
+
+    def __init__(self):
+        # session_id -> citation_id -> CitationSourceRaw
+        self._sources: dict[str, dict[str, CitationSourceRaw]] = {}
+        # session_id -> index -> citation_id
+        self._index_map: dict[str, dict[int, str]] = {}
+
+    async def store_citation_sources(
+        self,
+        session_id: str,
+        sources: list[CitationSourceRaw],
+    ) -> list[str]:
+        """存储信息源并返回 citation_id 列表"""
+        if session_id not in self._sources:
+            self._sources[session_id] = {}
+            self._index_map[session_id] = {}
+
+        citation_ids = []
+        for source in sources:
+            # 确保 session_id 一致
+            source.session_id = session_id
+
+            # 存储
+            self._sources[session_id][source.citation_id] = source
+            citation_ids.append(source.citation_id)
+
+            # 如果有 index，建立索引映射
+            if source.index is not None:
+                self._index_map[session_id][source.index] = source.citation_id
+
+        return citation_ids
+
+    async def get_citation_source(
+        self,
+        citation_id: str,
+        session_id: str,
+    ) -> CitationSourceRaw | None:
+        """通过 citation_id 获取原始信息源"""
+        if session_id not in self._sources:
+            return None
+        return self._sources[session_id].get(citation_id)
+
+    async def get_simplified_sources(
+        self,
+        session_id: str,
+        citation_ids: list[str],
+    ) -> list[CitationSourceSimplified]:
+        """获取简化版信息源"""
+        if session_id not in self._sources:
+            return []
+
+        simplified = []
+        for citation_id in citation_ids:
+            source = self._sources[session_id].get(citation_id)
+            if source:
+                simplified.append(
+                    CitationSourceSimplified(
+                        citation_id=source.citation_id,
+                        source_type=source.source_type,
+                        url=source.url,
+                        index=source.index,
+                        title=source.title,
+                        snippet=source.snippet,
+                        date_published=source.date_published,
+                        source=source.source,
+                        created_at=source.created_at,
+                    )
+                )
+        return simplified
+
+    async def get_session_citations(
+        self,
+        session_id: str,
+    ) -> list[CitationSourceSimplified]:
+        """获取 session 的所有 citations"""
+        if session_id not in self._sources:
+            return []
+
+        sources = self._sources[session_id].values()
+        return [
+            CitationSourceSimplified(
+                citation_id=source.citation_id,
+                source_type=source.source_type,
+                url=source.url,
+                index=source.index,
+                title=source.title,
+                snippet=source.snippet,
+                date_published=source.date_published,
+                source=source.source,
+                created_at=source.created_at,
+            )
+            for source in sources
+        ]
+
+    async def update_citation_source(
+        self,
+        citation_id: str,
+        session_id: str,
+        updates: dict[str, Any],
+    ) -> bool:
+        """更新信息源"""
+        if session_id not in self._sources:
+            return False
+
+        source = self._sources[session_id].get(citation_id)
+        if not source:
+            return False
+
+        # 更新字段
+        for key, value in updates.items():
+            if hasattr(source, key):
+                setattr(source, key, value)
+
+        return True
+
+    async def get_source_by_index(
+        self,
+        session_id: str,
+        index: int,
+    ) -> CitationSourceRaw | None:
+        """通过索引获取信息源"""
+        if session_id not in self._index_map:
+            return None
+
+        citation_id = self._index_map[session_id].get(index)
+        if not citation_id:
+            return None
+
+        return self._sources[session_id].get(citation_id)
+
+    async def cleanup_session(self, session_id: str) -> None:
+        """清理特定 session 的信息源"""
+        if session_id in self._sources:
+            del self._sources[session_id]
+        if session_id in self._index_map:
+            del self._index_map[session_id]
+
+    def get_stats(self) -> dict[str, Any]:
+        """获取存储统计信息"""
+        return {
+            "total_sessions": len(self._sources),
+            "total_sources": sum(len(sources) for sources in self._sources.values()),
+            "sessions": {
+                session_id: len(sources)
+                for session_id, sources in self._sources.items()
+            },
+        }

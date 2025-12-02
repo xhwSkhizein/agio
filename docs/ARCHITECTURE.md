@@ -1,448 +1,322 @@
-# Agio 架构文档
+# Agio 架构设计
 
-## 概览
+## 概述
 
-Agio 采用 **Step-based 事件驱动架构**，核心理念是：
-- **Step 即 Message** - 统一的数据模型直接映射 LLM 消息格式
-- **零转换** - 减少数据转换开销
-- **事件流** - 实时流式执行和观测
-
-## 架构图
-
-### 整体架构
+Agio 采用清晰的四层架构，遵循 SOLID 和 KISS 原则：
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                         User/Client                          │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                       Agent (配置容器)                        │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐   │
-│  │  Model   │  │  Tools   │  │  Memory  │  │  Hooks   │   │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────┘   │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      StepRunner (编排层)                      │
-│  • 管理 Run 生命周期                                          │
-│  • 调用 Hooks                                                │
-│  • 保存 Steps 到 Repository                                  │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    StepExecutor (执行层)                      │
-│  • 实现 LLM ↔ Tool 循环                                      │
-│  • 创建 Steps (User, Assistant, Tool)                       │
-│  • 发送 StepEvents (Delta + Snapshot)                       │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                ┌────────┴────────┐
-                ▼                 ▼
-        ┌──────────────┐  ┌──────────────┐
-        │     Model    │  │ ToolExecutor │
-        │   (LLM API)  │  │  (工具执行)   │
-        └──────────────┘  └──────────────┘
-                │                 │
-                └────────┬────────┘
-                         ▼
-                  ┌──────────────┐
-                  │  Repository  │
-                  │  (持久化)     │
-                  └──────────────┘
+│                        agent.py                              │
+│                    (顶层入口，编排层)                          │
+├─────────────────────────────────────────────────────────────┤
+│  domain/          │  runtime/         │  config/            │
+│  (纯领域模型)      │  (执行引擎)        │  (配置系统)          │
+├─────────────────────────────────────────────────────────────┤
+│                      providers/                              │
+│              (外部服务适配器: LLM, Storage, Tools)            │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### 数据流
+## 模块职责
+
+### 1. `agent.py` - 顶层入口
+
+Agent 类是用户的主要入口点，负责：
+- 持有配置（Model, Tools, Memory, Knowledge）
+- 委托执行给 StepRunner
+- 提供简洁的 API（`arun`, `arun_stream`）
+
+```python
+from agio import Agent, OpenAIModel
+
+agent = Agent(
+    model=OpenAIModel(model_name="gpt-4"),
+    tools=[...],
+    system_prompt="You are helpful."
+)
+
+async for text in agent.arun("Hello"):
+    print(text)
+```
+
+### 2. `domain/` - 纯领域模型
+
+**零外部依赖**，只包含核心数据结构：
+
+| 文件 | 内容 |
+|------|------|
+| `models.py` | Step, AgentRun, AgentSession, StepMetrics |
+| `events.py` | StepEvent, StepDelta, ToolResult |
+| `adapters.py` | StepAdapter (Step ↔ LLM Message 转换) |
+
+#### Step 模型
+
+Step 是核心数据单元，直接映射 LLM 消息格式：
+
+```python
+class Step(BaseModel):
+    id: str
+    session_id: str
+    run_id: str
+    sequence: int
+    role: MessageRole  # USER, ASSISTANT, TOOL, SYSTEM
+    content: str | None
+    tool_calls: list[dict] | None  # 助手发起的工具调用
+    tool_call_id: str | None       # 工具结果关联的调用 ID
+    name: str | None               # 工具名称
+    metrics: StepMetrics | None
+```
+
+#### StepAdapter
+
+保持 Domain 模型纯粹，转换逻辑集中在 Adapter：
+
+```python
+# Step → LLM Message
+message = StepAdapter.to_llm_message(step)
+
+# Steps → Messages (批量)
+messages = StepAdapter.steps_to_messages(steps)
+```
+
+### 3. `runtime/` - 执行引擎
+
+负责 Agent 的运行时执行：
+
+| 文件 | 职责 |
+|------|------|
+| `runner.py` | StepRunner - 管理 Run 生命周期 |
+| `executor.py` | StepExecutor - LLM 调用循环 |
+| `tool_executor.py` | ToolExecutor - 并行工具执行 |
+| `context.py` | 从 Steps 构建 LLM 上下文 |
+| `control.py` | AbortSignal, retry_from_sequence, fork_session |
+
+#### 执行流程
 
 ```
-User Query
+Agent.arun_stream()
     │
     ▼
-┌─────────────────┐
-│  User Step      │  sequence=1, role=USER
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Context Build  │  Load history + Build messages
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  LLM Call       │  Stream response
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Assistant Step  │  sequence=2, role=ASSISTANT
-│ (with tool_calls)│
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Tool Execution │  Execute tools in parallel
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Tool Steps     │  sequence=3,4,5... role=TOOL
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  LLM Call       │  Continue loop
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Final Response  │  No tool calls → Done
-└─────────────────┘
+StepRunner.run_stream()
+    │
+    ├── 创建 AgentRun
+    ├── 保存 User Step
+    │
+    ▼
+StepExecutor.execute_step()
+    │
+    ├── 构建上下文 (context.py)
+    ├── 调用 LLM (Model.arun_stream)
+    ├── 流式输出 StepEvent
+    │
+    ▼ (如果有 tool_calls)
+ToolExecutor.execute_tools()
+    │
+    ├── 并行执行工具
+    ├── 保存 Tool Steps
+    │
+    ▼ (循环直到无 tool_calls)
 ```
 
-### Step 模型
+### 4. `providers/` - 外部服务适配器
 
-```
-┌──────────────────────────────────────────────────────────┐
-│                         Step                              │
-├──────────────────────────────────────────────────────────┤
-│  Indexing & Association                                   │
-│  • id: str                                                │
-│  • session_id: str                                        │
-│  • run_id: str                                            │
-│  • sequence: int                                          │
-├──────────────────────────────────────────────────────────┤
-│  Core Content (Standard LLM Message)                      │
-│  • role: MessageRole (user/assistant/tool/system)        │
-│  • content: str | None                                    │
-│  • tool_calls: list[dict] | None  (assistant only)       │
-│  • tool_call_id: str | None       (tool only)            │
-│  • name: str | None                (tool only)            │
-├──────────────────────────────────────────────────────────┤
-│  Metadata                                                 │
-│  • metrics: StepMetrics | None                            │
-│  • created_at: datetime                                   │
-└──────────────────────────────────────────────────────────┘
-         │
-         │ StepAdapter.to_llm_message()
-         ▼
-┌──────────────────────────────────────────────────────────┐
-│              LLM Message (OpenAI Format)                  │
-├──────────────────────────────────────────────────────────┤
-│  {                                                        │
-│    "role": "assistant",                                   │
-│    "content": "Let me search for that",                   │
-│    "tool_calls": [...]                                    │
-│  }                                                        │
-└──────────────────────────────────────────────────────────┘
-```
+封装所有外部依赖：
 
-## 核心组件
+#### `providers/llm/`
 
-### 1. Core Package
-
-**职责**: 核心数据模型、事件、配置
-
-**模块**:
-- `models.py` - Step, AgentRun, Session 等领域模型
-- `events.py` - StepEvent, StepDelta 等事件类型
-- `config.py` - 统一配置管理
-- `adapters.py` - 格式转换适配器
-
-**设计原则**:
-- Domain 模型保持纯粹（只有数据）
-- 转换逻辑在 Adapter 中
-- 配置分层：全局 → 运行时 → 组件
-
-### 2. Agent Package
-
-**职责**: Agent 配置容器和生命周期钩子
-
-**组件**:
-- `Agent` - 持有 Model, Tools, Memory 等配置
-- `AgentHook` - 生命周期钩子基类
-- `LoggingHook` - 日志钩子
-- `StorageHook` - 存储钩子
-
-**Hook 生命周期**:
-```
-on_run_start
-    ↓
-on_step_start
-    ↓
-on_model_start → on_model_end
-    ↓
-on_tool_start → on_tool_end (for each tool)
-    ↓
-on_step_end
-    ↓
-on_run_end (or on_error)
-```
-
-### 3. Execution Package
-
-**职责**: 执行引擎，实现 LLM ↔ Tool 循环
-
-**组件**:
-- `StepRunner` - 管理 Run 生命周期，调用 Hooks
-- `StepExecutor` - 实现 LLM 循环，创建 Steps
-- `ToolExecutor` - 并行执行工具
-- `context.py` - 从 Steps 构建 LLM 上下文
-
-**执行流程**:
 ```python
-# 1. Runner 创建 Run 和 User Step
-run = AgentRun(...)
-user_step = Step(role=USER, content=query)
+from agio.providers.llm import OpenAIModel, AnthropicModel, DeepseekModel
 
-# 2. 构建上下文
-messages = build_context_from_steps(session_id, repository)
+model = OpenAIModel(
+    model_name="gpt-4",
+    api_key="sk-...",
+    temperature=0.7
+)
 
-# 3. Executor 执行 LLM 循环
-async for event in executor.execute(messages):
-    # 4. 发送事件流
-    yield event
-    
-    # 5. 保存 Steps
-    if event.type == STEP_COMPLETED:
-        await repository.save_step(event.snapshot)
+async for chunk in model.arun_stream(messages, tools):
+    print(chunk.content)
 ```
 
-### 4. Components Package
+#### `providers/storage/`
 
-**职责**: 可插拔组件
-
-**子包**:
-- `models/` - LLM 模型适配器 (OpenAI, Anthropic, Deepseek)
-- `tools/` - 工具实现 (builtin + custom)
-- `memory/` - 记忆系统 (对话记忆 + 语义记忆)
-- `knowledge/` - 知识库 (Vector DB)
-
-**扩展性**:
 ```python
-# 自定义模型
-class MyModel(Model):
+from agio.providers.storage import InMemoryRepository, MongoRepository
+
+# 内存存储（开发/测试）
+repo = InMemoryRepository()
+
+# MongoDB（生产）
+repo = MongoRepository(uri="mongodb://...", db_name="agio")
+
+# 统一接口
+await repo.save_step(step)
+steps = await repo.get_steps(session_id)
+```
+
+#### `providers/tools/`
+
+```python
+from agio.providers.tools import BaseTool, get_tool_registry
+from agio.providers.tools.builtin import FileReadTool, GrepTool
+
+# 使用内置工具
+tools = [FileReadTool(), GrepTool()]
+
+# 或从注册表获取
+registry = get_tool_registry()
+tool = registry.create("file_read")
+```
+
+### 5. `config/` - 配置系统
+
+#### 环境变量配置 (`settings.py`)
+
+```python
+from agio.config import settings
+
+# 自动从环境变量加载
+print(settings.openai_api_key)
+print(settings.mongo_uri)
+```
+
+支持的环境变量：
+- `AGIO_DEBUG` - 调试模式
+- `AGIO_LOG_LEVEL` - 日志级别
+- `AGIO_OPENAI_API_KEY` - OpenAI API Key
+- `AGIO_ANTHROPIC_API_KEY` - Anthropic API Key
+- `AGIO_DEEPSEEK_API_KEY` - Deepseek API Key
+- `AGIO_MONGO_URI` - MongoDB 连接字符串
+
+#### 运行时配置 (`schema.py`)
+
+```python
+from agio.config import ExecutionConfig
+
+config = ExecutionConfig(
+    max_steps=30,
+    timeout_per_step=120.0,
+    parallel_tool_calls=True,
+    max_parallel_tools=10
+)
+```
+
+#### 动态配置系统 (`system.py`)
+
+支持从 YAML 文件加载组件配置：
+
+```yaml
+# configs/agents/my_agent.yaml
+type: agent
+name: my_agent
+model: gpt4_model
+tools:
+  - file_read
+  - grep
+system_prompt: "You are helpful."
+```
+
+```python
+from agio.config import init_config_system
+
+# 加载配置并构建组件
+config_sys = await init_config_system("configs/")
+
+# 获取组件
+agent = config_sys.get("my_agent")
+```
+
+## 依赖关系
+
+```
+agent.py
+    ├── domain/      (数据模型)
+    ├── runtime/     (执行引擎)
+    ├── providers/   (外部服务)
+    └── config/      (配置)
+
+runtime/
+    ├── domain/      (数据模型)
+    └── providers/   (LLM, Storage, Tools)
+
+providers/
+    └── domain/      (数据模型)
+
+config/
+    └── providers/   (构建组件)
+```
+
+**关键原则**：
+- `domain/` 不依赖任何其他模块
+- `runtime/` 依赖 `domain/` 和 `providers/`
+- `providers/` 只依赖 `domain/`
+- `config/` 负责组装所有组件
+
+## 扩展指南
+
+### 添加新的 LLM Provider
+
+1. 在 `providers/llm/` 创建新文件
+2. 继承 `Model` 基类
+3. 实现 `arun_stream` 方法
+4. 在 `providers/llm/__init__.py` 导出
+
+```python
+# providers/llm/my_provider.py
+from agio.providers.llm.base import Model, StreamChunk
+
+class MyProviderModel(Model):
     async def arun_stream(self, messages, tools=None):
         # 实现流式调用
-        yield StreamChunk(...)
-
-# 自定义工具
-class MyTool(Tool):
-    name = "my_tool"
-    async def execute(self, **kwargs):
-        return result
+        yield StreamChunk(content="Hello")
 ```
 
-### 5. Storage Package
+### 添加新的工具
 
-**职责**: 持久化层
-
-**组件**:
-- `Storage` - 存储接口 (for AgentRun)
-- `AgentRunRepository` - Repository 接口 (for Steps + Runs)
-- `MongoDBRepository` - MongoDB 实现
-- `InMemoryRepository` - 内存实现
-
-**数据模型**:
-```
-AgentRun (1) ──┬──> Steps (N)
-               │
-               └──> Metrics
-```
-
-## 设计模式
-
-### 1. 适配器模式
-
-**问题**: Domain 模型不应包含转换逻辑
-
-**解决方案**: StepAdapter
+1. 继承 `BaseTool`
+2. 实现必要方法
+3. 可选：注册到 ToolRegistry
 
 ```python
-# Domain 模型 (纯数据)
-class Step(BaseModel):
-    role: MessageRole
-    content: str | None
-    # ...
+from agio.providers.tools import BaseTool
+from agio.domain import ToolResult
 
-# 适配器 (转换逻辑)
-class StepAdapter:
-    @staticmethod
-    def to_llm_message(step: Step) -> dict:
-        return {"role": step.role.value, "content": step.content, ...}
-```
-
-### 2. 策略模式
-
-**问题**: 支持多种 LLM 提供商
-
-**解决方案**: Model 基类 + 具体实现
-
-```python
-class Model(ABC):
-    @abstractmethod
-    async def arun_stream(self, messages, tools=None):
-        pass
-
-class OpenAIModel(Model):
-    async def arun_stream(self, messages, tools=None):
-        # OpenAI specific implementation
-        
-class AnthropicModel(Model):
-    async def arun_stream(self, messages, tools=None):
-        # Anthropic specific implementation
-```
-
-### 3. 观察者模式
-
-**问题**: 需要在执行过程中插入自定义逻辑
-
-**解决方案**: Hook 系统
-
-```python
-class AgentHook(ABC):
-    async def on_run_start(self, run): pass
-    async def on_step_end(self, run, step): pass
-    # ...
-
-# 使用
-agent = Agent(
-    model=model,
-    hooks=[LoggingHook(), MetricsHook(), CustomHook()]
-)
-```
-
-### 4. 仓储模式
-
-**问题**: 持久化逻辑与业务逻辑分离
-
-**解决方案**: Repository 接口
-
-```python
-class AgentRunRepository(ABC):
-    @abstractmethod
-    async def save_step(self, step: Step): pass
+class MyTool(BaseTool):
+    def get_name(self) -> str:
+        return "my_tool"
     
-    @abstractmethod
-    async def get_steps(self, session_id: str) -> list[Step]: pass
-
-# 实现可以是 MongoDB, PostgreSQL, Redis 等
+    def get_description(self) -> str:
+        return "My custom tool"
+    
+    def get_parameters(self) -> dict:
+        return {"type": "object", "properties": {...}}
+    
+    async def execute(self, parameters, abort_signal=None) -> ToolResult:
+        # 实现工具逻辑
+        return ToolResult(content="result", is_success=True)
 ```
 
-## 性能优化
+### 添加新的存储后端
 
-### 1. 零转换设计
-
-Step 模型直接映射 LLM 消息格式，避免多次转换：
+1. 在 `providers/storage/` 创建新文件
+2. 继承 `AgentRunRepository`
+3. 实现所有抽象方法
 
 ```python
-# 传统方式 (多次转换)
-Event → Message → Dict → JSON → LLM
+from agio.providers.storage.base import AgentRunRepository
 
-# Agio 方式 (零转换)
-Step → Dict → LLM  # Step.to_message_dict() 已移除
-Step → LLM         # 通过 StepAdapter
+class MyStorageRepository(AgentRunRepository):
+    async def save_step(self, step): ...
+    async def get_steps(self, session_id): ...
+    # ... 其他方法
 ```
 
-### 2. 流式处理
+## 测试
 
-所有 LLM 调用都是流式的，减少首字延迟：
+```bash
+# 运行所有测试
+pytest tests/
 
-```python
-async for chunk in model.arun_stream(messages):
-    # 立即发送给客户端
-    yield create_step_delta_event(chunk)
+# 运行特定模块测试
+pytest tests/tools/
+pytest tests/config/
 ```
-
-### 3. 并行工具执行
-
-多个工具调用并行执行：
-
-```python
-results = await asyncio.gather(*[
-    tool_executor.execute(tc) for tc in tool_calls
-])
-```
-
-## 可扩展性
-
-### 1. 水平扩展
-
-- **无状态 API** - 可以部署多个实例
-- **Repository 抽象** - 支持分布式存储
-- **Session 隔离** - 不同 session 独立执行
-
-### 2. 组件扩展
-
-- **自定义 Model** - 实现 Model 接口
-- **自定义 Tool** - 实现 Tool 接口
-- **自定义 Hook** - 实现 AgentHook 接口
-- **自定义 Storage** - 实现 Repository 接口
-
-### 3. 功能扩展
-
-- **Retry/Fork** - 基于 Step sequence 实现
-- **Time Travel** - 基于 Step 历史实现
-- **A/B Testing** - Fork session 并比较结果
-
-## 最佳实践
-
-### 1. 配置管理
-
-```python
-# 使用环境变量
-from agio.core.config import settings
-
-# 运行时配置
-config = ExecutionConfig(
-    max_steps=20,
-    parallel_tool_calls=True
-)
-```
-
-### 2. 错误处理
-
-```python
-try:
-    async for event in agent.arun_stream(query):
-        if event.type == StepEventType.ERROR:
-            logger.error(f"Error: {event.data['error']}")
-except Exception as e:
-    logger.error(f"Unexpected error: {e}")
-```
-
-### 3. 性能监控
-
-```python
-class MetricsHook(AgentHook):
-    async def on_run_end(self, run):
-        metrics = run.metrics
-        logger.info(f"Duration: {metrics.duration}s")
-        logger.info(f"Tokens: {metrics.total_tokens}")
-        logger.info(f"Tool calls: {metrics.tool_calls_count}")
-```
-
-## 未来规划
-
-### 短期
-- [ ] 完善测试覆盖率
-- [ ] 添加更多内置工具
-- [ ] 支持更多 LLM 提供商
-
-### 中期
-- [ ] 分布式执行支持
-- [ ] 高级记忆系统
-- [ ] 可视化调试工具
-
-### 长期
-- [ ] Multi-agent 协作
-- [ ] 自动化测试和评估
-- [ ] 生产级监控和告警
-
-## 参考资料
-
-- [REFACTORING_SUMMARY.md](../REFACTORING_SUMMARY.md) - 重构详细说明
-- [TEST_SUMMARY.md](../TEST_SUMMARY.md) - 测试结果
-- [README.md](../README.md) - 快速开始指南

@@ -2,9 +2,9 @@ import time
 
 import pytest
 
-from agio.core.events import ToolResult
-from agio.execution.tool_executor import ToolExecutor
-from agio.components.tools import BaseTool
+from agio.domain import ToolResult
+from agio.runtime import ToolExecutor
+from agio.providers.tools import BaseTool
 
 
 class SuccessTool(BaseTool):

@@ -11,7 +11,7 @@ import yaml
 
 from agio.config.system import ConfigSystem
 from agio.config.exceptions import ConfigNotFoundError, ComponentNotFoundError
-from agio.core.config import ComponentType, ModelConfig, AgentConfig
+from agio.config import ComponentType, ModelConfig, AgentConfig
 
 
 @pytest.fixture

@@ -3,8 +3,8 @@
 import pytest
 from pathlib import Path
 
-from agio.components.tools.builtin_tools.grep_tool import GrepTool
-from agio.execution.abort_signal import AbortSignal
+from agio.providers.tools.builtin.grep_tool import GrepTool
+from agio.runtime import AbortSignal
 
 
 class TestGrepTool:

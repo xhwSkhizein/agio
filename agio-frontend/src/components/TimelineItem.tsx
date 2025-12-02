@@ -23,14 +23,14 @@ export function TimelineItem({ type, children, isLast = false }: TimelineItemPro
   };
 
   return (
-    <div className="relative pl-8 py-2 group">
+    <div className="relative pl-6 py-1 group">
       {/* Vertical Line */}
       {!isLast && (
-        <div className="absolute left-[11px] top-8 bottom-0 w-px bg-border group-hover:bg-gray-700 transition-colors" />
+        <div className="absolute left-[7px] top-5 bottom-0 w-px bg-border group-hover:bg-gray-700 transition-colors" />
       )}
 
       {/* Dot Marker */}
-      <div className={`absolute left-1 top-3 w-5 h-5 rounded-full border-4 border-background ${getDotColor()} ring-2 transition-all duration-300 z-10`} />
+      <div className={`absolute left-0 top-2 w-1.5 h-1.5 rounded-full border-1 border-background ${getDotColor()} ring-1 transition-all duration-300 z-10`} />
 
       {/* Content */}
       <div className="min-w-0 flex-1">

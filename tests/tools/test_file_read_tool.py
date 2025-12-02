@@ -3,8 +3,8 @@
 import pytest
 from pathlib import Path
 
-from agio.components.tools.builtin_tools.file_read_tool import FileReadTool
-from agio.execution.abort_signal import AbortSignal
+from agio.providers.tools.builtin.file_read_tool import FileReadTool
+from agio.runtime import AbortSignal
 
 
 class TestFileReadTool:

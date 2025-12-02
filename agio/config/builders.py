@@ -7,7 +7,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from agio.config.exceptions import ComponentBuildError
-from agio.core.config import (
+from agio.config.schema import (
     AgentConfig,
     KnowledgeConfig,
     MemoryConfig,
@@ -53,7 +53,7 @@ class ModelBuilder(ComponentBuilder):
         """Build model instance."""
         try:
             if config.provider == "openai":
-                from agio.components.models.openai import OpenAIModel
+                from agio.providers.llm import OpenAIModel
 
                 return OpenAIModel(
                     id=f"{config.provider}/{config.model_name}",
@@ -66,7 +66,7 @@ class ModelBuilder(ComponentBuilder):
                 )
 
             elif config.provider == "anthropic":
-                from agio.components.models.anthropic import AnthropicModel
+                from agio.providers.llm import AnthropicModel
 
                 return AnthropicModel(
                     id=f"{config.provider}/{config.model_name}",
@@ -78,9 +78,9 @@ class ModelBuilder(ComponentBuilder):
                 )
 
             elif config.provider == "deepseek":
-                from agio.components.models.deepseek import DeepSeekModel
+                from agio.providers.llm import DeepseekModel
 
-                return DeepSeekModel(
+                return DeepseekModel(
                     id=f"{config.provider}/{config.model_name}",
                     name=config.name,
                     api_key=config.api_key,
@@ -139,7 +139,7 @@ class ToolBuilder(ComponentBuilder):
         """Get tool class from config."""
         # Mode 1: Built-in tool by name
         if config.tool_name:
-            from agio.components.tools.registry import get_tool_registry
+            from agio.providers.tools import get_tool_registry
             registry = get_tool_registry()
             
             if not registry.is_registered(config.tool_name):
@@ -281,9 +281,9 @@ class RepositoryBuilder(ComponentBuilder):
         """Build repository instance."""
         try:
             if config.repository_type == "mongodb":
-                from agio.storage.mongo import MongoDBRepository
+                from agio.providers.storage import MongoRepository
 
-                repo = MongoDBRepository(
+                repo = MongoRepository(
                     uri=config.mongo_uri, db_name=config.mongo_db_name
                 )
 
@@ -294,7 +294,7 @@ class RepositoryBuilder(ComponentBuilder):
                 return repo
 
             elif config.repository_type == "inmemory":
-                from agio.storage.repository import InMemoryRepository
+                from agio.providers.storage import InMemoryRepository
 
                 return InMemoryRepository()
 
@@ -318,7 +318,7 @@ class AgentBuilder(ComponentBuilder):
     async def build(self, config: AgentConfig, dependencies: dict[str, Any]) -> Any:
         """Build agent instance."""
         try:
-            from agio.agent.base import Agent
+            from agio.agent import Agent
 
             # Build kwargs from dependencies
             kwargs = {

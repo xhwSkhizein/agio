@@ -5,8 +5,8 @@ import tempfile
 import os
 from pathlib import Path
 
-from agio.components.tools.builtin_tools.ls_tool import LSTool
-from agio.execution.abort_signal import AbortSignal
+from agio.providers.tools.builtin.ls_tool import LSTool
+from agio.runtime import AbortSignal
 
 
 class TestLSTool:

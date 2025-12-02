@@ -9,9 +9,8 @@ from typing import Any
 
 from fastapi import Depends, HTTPException
 
-from agio.config import ConfigSystem, get_config_system
-from agio.core.config import ComponentType
-from agio.storage.repository import AgentRunRepository
+from agio.config import ConfigSystem, get_config_system, ComponentType
+from agio.providers.storage import AgentRunRepository
 
 
 def get_config_sys() -> ConfigSystem:
@@ -54,7 +53,7 @@ def get_repository(
 
     # Fallback: create singleton InMemoryRepository
     if _default_repository is None:
-        from agio.storage.repository import InMemoryRepository
+        from agio.providers.storage import InMemoryRepository
         _default_repository = InMemoryRepository()
 
     return _default_repository

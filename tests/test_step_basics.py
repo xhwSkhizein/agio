@@ -6,8 +6,8 @@ from datetime import datetime
 
 import pytest
 
-from agio.storage.repository import InMemoryRepository
-from agio.core import MessageRole, Step, StepAdapter, StepMetrics
+from agio.providers.storage import InMemoryRepository
+from agio.domain import MessageRole, Step, StepAdapter, StepMetrics
 
 
 @pytest.mark.asyncio
@@ -239,7 +239,7 @@ async def test_step_metrics():
 @pytest.mark.asyncio
 async def test_context_building():
     """Test building context from steps"""
-    from agio.execution.context import build_context_from_steps
+    from agio.runtime import build_context_from_steps
 
     repo = InMemoryRepository()
 

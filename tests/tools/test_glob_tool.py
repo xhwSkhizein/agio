@@ -3,8 +3,8 @@
 import pytest
 from pathlib import Path
 
-from agio.components.tools.builtin_tools.glob_tool import GlobTool
-from agio.execution.abort_signal import AbortSignal
+from agio.providers.tools.builtin.glob_tool import GlobTool
+from agio.runtime import AbortSignal
 
 
 class TestGlobTool:

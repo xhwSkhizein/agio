@@ -13,14 +13,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from agio.storage.repository import InMemoryRepository
-from agio.core import MessageRole, Step
-from agio.execution.retry import retry_from_sequence
-from agio.execution.step_executor import StepExecutor
-from agio.components.models.base import StreamChunk
-from agio.core import StepEventType
-from agio.execution.runner import StepRunner, ExecutionConfig
-from agio.core import AgentSession
+from agio.providers.storage import InMemoryRepository
+from agio.domain import MessageRole, Step, StepEventType, AgentSession
+from agio.runtime import StepRunner, StepExecutor, retry_from_sequence
+from agio.providers.llm import StreamChunk
+from agio.config import ExecutionConfig
 
 
 @pytest.fixture
@@ -141,7 +138,7 @@ async def test_step_runner_end_to_end(mock_agent, repository, session):
 @pytest.mark.asyncio
 async def test_context_building_from_steps(mock_agent, repository, session):
     """Test that context is correctly built from saved steps"""
-    from agio.execution.context import build_context_from_steps
+    from agio.runtime import build_context_from_steps
 
     runner = StepRunner(agent=mock_agent, repository=repository)
 
@@ -206,7 +203,7 @@ async def test_retry_deletes_and_regenerates(mock_agent, repository, session):
 @pytest.mark.asyncio
 async def test_fork_creates_new_session(repository):
     """Test fork functionality"""
-    from agio.execution.fork import fork_session
+    from agio.runtime import fork_session
 
     # Create some steps
     steps = [

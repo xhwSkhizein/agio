@@ -8,9 +8,9 @@ import time
 
 import pytest
 
-from agio.components.models.base import Model, StreamChunk
-from agio.components.tools import BaseTool
-from agio.core.events import ToolResult
+from agio.providers.llm import Model, StreamChunk
+from agio.providers.tools import BaseTool
+from agio.domain import ToolResult
 
 
 class MockTool(BaseTool):

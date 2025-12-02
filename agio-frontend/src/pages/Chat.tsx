@@ -458,7 +458,7 @@ export default function Chat() {
 
       {/* Timeline */}
       <div className="flex-1 overflow-y-auto pr-4 -mr-4 mb-4">
-        <div className="space-y-0">
+        <div className="space-y-0 -mt-1">
           {events.map((event, index) => (
             <TimelineItem 
               key={event.id} 
@@ -475,7 +475,7 @@ export default function Chat() {
                 />
               ) : (
                 <div>
-                  <div className={`text-sm leading-relaxed ${
+                  <div className={`text-xs leading-relaxed ${
                     event.type === 'error' ? 'text-red-400' : 
                     event.type === 'user' ? 'text-white font-medium' : 'text-gray-300'
                   }`}>
@@ -483,7 +483,7 @@ export default function Chat() {
                   </div>
                   {/* Token usage for assistant messages */}
                   {event.type === 'assistant' && event.metrics && (
-                    <div className="mt-1 flex items-center gap-3 text-[10px] text-gray-500 font-mono">
+                    <div className="mt-0.5 flex items-center gap-2 text-[9px] text-gray-500 font-mono">
                       {event.metrics.input_tokens && (
                         <span title="Input tokens">in: {event.metrics.input_tokens}</span>
                       )}
@@ -502,11 +502,11 @@ export default function Chat() {
           
           {isStreaming && events.length > 0 && events[events.length - 1].type !== 'assistant' && (
              <TimelineItem type="assistant" isLast={true}>
-               <div className="flex items-center gap-2 text-gray-500 text-sm">
-                 <span className="w-2 h-2 bg-primary-500 rounded-full animate-pulse" />
+               <div className="flex items-center gap-1.5 text-gray-500 text-xs">
+                 <span className="w-1.5 h-1.5 bg-primary-500 rounded-full animate-pulse" />
                  Thinking...
                  {currentRunId && (
-                   <span className="text-[10px] text-gray-600 font-mono ml-2">
+                   <span className="text-[9px] text-gray-600 font-mono ml-1.5">
                      {currentRunId.slice(0, 8)}
                    </span>
                  )}

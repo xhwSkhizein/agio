@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from agio.api.deps import get_config_sys, get_repository
 from agio.config import ConfigSystem
-from agio.storage.repository import AgentRunRepository
+from agio.providers.storage import AgentRunRepository
 
 router = APIRouter(prefix="/sessions")
 

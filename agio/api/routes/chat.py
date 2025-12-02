@@ -8,9 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
+from agio.agent import Agent
 from agio.api.deps import get_config_sys
 from agio.config import ConfigSystem
-from agio.core import StepEventType
+from agio.domain import StepEventType
 
 router = APIRouter(prefix="/chat")
 
@@ -41,7 +42,9 @@ async def chat(
     try:
         agent = config_sys.get(agent_name)
     except Exception as e:
-        raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found: {e}")
+        raise HTTPException(
+            status_code=404, detail=f"Agent '{agent_name}' not found: {e}"
+        )
 
     # Stream or non-stream
     if request.stream:
@@ -57,10 +60,14 @@ async def chat(
         )
 
 
-async def stream_chat_events(agent, message: str, user_id: str | None, session_id: str | None):
+async def stream_chat_events(
+    agent: Agent, message: str, user_id: str | None, session_id: str | None
+):
     """Stream chat events as SSE."""
     try:
-        async for event in agent.arun_stream(query=message, user_id=user_id, session_id=session_id):
+        async for event in agent.arun_stream(
+            query=message, user_id=user_id, session_id=session_id
+        ):
             # Convert StepEvent to SSE format, excluding None values for cleaner output
             event_dict = event.model_dump(mode="json", exclude_none=True)
             event_type = event_dict.pop("type", "message")
@@ -79,7 +86,9 @@ async def chat_non_streaming(
     run_id = None
     metrics = {}
 
-    async for event in agent.arun_stream(query=message, user_id=user_id, session_id=session_id):
+    async for event in agent.arun_stream(
+        query=message, user_id=user_id, session_id=session_id
+    ):
         if event.type == StepEventType.RUN_STARTED:
             run_id = event.run_id
 

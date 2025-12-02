@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from agio.api.deps import get_config_sys
 from agio.config import ConfigSystem
-from agio.core.config import ComponentType
+from agio.config import ComponentType
 
 router = APIRouter(prefix="/memory")
 

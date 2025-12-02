@@ -28,7 +28,7 @@ from agio.config.exceptions import (
     ConfigNotFoundError,
 )
 from agio.config.loader import ConfigLoader
-from agio.core.config import (
+from agio.config.schema import (
     AgentConfig,
     ComponentConfig,
     ComponentType,
@@ -441,7 +441,7 @@ class ConfigSystem:
             return await self._build_component(ComponentType.TOOL, tool_name)
         
         # 3. Try to create from registry (built-in tools)
-        from agio.components.tools.registry import get_tool_registry
+        from agio.providers.tools import get_tool_registry
         registry = get_tool_registry()
         
         if registry.is_registered(tool_name):
