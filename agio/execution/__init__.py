@@ -1,22 +1,34 @@
 """
-Execution control package.
+Execution package - Agent execution engine.
 
-This package provides:
-- Step executor (step_executor.py)
-- Tool executor (tool_executor.py)
-- Retry logic (retry.py)
-- Fork logic (fork.py)
+This package consolidates the execution logic from the old
+runners/ and execution/ packages.
 """
 
+from .context import (
+    build_context_from_sequence_range,
+    build_context_from_steps,
+    get_context_summary,
+    validate_context,
+)
+from .fork import fork_session
+from .retry import retry_from_sequence
+from .runner import StepRunner
 from .step_executor import StepExecutor
 from .tool_executor import ToolExecutor
-from .retry import retry_from_sequence
-from .fork import fork_session, fork_from_step_id
 
 __all__ = [
+    # Executor
     "StepExecutor",
     "ToolExecutor",
-    "retry_from_sequence",
+    # Runner
+    "StepRunner",
+    # Context
+    "build_context_from_steps",
+    "build_context_from_sequence_range",
+    "validate_context",
+    "get_context_summary",
+    # Operations
     "fork_session",
-    "fork_from_step_id",
+    "retry_from_sequence",
 ]

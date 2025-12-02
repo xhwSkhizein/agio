@@ -1,37 +1,46 @@
 """
-测试 Model 层（替代旧的 test_driver.py）
+测试 Model 层
 
-注意：旧的 OpenAIModelDriver 测试已过时，因为新架构中：
-- ModelDriver 已删除
-- 使用 Model.arun_stream() 替代
-- LLM Call Loop 逻辑移到了 AgentExecutor
-
-这些测试已被 test_new_arch.py 替代。
+测试 Model.arun_stream() 的基本功能。
 """
 
+import time
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock
-from agio.models.base import Model, StreamChunk
-from agio.tools.base import Tool
+
+from agio.components.models.base import Model, StreamChunk
+from agio.components.tools import BaseTool
+from agio.core.events import ToolResult
 
 
-class MockTool(Tool):
-    def __init__(self):
-        self.name = "mock_tool"
-        self.description = "A mock tool for testing"
-    
-    async def execute(self, **kwargs):
-        return "mock_result"
-    
-    def to_openai_schema(self):
-        return {
-            "type": "function",
-            "function": {
-                "name": self.name,
-                "description": self.description,
-                "parameters": {"type": "object", "properties": {}}
-            }
-        }
+class MockTool(BaseTool):
+    """A mock tool for testing"""
+
+    def get_name(self) -> str:
+        return "mock_tool"
+
+    def get_description(self) -> str:
+        return "A mock tool for testing"
+
+    def get_parameters(self) -> dict:
+        return {"type": "object", "properties": {}}
+
+    def is_concurrency_safe(self) -> bool:
+        return True
+
+    async def execute(self, parameters: dict, abort_signal=None) -> ToolResult:
+        start_time = time.time()
+        return ToolResult(
+            tool_name=self.name,
+            tool_call_id=parameters.get("tool_call_id", ""),
+            input_args=parameters,
+            content="mock_result",
+            output="mock_result",
+            start_time=start_time,
+            end_time=time.time(),
+            duration=time.time() - start_time,
+            is_success=True,
+        )
 
 
 @pytest.mark.asyncio

@@ -1,0 +1,11 @@
+type: tool
+name: file_write
+description: "Write content to files with safety checks"
+tool_name: file_write
+params:
+  # max_file_size_mb: 10.0
+enabled: true
+tags:
+  - file
+  - write
+  - filesystem

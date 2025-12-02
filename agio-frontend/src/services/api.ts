@@ -2,7 +2,7 @@ import axios, { AxiosError } from 'axios'
 import toast from 'react-hot-toast'
 
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: '/agio',
   headers: {
     'Content-Type': 'application/json',
   },
@@ -39,12 +39,12 @@ api.interceptors.response.use(
 )
 
 export interface Agent {
-  id: string
   name: string
-  description: string | null
   model: string
   tools: string[]
-  enabled: boolean
+  memory: string | null
+  knowledge: string | null
+  system_prompt: string | null
   tags: string[]
 }
 
@@ -90,8 +90,8 @@ export interface ChatResponse {
 }
 
 export const chatService = {
-  async chat(request: ChatRequest): Promise<ChatResponse> {
-    const response = await api.post('/chat', request)
+  async chat(agentName: string, request: Omit<ChatRequest, 'agent_id'>): Promise<ChatResponse> {
+    const response = await api.post(`/chat/${agentName}`, request)
     return response.data
   },
 
@@ -108,22 +108,22 @@ export interface Config {
 }
 
 export const configService = {
-  async listConfigs(): Promise<Record<string, Config>> {
-    const response = await api.get('/config/')
+  async listConfigs(): Promise<Record<string, Config[]>> {
+    const response = await api.get('/config')
     return response.data
   },
 
-  async getConfig(name: string): Promise<Config> {
-    const response = await api.get(`/config/${name}`)
+  async getConfig(type: string, name: string): Promise<Config> {
+    const response = await api.get(`/config/${type}/${name}`)
     return response.data
   },
 
-  async updateConfig(name: string, config: Config): Promise<void> {
-    await api.put(`/config/${name}`, { config })
+  async updateConfig(type: string, name: string, config: Partial<Config>): Promise<void> {
+    await api.put(`/config/${type}/${name}`, { config })
   },
 
-  async deleteConfig(name: string): Promise<void> {
-    await api.delete(`/config/${name}`)
+  async deleteConfig(type: string, name: string): Promise<void> {
+    await api.delete(`/config/${type}/${name}`)
   },
 
   async reloadConfigs(): Promise<void> {
@@ -147,20 +147,27 @@ export interface Run {
   created_at: string
 }
 
-export const runService = {
-  async listRuns(params?: {
-    agent_id?: string
+export const sessionService = {
+  async listSessions(params?: {
     user_id?: string
-    status?: string
     limit?: number
     offset?: number
   }): Promise<PaginatedResponse<Run>> {
-    const response = await api.get('/runs', { params })
+    const response = await api.get('/sessions', { params })
     return response.data
   },
 
-  async getRun(runId: string): Promise<Run> {
-    const response = await api.get(`/runs/${runId}`)
+  async getSession(sessionId: string): Promise<any> {
+    const response = await api.get(`/sessions/${sessionId}`)
+    return response.data
+  },
+
+  async deleteSession(sessionId: string): Promise<void> {
+    await api.delete(`/sessions/${sessionId}`)
+  },
+
+  async getSessionSteps(sessionId: string): Promise<any[]> {
+    const response = await api.get(`/sessions/${sessionId}/steps`)
     return response.data
   },
 }
@@ -190,6 +197,67 @@ export const metricsService = {
 
   async getSystemMetrics(): Promise<SystemMetrics> {
     const response = await api.get('/metrics/system')
+    return response.data
+  },
+}
+
+// Memory Service
+export interface MemoryInfo {
+  name: string
+  type: string
+  has_history: boolean
+  has_semantic: boolean
+}
+
+export const memoryService = {
+  async listMemories(): Promise<MemoryInfo[]> {
+    const response = await api.get('/memory')
+    return response.data
+  },
+
+  async getMemory(name: string): Promise<MemoryInfo> {
+    const response = await api.get(`/memory/${name}`)
+    return response.data
+  },
+
+  async searchMemory(name: string, query: string, userId?: string): Promise<any[]> {
+    const response = await api.post(`/memory/${name}/search`, { query, user_id: userId })
+    return response.data
+  },
+}
+
+// Knowledge Service
+export interface KnowledgeInfo {
+  name: string
+  type: string
+}
+
+export const knowledgeService = {
+  async listKnowledge(): Promise<KnowledgeInfo[]> {
+    const response = await api.get('/knowledge')
+    return response.data
+  },
+
+  async getKnowledge(name: string): Promise<KnowledgeInfo> {
+    const response = await api.get(`/knowledge/${name}`)
+    return response.data
+  },
+
+  async searchKnowledge(name: string, query: string, limit?: number): Promise<any[]> {
+    const response = await api.post(`/knowledge/${name}/search`, { query, limit })
+    return response.data
+  },
+}
+
+// Health Service
+export const healthService = {
+  async check(): Promise<{ status: string; version: string }> {
+    const response = await api.get('/health')
+    return response.data
+  },
+
+  async ready(): Promise<{ ready: boolean; components: number; configs: number }> {
+    const response = await api.get('/health/ready')
     return response.data
   },
 }

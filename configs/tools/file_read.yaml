@@ -1,0 +1,14 @@
+type: tool
+name: file_read
+description: "Read file contents with support for text and images"
+tool_name: file_read  # References built-in tool from registry
+params:
+  # Custom configuration (optional)
+  # These override default settings
+  # max_output_size_mb: 10.0
+  # max_image_size_mb: 5.0
+enabled: true
+tags:
+  - file
+  - read
+  - filesystem

@@ -1,0 +1,12 @@
+type: tool
+name: ls
+description: "List directory contents with tree-like output"
+tool_name: ls
+params:
+  # timeout_seconds: 30
+  # max_files: 1000
+enabled: true
+tags:
+  - file
+  - directory
+  - filesystem

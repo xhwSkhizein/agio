@@ -2,20 +2,18 @@
 Tests for ConversationMemory
 """
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
-from agio.domain.step import Step, MessageRole
-from agio.memory.conversation import ConversationMemory
-from agio.memory.storage import InMemoryStorage
+
+from agio.core import MessageRole, Step
+from agio.components.memory.conversation import ConversationMemory
+from agio.components.memory.storage import InMemoryStorage
 
 
 @pytest.fixture
 def memory():
-    return ConversationMemory(
-        max_history_length=5,
-        max_tokens=100,
-        storage_backend="memory"
-    )
+    return ConversationMemory(max_history_length=5, max_tokens=100, storage_backend="memory")
 
 
 def create_step(role: str, content: str, sequence: int = 1) -> Step:
@@ -49,10 +47,8 @@ def test_count_tokens(memory):
 def test_trim_steps(memory):
     """Test step trimming."""
     # Create 10 steps
-    steps = [
-        create_step(role="user", content=f"Msg {i}", sequence=i) for i in range(10)
-    ]
-    
+    steps = [create_step(role="user", content=f"Msg {i}", sequence=i) for i in range(10)]
+
     # Trim by count (max 5)
     trimmed = memory._trim_steps(steps)
     assert len(trimmed) == 5
@@ -71,7 +67,7 @@ async def test_add_and_get_steps(memory):
     ]
 
     await memory.add_steps(session_id, steps)
-    
+
     history = await memory.get_recent_history(session_id)
     assert len(history) == 2
     assert history[0].content == "Hello"
@@ -84,17 +80,13 @@ async def test_auto_trimming(memory):
     session_id = "test_session"
 
     # Add 4 steps
-    steps1 = [
-        create_step(role="user", content=f"Msg {i}", sequence=i) for i in range(4)
-    ]
+    steps1 = [create_step(role="user", content=f"Msg {i}", sequence=i) for i in range(4)]
     await memory.add_steps(session_id, steps1)
-    
+
     # Add 3 more (total 7 > max 5)
-    steps2 = [
-        create_step(role="user", content=f"Msg {i}", sequence=i) for i in range(4, 7)
-    ]
+    steps2 = [create_step(role="user", content=f"Msg {i}", sequence=i) for i in range(4, 7)]
     await memory.add_steps(session_id, steps2)
-    
+
     history = await memory.get_recent_history(session_id)
     assert len(history) == 5
     assert history[0].content == "Msg 2"

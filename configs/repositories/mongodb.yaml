@@ -2,7 +2,8 @@ type: repository
 name: mongodb_repo
 description: "MongoDB persistence layer for agent runs and events"
 repository_type: mongodb
-uri: "${AGIO_MONGO_URI}"
+mongo_uri: "${AGIO_MONGO_URI:mongodb://localhost:27017}"
+mongo_db_name: "${AGIO_MONGO_DB:agio}"
 enabled: true
 tags:
   - persistence

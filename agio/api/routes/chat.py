@@ -2,89 +2,84 @@
 Chat routes with SSE streaming support.
 """
 
-from fastapi import APIRouter, HTTPException
-from sse_starlette.sse import EventSourceResponse
 import json
-from agio.registry import get_registry
-from agio.api.schemas.chat import ChatRequest, ChatResponse
-from agio.protocol.step_events import StepEventType
 
-router = APIRouter(prefix="/api/chat", tags=["Chat"])
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sse_starlette.sse import EventSourceResponse
+
+from agio.api.deps import get_config_sys
+from agio.config import ConfigSystem
+from agio.core import StepEventType
+
+router = APIRouter(prefix="/chat")
 
 
-@router.post("")
-async def chat(request: ChatRequest):
-    """
-    Chat with an agent.
-    
-    Supports both streaming (SSE) and non-streaming modes.
-    """
-    registry = get_registry()
-    
-    # Get agent
-    agent = registry.get(request.agent_id)
-    if not agent:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Agent '{request.agent_id}' not found"
-        )
-    
+# Request/Response Models
+class ChatRequest(BaseModel):
+    message: str
+    session_id: str | None = None
+    user_id: str | None = None
+    stream: bool = True
+
+
+class ChatResponse(BaseModel):
+    run_id: str
+    session_id: str
+    response: str
+    metrics: dict = {}
+
+
+@router.post("/{agent_name}")
+async def chat(
+    agent_name: str,
+    request: ChatRequest,
+    config_sys: ConfigSystem = Depends(get_config_sys),
+):
+    """Chat with an agent."""
+    # Get agent instance
+    try:
+        agent = config_sys.get(agent_name)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found: {e}")
+
+    # Stream or non-stream
     if request.stream:
-        # Streaming response with SSE
         return EventSourceResponse(
             stream_chat_events(
-                agent,
-                request.message,
-                request.user_id,
-                request.session_id
-            )
+                agent, request.message, request.user_id, request.session_id
+            ),
+            sep="\n",  # Use LF instead of CRLF for SSE line separator
         )
     else:
-        # Non-streaming response
         return await chat_non_streaming(
-            agent,
-            request.message,
-            request.user_id,
-            request.session_id
+            agent, request.message, request.user_id, request.session_id
         )
 
 
-async def stream_chat_events(
-    agent,
-    message: str,
-    user_id: str | None,
-    session_id: str | None
-):
+async def stream_chat_events(agent, message: str, user_id: str | None, session_id: str | None):
     """Stream chat events as SSE."""
     try:
-        async for event in agent.arun_stream(
-            query=message,
-            user_id=user_id,
-            session_id=session_id
-        ):
-            # Convert StepEvent to dict for SSE
-            yield event.model_dump(mode="json")
+        async for event in agent.arun_stream(query=message, user_id=user_id, session_id=session_id):
+            # Convert StepEvent to SSE format, excluding None values for cleaner output
+            event_dict = event.model_dump(mode="json", exclude_none=True)
+            event_type = event_dict.pop("type", "message")
+
+            yield {"event": event_type, "data": json.dumps(event_dict)}
 
     except Exception as e:
         yield {"event": "error", "data": json.dumps({"error": str(e)})}
 
 
 async def chat_non_streaming(
-    agent,
-    message: str,
-    user_id: str | None,
-    session_id: str | None
+    agent, message: str, user_id: str | None, session_id: str | None
 ) -> ChatResponse:
     """Non-streaming chat."""
     response_content = ""
     run_id = None
     metrics = {}
-    
-    async for event in agent.arun_stream(
-        query=message,
-        user_id=user_id,
-        session_id=session_id
-    ):
+
+    async for event in agent.arun_stream(query=message, user_id=user_id, session_id=session_id):
         if event.type == StepEventType.RUN_STARTED:
             run_id = event.run_id
 
@@ -95,9 +90,10 @@ async def chat_non_streaming(
         elif event.type == StepEventType.RUN_COMPLETED:
             if event.data and "metrics" in event.data:
                 metrics = event.data["metrics"]
-    
+
     return ChatResponse(
         run_id=run_id or "unknown",
+        session_id=session_id or "unknown",
         response=response_content,
-        metrics=metrics
+        metrics=metrics,
     )

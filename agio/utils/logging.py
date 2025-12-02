@@ -18,10 +18,11 @@ Usage:
 """
 
 import logging
-import sys
 import os
-from typing import Optional
+import sys
 from contextvars import ContextVar
+from typing import Optional
+
 import structlog
 from structlog.types import FilteringBoundLogger
 
@@ -62,18 +63,16 @@ def add_context(logger, method_name, event_dict):
         event_dict["user_id"] = user_id
     if session_id := session_id_var.get():
         event_dict["session_id"] = session_id
-    
+
     return event_dict
 
 
 def configure_logging(
-    log_level: str = "INFO",
-    json_logs: bool = False,
-    log_file: Optional[str] = None
+    log_level: str = "INFO", json_logs: bool = False, log_file: Optional[str] = None
 ) -> None:
     """
     Configure structlog with appropriate processors and renderers.
-    
+
     Args:
         log_level: Minimum log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
         json_logs: If True, output JSON logs suitable for production
@@ -82,20 +81,20 @@ def configure_logging(
     # Get log level from environment or parameter
     log_level = os.getenv("LOG_LEVEL", log_level).upper()
     json_logs = os.getenv("LOG_JSON", str(json_logs)).lower() in ("true", "1", "yes")
-    
+
     # Configure standard logging
     logging.basicConfig(
         format="%(message)s",
         stream=sys.stdout,
         level=getattr(logging, log_level),
     )
-    
+
     # Add file handler if specified
     if log_file:
         file_handler = logging.FileHandler(log_file)
         file_handler.setLevel(getattr(logging, log_level))
         logging.getLogger().addHandler(file_handler)
-    
+
     # Processor chain
     processors = [
         structlog.contextvars.merge_contextvars,
@@ -106,19 +105,21 @@ def configure_logging(
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.StackInfoRenderer(),
     ]
-    
+
     # Add appropriate renderer
     if json_logs:
         processors.append(structlog.processors.JSONRenderer())
     else:
-        processors.extend([
-            structlog.processors.ExceptionPrettyPrinter(),
-            structlog.dev.ConsoleRenderer(
-                colors=True,
-                exception_formatter=structlog.dev.plain_traceback,
-            ),
-        ])
-    
+        processors.extend(
+            [
+                structlog.processors.ExceptionPrettyPrinter(),
+                structlog.dev.ConsoleRenderer(
+                    colors=True,
+                    exception_formatter=structlog.dev.plain_traceback,
+                ),
+            ]
+        )
+
     # Configure structlog
     structlog.configure(
         processors=processors,
@@ -132,13 +133,13 @@ def configure_logging(
 def get_logger(name: str = "agio") -> FilteringBoundLogger:
     """
     Get a configured logger instance.
-    
+
     Args:
         name: Logger name (typically __name__ of the module)
-        
+
     Returns:
         Configured structlog logger
-        
+
     Example:
         logger = get_logger(__name__)
         logger.info("operation_completed", duration_ms=123, items_processed=45)
@@ -153,10 +154,10 @@ def set_request_context(
 ) -> None:
     """
     Set request context for logging.
-    
+
     This context will be automatically included in all log entries
     within the same async/thread context.
-    
+
     Args:
         request_id: Unique request identifier
         user_id: User identifier

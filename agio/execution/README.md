@@ -1,247 +1,405 @@
-# Agio Execution Control System
+# Execution Package
 
-## Overview
+`agio.execution` 包含 Agio 的执行引擎，负责管理 Agent 运行的完整生命周期。
 
-The execution control system provides powerful checkpoint, resume, and fork capabilities for Agent runs. This enables:
+## 📦 模块概览
 
-- 💾 **Checkpoints** - Save complete execution state at any point
-- ▶️ **Resume** - Continue execution from any checkpoint
-- 🔀 **Fork** - Create execution branches for A/B testing
-- ⏸️ **Pause/Resume** - Control execution flow
-- 🔙 **Time Travel** - Debug by jumping to any execution point
+### `runner.py` - StepRunner
 
-## Quick Start
-
-### 1. Create Checkpoints
+管理 Agent Run 的完整生命周期：
 
 ```python
-from agio.execution import CheckpointManager, CheckpointPolicy, CheckpointStrategy
-from agio.db.repository import InMemoryRepository
+from agio.execution.runner import StepRunner, ExecutionConfig
+from agio.core import AgentSession
 
-# Create checkpoint manager
-repository = InMemoryRepository()
-checkpoint_manager = CheckpointManager(
-    repository,
-    policy=CheckpointPolicy(CheckpointStrategy.ON_TOOL_CALL)
+# 创建 Runner
+config = ExecutionConfig(
+    max_steps=20,
+    parallel_tool_calls=True,
+    timeout_per_step=120.0
 )
 
-# Manual checkpoint creation
-checkpoint = await checkpoint_manager.create_checkpoint(
-    run_id="run_123",
-    step_num=2,
+runner = StepRunner(
+    agent=agent,
+    hooks=[],
+    config=config,
+    repository=repository
+)
+
+# 运行
+session = AgentSession(session_id="session_123")
+async for event in runner.run_stream(session, "Hello!"):
+    print(event)
+```
+
+**主要功能**：
+- 管理 Run 生命周期（创建、启动、完成）
+- 协调 StepExecutor 和 ToolExecutor
+- 触发 Hook 回调
+- 保存 Steps 到 Repository
+- 发送事件流
+
+### `step_executor.py` - StepExecutor
+
+执行 LLM 调用循环：
+
+```python
+from agio.execution.step_executor import StepExecutor
+
+executor = StepExecutor(model=model, tools=tools)
+
+# 执行
+async for event in executor.execute(
+    session_id="session_123",
+    run_id="run_456",
     messages=messages,
-    metrics={"total_tokens": 100},
-    agent_config={},
-    description="Before tool call"
+    start_sequence=1
+):
+    if event.type == StepEventType.STEP_DELTA:
+        print(event.delta.content, end="")
+```
+
+**主要功能**：
+- 调用 LLM 模型
+- 处理流式响应
+- 检测工具调用
+- 生成 Step 对象
+- 发送增量事件
+
+### `tool_executor.py` - ToolExecutor
+
+执行工具调用：
+
+```python
+from agio.execution.tool_executor import ToolExecutor
+
+executor = ToolExecutor(tools=[search_tool, calculator_tool])
+
+# 执行单个工具
+result = await executor.execute(tool_call)
+
+# 批量执行
+results = await executor.execute_batch(tool_calls)
+```
+
+**主要功能**：
+- 查找工具
+- 解析参数
+- 执行工具
+- 错误处理
+- 返回 ToolResult
+
+### `context.py` - 上下文构建
+
+从 Steps 构建 LLM 上下文：
+
+```python
+from agio.execution.context import build_context_from_steps
+
+# 构建完整上下文
+messages = await build_context_from_steps(
+    session_id="session_123",
+    repository=repository,
+    system_prompt="You are helpful"
+)
+
+# 构建指定范围
+messages = await build_context_from_sequence_range(
+    session_id="session_123",
+    repository=repository,
+    start_seq=1,
+    end_seq=10
 )
 ```
 
-### 2. Resume from Checkpoint
+**主要功能**：
+- 从 Repository 加载 Steps
+- 使用 StepAdapter 转换为消息
+- 添加 system prompt
+- 验证上下文格式
+
+### `retry.py` - 重试机制
+
+从指定序列重试执行：
 
 ```python
-from agio.execution import ResumeRunner
+from agio.execution.retry import retry_from_sequence
 
-resume_runner = ResumeRunner(agent, hooks=[], repository=repository)
+# 删除从序列 5 开始的所有 steps
+deleted = await repository.delete_steps("session_123", start_seq=5)
 
-# Load checkpoint
-checkpoint = await checkpoint_manager.get_checkpoint(checkpoint_id)
-
-# Resume execution
-async for event in resume_runner.resume_from_checkpoint(checkpoint):
+# 从序列 4 恢复
+last_step = await repository.get_last_step("session_123")
+async for event in runner.resume_from_user_step("session_123", last_step):
     print(event)
 ```
 
-### 3. Fork Execution
+### `fork.py` - Fork 管理
+
+创建执行分支：
 
 ```python
-from agio.execution import ForkManager
+from agio.execution.fork import fork_session
 
-fork_manager = ForkManager(checkpoint_manager, resume_runner)
-
-# Fork with modifications
-new_run_id, event_stream = await fork_manager.fork_from_checkpoint(
-    checkpoint_id=checkpoint.id,
-    modifications={"modified_query": "New query"},
-    description="Testing different approach"
+# Fork 到新 session
+new_session_id = await fork_session(
+    original_session_id="session_123",
+    fork_at_sequence=5,
+    repository=repository
 )
 
-# Execute forked branch
-async for event in event_stream:
+# 新 session 包含序列 1-5 的副本
+```
+
+## 🔄 执行流程
+
+### 1. 完整运行流程
+
+```
+User Query
+    ↓
+StepRunner.run_stream()
+    ↓
+1. Create AgentRun
+2. Create User Step
+3. Save to Repository
+    ↓
+StepExecutor.execute()
+    ↓
+4. Build context from Steps
+5. Call LLM model
+6. Stream response
+    ↓
+7. Create Assistant Step
+8. Save to Repository
+    ↓
+If tool_calls:
+    ↓
+ToolExecutor.execute_batch()
+    ↓
+9. Execute tools
+10. Create Tool Steps
+11. Save to Repository
+    ↓
+Loop back to step 4
+    ↓
+Final Response
+```
+
+### 2. 事件流
+
+```python
+async for event in runner.run_stream(session, query):
+    match event.type:
+        case StepEventType.RUN_STARTED:
+            # Run 开始
+            print(f"Run {event.run_id} started")
+        
+        case StepEventType.STEP_DELTA:
+            # 内容增量（流式）
+            print(event.delta.content, end="")
+        
+        case StepEventType.STEP_COMPLETED:
+            # Step 完成
+            step = event.snapshot
+            print(f"\nStep {step.sequence} completed")
+        
+        case StepEventType.TOOL_CALL_STARTED:
+            # 工具调用开始
+            print(f"Calling tool: {event.tool_name}")
+        
+        case StepEventType.TOOL_CALL_COMPLETED:
+            # 工具调用完成
+            result = event.tool_result
+            print(f"Tool result: {result.content}")
+        
+        case StepEventType.RUN_COMPLETED:
+            # Run 完成
+            print(f"Run completed: {event.metrics}")
+```
+
+## 🎯 核心概念
+
+### ExecutionConfig
+
+运行时配置：
+
+```python
+from agio.core import ExecutionConfig
+
+config = ExecutionConfig(
+    # 最大步骤数
+    max_steps=20,
+    
+    # 并行工具调用
+    parallel_tool_calls=True,
+    
+    # 每步超时（秒）
+    timeout_per_step=120.0,
+    
+    # 启用重试
+    enable_retry=True,
+    max_retries=3,
+    
+    # 流式输出
+    stream=True
+)
+```
+
+### Step Sequence
+
+每个 Step 都有全局序列号：
+
+```
+Sequence 1: USER    - "Hello"
+Sequence 2: ASSISTANT - "Hi! Let me search..."
+Sequence 3: TOOL    - search results
+Sequence 4: ASSISTANT - "Based on results..."
+```
+
+序列号用于：
+- 排序和查询
+- Resume/Fork 定位
+- 上下文构建
+
+### Context Building
+
+从 Steps 构建 LLM 上下文：
+
+```python
+# 1. 加载 Steps
+steps = await repository.get_steps("session_123")
+
+# 2. 转换为消息
+messages = StepAdapter.steps_to_messages(steps)
+
+# 3. 添加 system prompt
+if system_prompt:
+    messages.insert(0, {"role": "system", "content": system_prompt})
+
+# 4. 发送给 LLM
+response = await model.arun_stream(messages, tools=tools)
+```
+
+## 🔧 高级用法
+
+### 自定义 Hook
+
+```python
+from agio.agent.hooks import AgentHook
+
+class MetricsHook(AgentHook):
+    async def on_run_start(self, run: AgentRun):
+        print(f"Run {run.id} started")
+    
+    async def on_step_end(self, run: AgentRun, step: Step):
+        if step.metrics:
+            print(f"Tokens: {step.metrics.total_tokens}")
+    
+    async def on_run_end(self, run: AgentRun):
+        print(f"Run {run.id} completed")
+
+# 使用
+runner = StepRunner(agent=agent, hooks=[MetricsHook()])
+```
+
+### Resume from Step
+
+```python
+# 获取最后一个 Step
+last_step = await repository.get_last_step("session_123")
+
+# 从该 Step 恢复
+if last_step.is_user_step():
+    async for event in runner.resume_from_user_step(
+        "session_123", 
+        last_step
+    ):
+        print(event)
+```
+
+### Fork Session
+
+```python
+# Fork 到新 session（复制前 N 个 steps）
+new_session_id = await fork_session(
+    original_session_id="session_123",
+    fork_at_sequence=5,
+    repository=repository
+)
+
+# 在新 session 中继续
+async for event in runner.run_stream(
+    AgentSession(session_id=new_session_id),
+    "Continue from fork"
+):
     print(event)
 ```
 
-### 4. Pause/Resume Execution
+### Retry from Sequence
 
 ```python
-from agio.execution import get_execution_controller
+# 删除从序列 5 开始的所有 steps
+deleted = await repository.delete_steps("session_123", start_seq=5)
 
-controller = get_execution_controller()
+# 获取最后一个 step（现在是序列 4）
+last_step = await repository.get_last_step("session_123")
 
-# Pause
-controller.pause_run(run_id)
-
-# Resume later
-controller.resume_run(run_id)
-
-# Cancel
-controller.cancel_run(run_id)
-```
-
-## Features
-
-### Checkpoint Strategies
-
-```python
-from agio.execution import CheckpointPolicy, CheckpointStrategy
-
-# Manual only
-policy = CheckpointPolicy(CheckpointStrategy.MANUAL)
-
-# Auto-create after every step
-policy = CheckpointPolicy(CheckpointStrategy.EVERY_STEP)
-
-# Create before tool calls
-policy = CheckpointPolicy(CheckpointStrategy.ON_TOOL_CALL)
-
-# Create on errors
-policy = CheckpointPolicy(CheckpointStrategy.ON_ERROR)
-
-# Custom strategy
-policy = CheckpointPolicy(CheckpointStrategy.CUSTOM)
-policy.set_custom_predicate(lambda ctx: ctx.get("step_num", 0) % 2 == 0)
-```
-
-### Checkpoint Management
-
-```python
-# List checkpoints
-checkpoints = await checkpoint_manager.list_checkpoints(
-    run_id="run_123",
-    tags=["important"],
-    limit=20
-)
-
-# Get specific checkpoint
-checkpoint = await checkpoint_manager.get_checkpoint(checkpoint_id)
-
-# Delete checkpoint
-await checkpoint_manager.delete_checkpoint(checkpoint_id)
-```
-
-### Fork Comparison
-
-```python
-# Compare two forks
-comparison = await fork_manager.compare_forks(run_id_1, run_id_2)
-
-print(comparison["differences"]["response_diff"])
-print(comparison["differences"]["token_diff"])
-```
-
-## Use Cases
-
-### 1. Debugging Failed Runs
-
-```python
-# Find the last successful checkpoint before failure
-checkpoints = await checkpoint_manager.list_checkpoints(run_id=failed_run_id)
-last_good_checkpoint = checkpoints[-1]
-
-# Resume from there
-async for event in resume_runner.resume_from_checkpoint(last_good_checkpoint):
+# 重新生成
+async for event in runner.resume_from_user_step("session_123", last_step):
     print(event)
 ```
 
-### 2. A/B Testing Prompts
+## 📊 性能优化
+
+### 1. 并行工具调用
 
 ```python
-# Create base checkpoint
-base_checkpoint = await checkpoint_manager.create_checkpoint(...)
+config = ExecutionConfig(parallel_tool_calls=True)
 
-# Fork A: Prompt A
-run_a_id, stream_a = await fork_manager.fork_from_checkpoint(
-    checkpoint_id=base_checkpoint.id,
-    modifications={"system_prompt": "Prompt A"}
+# 多个工具调用会并行执行
+results = await tool_executor.execute_batch(tool_calls)
+```
+
+### 2. 上下文窗口管理
+
+```python
+# 只加载最近的 N 个 steps
+messages = await build_context_from_sequence_range(
+    session_id="session_123",
+    repository=repository,
+    start_seq=max(1, current_seq - 20),
+    end_seq=current_seq
 )
-
-# Fork B: Prompt B
-run_b_id, stream_b = await fork_manager.fork_from_checkpoint(
-    checkpoint_id=base_checkpoint.id,
-    modifications={"system_prompt": "Prompt B"}
-)
-
-# Compare results
-comparison = await fork_manager.compare_forks(run_a_id, run_b_id)
 ```
 
-### 3. Long-Running Tasks
+### 3. 流式输出
 
 ```python
-# Start execution
-controller = get_execution_controller()
-controller.start_run(run_id)
+# 启用流式输出以获得更好的用户体验
+config = ExecutionConfig(stream=True)
 
-# Pause after some time
-await asyncio.sleep(300)
-controller.pause_run(run_id)
-
-# Create checkpoint
-checkpoint = await checkpoint_manager.create_checkpoint(...)
-
-# Resume later
-controller.resume_run(run_id)
+async for event in runner.run_stream(session, query):
+    if event.type == StepEventType.STEP_DELTA:
+        # 实时显示内容
+        print(event.delta.content, end="", flush=True)
 ```
 
-## API Reference
+## 🧪 测试
 
-### ExecutionCheckpoint
-
-```python
-class ExecutionCheckpoint(BaseModel):
-    id: str
-    run_id: str
-    step_num: int
-    status: RunStatus
-    messages: list[dict]
-    metrics: dict
-    agent_config: dict
-    user_modifications: dict | None
-    tags: list[str]
-    description: str | None
-```
-
-### CheckpointManager
-
-```python
-class CheckpointManager:
-    async def create_checkpoint(...) -> ExecutionCheckpoint
-    async def get_checkpoint(checkpoint_id: str) -> ExecutionCheckpoint | None
-    async def list_checkpoints(...) -> list[CheckpointMetadata]
-    async def delete_checkpoint(checkpoint_id: str) -> bool
-```
-
-### ExecutionController
-
-```python
-class ExecutionController:
-    def start_run(run_id: str) -> None
-    def pause_run(run_id: str) -> bool
-    def resume_run(run_id: str) -> bool
-    def cancel_run(run_id: str) -> bool
-    async def check_pause(run_id: str) -> None
-    def is_cancelled(run_id: str) -> bool
-```
-
-## Testing
-
-Run the execution control tests:
+运行测试：
 
 ```bash
-pytest tests/test_execution.py -v
+# 所有执行相关测试
+pytest tests/test_step_*.py tests/test_tool_executor.py -v
+
+# 集成测试
+pytest tests/test_step_integration.py -v
 ```
 
-## Next Steps
+## 🔗 相关文档
 
-- Check out `agio/execution/DESIGN.md` for detailed design documentation
-- Explore the FastAPI backend for API endpoints
-- Learn about the React frontend for visual time-travel debugging
+- [Core Package](../core/README.md) - 核心数据模型
+- [Storage Package](../storage/README.md) - 持久化层
+- [Agent Package](../agent/README.md) - Agent 核心
+- [DESIGN.md](DESIGN.md) - 详细设计文档

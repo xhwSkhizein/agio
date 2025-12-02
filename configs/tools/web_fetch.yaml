@@ -1,0 +1,14 @@
+type: tool
+name: web_fetch
+description: "Fetch and process web content with optional LLM processing"
+tool_name: web_fetch
+dependencies:
+  llm_model: gpt-4o-mini  # Reference to model config for content summarization
+params:
+  # timeout_seconds: 30
+  # max_content_length: 4096
+enabled: true
+tags:
+  - web
+  - content
+  - llm-enhanced

@@ -1,64 +1,50 @@
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
 import { configService } from '../services/api'
-import { useState, useEffect } from 'react'
+import { ArrowLeft, Save, Loader2 } from 'lucide-react'
+import toast from 'react-hot-toast'
 
 export default function ConfigEditor() {
-  const { name } = useParams<{ name: string }>()
+  const { type, name } = useParams<{ type: string; name: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const isNew = name === 'new'
 
   const [configContent, setConfigContent] = useState<string>('')
 
   const { data: config, isLoading, error } = useQuery({
-    queryKey: ['config', name],
-    queryFn: () => configService.getConfig(name!),
-    enabled: !isNew,
+    queryKey: ['config', type, name],
+    queryFn: () => configService.getConfig(type!, name!),
+    enabled: !!type && !!name,
   })
 
   useEffect(() => {
     if (config) {
       setConfigContent(JSON.stringify(config, null, 2))
-    } else if (isNew) {
-      setConfigContent(JSON.stringify({
-        type: 'model',
-        name: 'new-component',
-        description: 'Description here',
-        enabled: true
-      }, null, 2))
     }
-  }, [config, isNew])
+  }, [config])
 
   const saveMutation = useMutation({
     mutationFn: async (content: string) => {
       const parsedConfig = JSON.parse(content)
-      const configName = isNew ? parsedConfig.name : name!
-      
-      await configService.updateConfig(configName, parsedConfig)
-      return configName
+      await configService.updateConfig(type!, name!, parsedConfig)
     },
-    onSuccess: (savedName) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['configs'] })
-      queryClient.invalidateQueries({ queryKey: ['config', savedName] })
-      if (isNew) {
-        navigate(`/config/${savedName}`)
-      } else {
-        alert('Configuration saved successfully')
-      }
+      queryClient.invalidateQueries({ queryKey: ['config', type, name] })
+      toast.success('Configuration saved')
     },
     onError: (error) => {
-      alert(`Failed to save configuration: ${(error as Error).message}`)
+      toast.error(`Failed to save: ${(error as Error).message}`)
     },
   })
 
   const handleSave = () => {
     try {
-      // Validate JSON
       JSON.parse(configContent)
       saveMutation.mutate(configContent)
     } catch (e) {
-      alert('Invalid JSON content')
+      toast.error('Invalid JSON content')
     }
   }
 
@@ -79,37 +65,44 @@ export default function ConfigEditor() {
   }
 
   return (
-    <div className="flex-1 flex flex-col space-y-4 h-full min-h-[600px]">
-      <div className="flex justify-between items-center shrink-0">
-        <h1 className="text-2xl font-bold text-white">
-          {isNew ? 'Create Configuration' : `Edit ${name}`}
-        </h1>
-        <div className="flex gap-2">
-          <button
-            onClick={() => navigate('/config')}
-            className="px-3 py-1.5 border border-border text-gray-300 rounded-lg hover:bg-surfaceHighlight text-sm transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saveMutation.isPending}
-            className="px-3 py-1.5 bg-primary-600 text-white rounded-lg hover:bg-primary-500 disabled:opacity-50 text-sm transition-colors"
-          >
-            {saveMutation.isPending ? 'Saving...' : 'Save'}
-          </button>
+    <div className="max-w-4xl">
+      <div className="flex items-center gap-4 mb-6">
+        <button
+          onClick={() => navigate('/config')}
+          className="p-2 text-gray-400 hover:text-white hover:bg-surfaceHighlight rounded-lg transition-colors"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 text-xs uppercase tracking-wider bg-surfaceHighlight rounded text-gray-500">
+              {type}
+            </span>
+          </div>
+          <h1 className="text-xl font-semibold text-white mt-1">{name}</h1>
         </div>
+        <button
+          onClick={handleSave}
+          disabled={saveMutation.isPending}
+          className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-500 disabled:opacity-50 text-sm transition-colors"
+        >
+          {saveMutation.isPending ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Save className="w-4 h-4" />
+          )}
+          Save
+        </button>
       </div>
 
-      <div className="flex-1 bg-surface border border-border rounded-xl shadow-lg p-0 flex flex-col overflow-hidden">
-        <div className="px-4 py-2 bg-surfaceHighlight border-b border-border text-xs text-gray-400 flex justify-between items-center shrink-0">
-          <span>JSON Editor</span>
-          <span className="text-gray-500">Ensure 'name' matches the intended component name.</span>
+      <div className="bg-surface border border-border rounded-lg overflow-hidden">
+        <div className="px-4 py-2 bg-surfaceHighlight border-b border-border text-xs text-gray-500">
+          JSON Configuration
         </div>
         <textarea
           value={configContent}
           onChange={(e) => setConfigContent(e.target.value)}
-          className="flex-1 w-full font-mono text-sm p-4 bg-background text-gray-200 focus:outline-none resize-none"
+          className="w-full h-[500px] font-mono text-sm p-4 bg-background text-gray-200 focus:outline-none resize-none"
           spellCheck={false}
         />
       </div>

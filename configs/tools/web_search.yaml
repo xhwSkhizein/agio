@@ -1,8 +1,10 @@
 type: tool
 name: web_search
-description: "Search the web for information"
-tool_type: function
-function_path: agio.tools.example.web.search
+description: "Search the web for information using Serper API"
+tool_name: web_search
+params:
+  # Requires SERPER_API_KEY environment variable
+  # max_results: 10
 enabled: true
 tags:
   - search

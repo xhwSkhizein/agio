@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased] - 2025-11-23 - Domain Model Refactoring
+
+### 🔧 Changed
+
+**Domain 模型职责分离 - 遵循 SOLID 原则**
+
+- **删除** `Step.to_message_dict()` 方法，保持 Domain 模型纯粹
+- **统一** 使用 `StepAdapter.to_llm_message(step)` 进行格式转换
+- **更新** 所有调用点（`step_executor.py`, `runner.py`）
+- **更新** 测试用例和文档
+
+**影响**:
+- ✅ Domain 模型只包含数据和业务查询方法
+- ✅ 所有格式转换逻辑集中在 `StepAdapter` 中
+- ✅ 符合单一职责原则和适配器模式
+- ✅ 易于扩展支持多种 LLM 格式
+
+**迁移指南**:
+```python
+# 旧方式（已废弃）
+message = step.to_message_dict()
+
+# 新方式
+from agio.core import StepAdapter
+message = StepAdapter.to_llm_message(step)
+```
+
+详见: [REFACTORING_DOMAIN_MODEL.md](REFACTORING_DOMAIN_MODEL.md)
+
+---
+
 ## [0.4.0] - 2025-11-21 - Major Architecture Refactor
 
 ### 🏗️ Breaking Changes

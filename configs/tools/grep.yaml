@@ -1,0 +1,12 @@
+type: tool
+name: grep
+description: "Search for patterns in files using ripgrep"
+tool_name: grep
+params:
+  # timeout_seconds: 30
+  # max_results: 1000
+enabled: true
+tags:
+  - search
+  - text
+  - pattern

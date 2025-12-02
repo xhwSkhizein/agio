@@ -12,7 +12,7 @@ system_prompt: |
   Always cite your sources and indicate confidence levels.
 tools:
   - web_search
-  - scrape_webpage
+  - web_fetch  # 使用新的 web_fetch 工具，自动注入 gpt-4o-mini 作为 LLM 依赖
   - summarize_text
 memory: semantic_memory
 knowledge: research_database

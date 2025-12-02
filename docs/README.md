@@ -1,203 +1,191 @@
-# Agio 文档中心
+# Agio 文档索引
 
-欢迎来到 Agio 文档中心！这里是你学习和使用 Agio 的完整指南。
+本目录包含 Agio 项目的核心技术文档。
 
----
+## 📚 文档列表
 
-## 🚀 快速开始
+### 系统架构
 
-**新手？从这里开始：**
+#### [ARCHITECTURE.md](./ARCHITECTURE.md)
+系统整体架构文档，介绍各组件关系、设计原则和技术栈。
 
-- 📘 [快速开始指南](guides/getting_started.md) - 5分钟创建第一个 Agent
-- 🎯 [核心概念](concepts/core_concepts.md) - 理解 Agio 的设计理念
-- 📚 [示例代码](../examples/basic/) - 实战示例集合
+**内容**：
+- 系统架构概览
+- 核心组件设计
+- 技术栈选择
+- 设计原则
 
----
-
-## 🏗️ 架构文档
-
-**深入理解 Agio 的设计：**
-
-- 🔷 [架构概览](architecture/overview.md) - 三层架构设计详解
-- 🔄 [事件系统](streaming_protocol.md) - AgentEvent 协议和事件流
-- ⚙️ [执行流程](architecture/execution_flow.md) - 从查询到响应的完整流程
-- 📊 [数据模型](architecture/data_models.md) - Run, Step, Message 等领域模型
+**适合人群**：新开发者、架构师
 
 ---
 
-## 📖 API 参考
+### 配置系统
 
-**完整的 API 文档：**
+#### [DYNAMIC_CONFIG_ARCHITECTURE.md](./DYNAMIC_CONFIG_ARCHITECTURE.md)
+配置系统详细架构文档，深入介绍配置管理的实现细节。
 
-### 核心 API
-- [Agent](api/agent.md) - Agent 配置和执行
-- [AgentRunner](api/runner.md) - 编排器 API
-- [AgentExecutor](api/executor.md) - 执行引擎 API
+**内容**：
+- 配置管理器（ConfigManager）
+- 依赖图（DependencyGraph）
+- 配置存储（Repository）
+- 事件系统（EventBus）
+- 配置构建器（Builders）
 
-### 模型
-- [Model 基类](api/model.md) - 模型抽象接口
-- [OpenAIModel](api/openai_model.md) - OpenAI 实现
-- [DeepseekModel](api/deepseek_model.md) - Deepseek 实现
+**适合人群**：配置系统开发者、系统维护者
 
-### 工具
-- [Tool 系统](api/tools.md) - 工具定义和执行
-- [FunctionTool](api/function_tool.md) - 函数装饰器方式
-- [MCP 支持](api/mcp.md) - Model Context Protocol
+#### [DYNAMIC_CONFIG_DESIGN.md](./DYNAMIC_CONFIG_DESIGN.md)
+配置系统设计理念和核心概念。
 
-### 存储和记忆
-- [Repository](api/repository.md) - 事件存储接口
-- [Memory](api/memory.md) - 对话记忆
-- [Knowledge](api/knowledge.md) - RAG 知识库
+**内容**：
+- 设计目标
+- 核心概念
+- 使用场景
+- 最佳实践
 
-### 事件和协议
-- [AgentEvent](api/events.md) - 事件协议详解
-- [Hooks](api/hooks.md) - 生命周期钩子
+**适合人群**：系统设计者、架构师
 
----
+#### [CONFIG_COLD_START_SUMMARY.md](./CONFIG_COLD_START_SUMMARY.md)
+配置系统冷启动功能实现总结。
 
-## 🎓 使用指南
+**内容**：
+- ConfigLoader 实现
+- 冷启动流程
+- 配置文件结构
+- 加载顺序
+- 使用示例
 
-**实用的操作指南：**
-
-### 基础教程
-- [创建第一个 Agent](guides/getting_started.md#第一个-agent30秒)
-- [添加工具](guides/getting_started.md#添加工具)
-- [使用事件流](guides/getting_started.md#使用事件流-api)
-- [添加记忆](guides/getting_started.md#添加记忆)
-- [RAG 知识库](guides/getting_started.md#添加知识库rag)
-
-### 进阶主题
-- [自定义 Model](guides/custom_model.md) - 集成自己的 LLM
-- [自定义 Tool](guides/custom_tools.md) - 创建强大的工具
-- [自定义 Repository](guides/custom_repository.md) - 实现持久化后端
-- [自定义 Hook](guides/custom_hooks.md) - 扩展生命周期
-
-### 实战案例
-- [构建聊天机器人](guides/chatbot.md)
-- [RAG 问答系统](guides/rag_qa.md)
-- [代码助手](guides/code_assistant.md)
-- [数据分析 Agent](guides/data_analyst.md)
-
-### 部署和生产
-- [生产部署](guides/deployment.md) - Docker, K8s, 云服务
-- [性能优化](guides/performance.md) - 提升速度和降低成本
-- [监控和日志](guides/monitoring.md) - Prometheus, OpenTelemetry
-- [错误处理](guides/error_handling.md) - 最佳实践
+**适合人群**：功能使用者、开发者
 
 ---
 
-## 🔧 开发者资源
+### 工具系统
 
-**参与 Agio 开发：**
+#### [TOOL_LLM_REFACTOR_SUMMARY.md](./TOOL_LLM_REFACTOR_SUMMARY.md)
+工具 LLM 依赖统一重构总结。
 
-- 🤝 [贡献指南](../CONTRIBUTING.md) - 如何参与开发
-- 📋 [行为准则](../CODE_OF_CONDUCT.md) - 社区规范
-- 📝 [变更日志](../CHANGELOG.md) - 版本历史
-- 🐛 [Issue 跟踪](https://github.com/yourusername/agio/issues) - 报告问题
+**内容**：
+- ModelLLMAdapter 适配器
+- 依赖注入机制
+- 工具配置示例
+- 迁移指南
 
----
+**适合人群**：工具开发者、系统维护者
 
-## 🌟 示例集合
+#### [TOOLS_CLEANUP_SUMMARY.md](./TOOLS_CLEANUP_SUMMARY.md)
+工具目录清理总结，记录过时代码的删除和架构改进。
 
-**完整的示例代码：**
+**内容**：
+- 删除的过时文件
+- 保留的核心文件
+- 架构改进
+- 迁移指南
 
-### 基础示例
-- [examples/basic/demo.py](../examples/basic/demo.py) - 最简单的 Agent
-- [examples/basic/demo_events.py](../examples/basic/demo_events.py) - 事件流处理
-- [examples/basic/demo_history.py](../examples/basic/demo_history.py) - 历史回放
-- [examples/basic/demo_metrics.py](../examples/basic/demo_metrics.py) - Metrics 收集
-
-### Web 集成
-- FastAPI + SSE - 实时流式响应
-- Gradio UI - 快速构建聊天界面
-- Streamlit App - 数据应用集成
-
-### 高级示例
-- Multi-Agent 协作
-- 自定义 Driver
-- 自定义 Repository
-- 性能优化
+**适合人群**：工具系统维护者、开发者
 
 ---
 
-## 📊 对比和选型
+## 🗂️ 文档分类
 
-**Agio vs 其他框架：**
+### 按主题分类
 
-| 特性 | Agio | LangChain | AutoGPT | Semantic Kernel |
-|------|------|-----------|---------|-----------------|
-| 异步原生 | ✅ | ⚠️ | ❌ | ✅ |
-| 事件驱动 | ✅ (15种) | ❌ | ❌ | ⚠️ |
-| 类型安全 | ✅ | ⚠️ | ❌ | ✅ |
-| 历史回放 | ✅ | ❌ | ❌ | ❌ |
-| 学习曲线 | 低 | 中 | 高 | 中 |
-| 性能 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐ |
+| 主题 | 文档 |
+|------|------|
+| **系统架构** | ARCHITECTURE.md |
+| **配置系统** | DYNAMIC_CONFIG_ARCHITECTURE.md<br>DYNAMIC_CONFIG_DESIGN.md<br>CONFIG_COLD_START_SUMMARY.md |
+| **工具系统** | TOOL_LLM_REFACTOR_SUMMARY.md<br>TOOLS_CLEANUP_SUMMARY.md |
 
-**选择 Agio 的理由：**
-- ✅ 需要生产级的可观测性
-- ✅ 重视代码质量和类型安全
-- ✅ 需要完整的历史回放
-- ✅ 追求高性能异步架构
-- ✅ 需要清晰的架构设计
+### 按用途分类
 
----
-
-## 🗺️ 路线图
-
-### v0.4.0 (当前) ✅
-- ✅ 三层架构重构
-- ✅ 统一事件系统
-- ✅ 历史回放
-- ✅ Metrics 收集
-
-### v0.5.0 (计划中)
-- [ ] 更多 LLM 支持 (Claude, Gemini)
-- [ ] PostgreSQL/MongoDB Repository
-- [ ] 性能优化和基准测试
-- [ ] 完整的文档网站
-
-### v1.0.0 (目标)
-- [ ] Multi-Agent 协作
-- [ ] 分布式执行
-- [ ] 官方工具库
-- [ ] 生产级最佳实践
+| 用途 | 文档 |
+|------|------|
+| **入门了解** | ARCHITECTURE.md<br>DYNAMIC_CONFIG_DESIGN.md |
+| **深入学习** | DYNAMIC_CONFIG_ARCHITECTURE.md |
+| **功能使用** | CONFIG_COLD_START_SUMMARY.md<br>TOOL_LLM_REFACTOR_SUMMARY.md |
+| **维护参考** | TOOLS_CLEANUP_SUMMARY.md |
 
 ---
 
-## 💬 社区和支持
+## 📖 阅读建议
 
-**获取帮助：**
+### 新开发者
 
-- 💬 [Discord 社区](https://discord.gg/agio) - 实时讨论
-- 🐛 [GitHub Issues](https://github.com/yourusername/agio/issues) - 报告bug
-- 💡 [GitHub Discussions](https://github.com/yourusername/agio/discussions) - 提问和讨论
-- 📧 [邮件列表](mailto:agio@example.com) - 重要更新
+1. 先阅读 **ARCHITECTURE.md** 了解系统整体架构
+2. 阅读 **DYNAMIC_CONFIG_DESIGN.md** 理解配置系统设计理念
+3. 根据需要深入阅读具体模块文档
 
-**关注我们：**
-- 🐦 [Twitter](https://twitter.com/AgioFramework)
-- 📝 [博客](https://blog.agio.dev)
-- 📺 [YouTube](https://youtube.com/@agio)
+### 配置系统开发
 
----
+1. **DYNAMIC_CONFIG_DESIGN.md** - 理解设计理念
+2. **DYNAMIC_CONFIG_ARCHITECTURE.md** - 掌握实现细节
+3. **CONFIG_COLD_START_SUMMARY.md** - 了解冷启动功能
 
-## 📄 许可证
+### 工具系统开发
 
-Agio 采用 [MIT License](../LICENSE) 开源。
-
----
-
-## 🙏 致谢
-
-感谢所有 [贡献者](../CONTRIBUTORS.md) 的付出！
-
-特别感谢：
-- OpenAI 提供优秀的 GPT 模型
-- Python 社区的支持
-- 所有用户的反馈和建议
+1. **TOOL_LLM_REFACTOR_SUMMARY.md** - 了解 LLM 依赖注入
+2. **TOOLS_CLEANUP_SUMMARY.md** - 了解工具系统架构
+3. **CONFIG_COLD_START_SUMMARY.md** - 了解工具配置加载
 
 ---
 
-**文档版本**: v0.4.0  
-**最后更新**: 2025-11-21
+## 🔄 文档维护
 
-需要改进这些文档？[提交 PR](https://github.com/yourusername/agio/pulls) 或 [提出建议](https://github.com/yourusername/agio/issues/new)！
+### 文档更新原则
+
+1. **及时更新**：代码重大变更时同步更新文档
+2. **保持简洁**：避免冗余和重复内容
+3. **清晰准确**：确保示例代码可运行
+4. **版本控制**：重大更新记录变更历史
+
+### 文档清理历史
+
+- **2024-11**: 删除 23 个过时/重复文档，保留 6 个核心文档
+  - 删除配置系统临时文档（5个）
+  - 删除工具系统早期/临时文档（15个）
+  - 删除 Web 工具重复文档（3个）
+
+---
+
+## 📝 贡献指南
+
+### 添加新文档
+
+1. 确保文档有明确的目的和受众
+2. 避免与现有文档重复
+3. 遵循 Markdown 格式规范
+4. 更新本 README 索引
+
+### 更新现有文档
+
+1. 保持文档结构一致
+2. 更新示例代码确保可运行
+3. 标注更新日期和变更内容
+
+### 删除过时文档
+
+1. 确认文档已过时或被替代
+2. 检查是否有外部引用
+3. 更新本 README 索引
+4. 记录删除原因
+
+---
+
+## 🔗 相关资源
+
+- [项目 README](../README.md)
+- [配置文件示例](../configs/)
+- [代码示例](../examples/)
+- [测试用例](../tests/)
+
+---
+
+## 📞 联系方式
+
+如有文档问题或建议，请：
+- 提交 Issue
+- 发起 Pull Request
+- 联系项目维护者
+
+---
+
+**最后更新**: 2024-11
+**文档数量**: 6 个核心文档

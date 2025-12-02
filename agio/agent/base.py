@@ -1,18 +1,13 @@
-from typing import AsyncIterator
 import uuid
+from typing import AsyncIterator
 
-from agio.models.base import Model
-from agio.tools.base import Tool
-from agio.memory.base import Memory
-from agio.knowledge.base import Knowledge
-from agio.db.base import Storage
-from agio.agent.hooks.base import AgentHook
-from agio.agent.hooks.storage import StorageHook
-from agio.agent.hooks.logging import LoggingHook
-from agio.sessions.base import AgentSession
+from agio.components.knowledge.base import Knowledge
+from agio.components.memory.base import Memory
+from agio.components.models.base import Model
+from agio.components.tools import BaseTool
+from agio.core import AgentSession, StepEvent
+from agio.storage.repository import AgentRunRepository
 
-from agio.protocol.step_events import StepEvent
-from agio.db.repository import AgentRunRepository
 
 class Agent:
     """
@@ -20,34 +15,26 @@ class Agent:
     Holds the configuration for Model, Tools, Memory, etc.
     Delegates execution to StepRunner.
     """
+
     def __init__(
         self,
         model: Model,
-        tools: list[Tool] = [],
+        tools: list[BaseTool] | None = None,
         memory: Memory | None = None,
         knowledge: Knowledge | None = None,
-        storage: Storage | None = None,
         repository: AgentRunRepository | None = None,
-        hooks: list[AgentHook] | None = None,
         name: str = "agio_agent",
         user_id: str | None = None,
         system_prompt: str | None = None,
     ):
         self.id = name
         self.model = model
-        self.tools = tools
+        self.tools = tools or []
         self.memory = memory
         self.knowledge = knowledge
-        self.storage = storage
         self.repository = repository
         self.user_id = user_id
         self.system_prompt = system_prompt
-
-        # Initialize Hooks
-        self.hooks = hooks or []
-        if self.storage:
-             self.hooks.append(StorageHook(self.storage))
-        self.hooks.append(LoggingHook())
 
     async def arun(
         self, query: str, user_id: str | None = None, session_id: str | None = None
@@ -57,31 +44,23 @@ class Agent:
 
         This uses the Step-based architecture for zero-conversion context building.
         """
-        from agio.runners.step_runner import StepRunner, StepRunnerConfig
-        from agio.protocol.step_events import StepEventType
+        from agio.core import ExecutionConfig, StepEventType
+        from agio.execution.runner import StepRunner
 
         current_session_id = session_id or str(uuid.uuid4())
         current_user_id = user_id or self.user_id
-        
-        session = AgentSession(
-            session_id=current_session_id,
-            user_id=current_user_id
-        )
+
+        session = AgentSession(session_id=current_session_id, user_id=current_user_id)
 
         runner = StepRunner(
             agent=self,
-            hooks=self.hooks,
-            config=StepRunnerConfig(),
+            config=ExecutionConfig(),
             repository=self.repository,
         )
 
         async for event in runner.run_stream(session, query):
             # Extract text from step deltas
-            if (
-                event.type == StepEventType.STEP_DELTA
-                and event.delta
-                and event.delta.content
-            ):
+            if event.type == StepEventType.STEP_DELTA and event.delta and event.delta.content:
                 yield event.delta.content
 
     async def arun_stream(
@@ -92,7 +71,8 @@ class Agent:
 
         This is the recommended API for full control over the execution flow.
         """
-        from agio.runners.step_runner import StepRunner, StepRunnerConfig
+        from agio.core import ExecutionConfig
+        from agio.execution.runner import StepRunner
 
         current_session_id = session_id or str(uuid.uuid4())
         current_user_id = user_id or self.user_id
@@ -101,8 +81,7 @@ class Agent:
 
         runner = StepRunner(
             agent=self,
-            hooks=self.hooks,
-            config=StepRunnerConfig(),
+            config=ExecutionConfig(),
             repository=self.repository,
         )
 
@@ -121,9 +100,7 @@ class Agent:
 
         return await self.repository.get_steps(session_id)
 
-    async def retry_from_sequence(
-        self, session_id: str, sequence: int
-    ) -> AsyncIterator[StepEvent]:
+    async def retry_from_sequence(self, session_id: str, sequence: int) -> AsyncIterator[StepEvent]:
         """
         从指定 sequence 重试。
 
@@ -135,21 +112,18 @@ class Agent:
             StepEvent: Events from retry
         """
         from agio.execution.retry import retry_from_sequence
-        from agio.runners.step_runner import StepRunner, StepRunnerConfig
+        from agio.execution.runner import StepRunner, ExecutionConfig
 
         if not self.repository:
             raise ValueError("Repository not configured")
 
         runner = StepRunner(
             agent=self,
-            hooks=self.hooks,
-            config=StepRunnerConfig(),
+            config=ExecutionConfig(),
             repository=self.repository,
         )
 
-        async for event in retry_from_sequence(
-            session_id, sequence, self.repository, runner
-        ):
+        async for event in retry_from_sequence(session_id, sequence, self.repository, runner):
             yield event
 
     async def fork_session(self, session_id: str, sequence: int) -> str:
@@ -170,17 +144,11 @@ class Agent:
 
         return await fork_session(session_id, sequence, self.repository)
 
-    async def list_runs(
-        self, 
-        user_id: str | None = None, 
-        limit: int = 20, 
-        offset: int = 0
-    ):
+    async def list_runs(self, user_id: str | None = None, limit: int = 20, offset: int = 0):
         """
         列出历史 Runs。
         """
         if not self.repository:
             raise ValueError("Repository not configured")
-        
-        return await self.repository.list_runs(user_id=user_id, limit=limit, offset=offset)
 
+        return await self.repository.list_runs(user_id=user_id, limit=limit, offset=offset)

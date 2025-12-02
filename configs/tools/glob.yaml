@@ -1,0 +1,12 @@
+type: tool
+name: glob
+description: "Find files matching glob patterns"
+tool_name: glob
+params:
+  # timeout_seconds: 30
+  # max_results: 1000
+enabled: true
+tags:
+  - search
+  - file
+  - filesystem

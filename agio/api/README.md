@@ -265,7 +265,14 @@ uvicorn agio.api.app:app --host 0.0.0.0 --port 8000 --workers 4
 
 ## Configuration
 
-The API automatically loads configurations from `./configs` on startup. Make sure your configuration files are in place before starting the server.
+The API uses environment variables for configuration. Set them in `.env` file or environment:
+
+```bash
+# .env
+AGIO_OPENAI_API_KEY=sk-...
+AGIO_LOG_LEVEL=INFO
+AGIO_MONGO_URI=mongodb://localhost:27017
+```
 
 ## Next Steps
 

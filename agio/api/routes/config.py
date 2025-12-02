@@ -1,75 +1,176 @@
-from fastapi import APIRouter, HTTPException, Depends
-from typing import Any, Dict
+"""
+Configuration management routes.
+"""
+
+import os
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from agio.registry.manager import ConfigManager
-from agio.api.dependencies import get_config_manager
 
-router = APIRouter(prefix="/api/config", tags=["config"])
+from agio.api.deps import get_config_sys
+from agio.config import ConfigSystem
+from agio.core.config import ComponentType
 
-class ConfigUpdate(BaseModel):
-    config: Dict[str, Any]
-    validate_only: bool = False
+router = APIRouter(prefix="/config")
 
-@router.get("/", response_model=Dict[str, Any])
-async def list_configs(manager: ConfigManager = Depends(get_config_manager)):
-    """List all loaded configurations."""
-    # ConfigManager doesn't have a direct "list all" method that returns configs, 
-    # but registry does.
-    return {
-        name: config.model_dump() 
-        for name, config in manager.registry.list_configs().items()
-    }
 
-@router.get("/{name}", response_model=Dict[str, Any])
-async def get_config(name: str, manager: ConfigManager = Depends(get_config_manager)):
+# Request/Response Models
+class ConfigData(BaseModel):
+    """Configuration data for create/update."""
+    config: dict[str, Any]
+
+
+class ConfigResponse(BaseModel):
+    type: str
+    name: str
+    config: dict[str, Any]
+
+
+class ComponentInfo(BaseModel):
+    name: str
+    type: str | None
+    dependencies: list[str]
+    created_at: str | None
+
+
+class MessageResponse(BaseModel):
+    message: str
+    details: dict[str, Any] | None = None
+
+
+# Routes
+@router.get("")
+async def list_all_configs(
+    config_sys: ConfigSystem = Depends(get_config_sys),
+) -> dict[str, list[dict]]:
+    """List all configurations grouped by type."""
+    result = {}
+    for comp_type in ComponentType:
+        configs = config_sys.list_configs(comp_type)
+        if configs:
+            result[comp_type.value] = [c.get("config", {}) for c in configs]
+    return result
+
+
+@router.get("/{config_type}")
+async def list_configs_by_type(
+    config_type: str,
+    config_sys: ConfigSystem = Depends(get_config_sys),
+) -> list[dict]:
+    """List configurations of a specific type."""
+    try:
+        comp_type = ComponentType(config_type)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid config type: {config_type}")
+
+    configs = config_sys.list_configs(comp_type)
+    return [c.get("config", {}) for c in configs]
+
+
+@router.get("/{config_type}/{name}")
+async def get_config(
+    config_type: str,
+    name: str,
+    config_sys: ConfigSystem = Depends(get_config_sys),
+) -> dict:
     """Get a specific configuration."""
-    config = manager.registry.get_config(name)
+    try:
+        comp_type = ComponentType(config_type)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid config type: {config_type}")
+
+    config = config_sys.get_config(comp_type, name)
     if not config:
-        raise HTTPException(status_code=404, detail=f"Configuration '{name}' not found")
-    return config.model_dump()
+        raise HTTPException(status_code=404, detail=f"Config '{config_type}/{name}' not found")
 
-@router.put("/{name}")
-async def update_config(name: str, update: ConfigUpdate, manager: ConfigManager = Depends(get_config_manager)):
-    """Update a configuration."""
-    
-    # Ensure name matches
-    if update.config.get("name") != name:
-        raise HTTPException(status_code=400, detail="Configuration name mismatch")
-        
-    success, message = manager.update_component(
-        component_name=name,
-        new_config=update.config,
-        validate_only=update.validate_only
-    )
-    
-    if not success:
-        raise HTTPException(status_code=400, detail=message)
-        
-    return {"message": message}
+    return config
 
-@router.delete("/{name}")
-async def delete_config(name: str, manager: ConfigManager = Depends(get_config_manager)):
+
+@router.put("/{config_type}/{name}", response_model=MessageResponse)
+async def upsert_config(
+    config_type: str,
+    name: str,
+    data: ConfigData,
+    config_sys: ConfigSystem = Depends(get_config_sys),
+):
+    """Create or update a configuration."""
+    try:
+        comp_type = ComponentType(config_type)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid config type: {config_type}")
+
+    # Ensure name and type are set
+    config_data = data.config.copy()
+    config_data["name"] = name
+    config_data["type"] = config_type
+
+    # Parse and save config
+    try:
+        config_class = config_sys.CONFIG_CLASSES.get(comp_type)
+        if not config_class:
+            raise HTTPException(status_code=400, detail=f"Unknown config type: {config_type}")
+
+        config = config_class(**config_data)
+        await config_sys.save_config(config)
+
+        return MessageResponse(message=f"Config '{config_type}/{name}' saved")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/{config_type}/{name}", response_model=MessageResponse)
+async def delete_config(
+    config_type: str,
+    name: str,
+    config_sys: ConfigSystem = Depends(get_config_sys),
+):
     """Delete a configuration."""
-    success, message = manager.delete_component(name)
-    
-    if not success:
-        raise HTTPException(status_code=400, detail=message)
-        
-    return {"message": message}
+    try:
+        comp_type = ComponentType(config_type)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid config type: {config_type}")
 
-@router.post("/reload")
-async def reload_configs(manager: ConfigManager = Depends(get_config_manager)):
+    # Check exists
+    if not config_sys.get_config(comp_type, name):
+        raise HTTPException(status_code=404, detail=f"Config '{config_type}/{name}' not found")
+
+    await config_sys.delete_config(comp_type, name)
+    return MessageResponse(message=f"Config '{config_type}/{name}' deleted")
+
+
+@router.get("/components", response_model=list[ComponentInfo])
+async def list_components(
+    config_sys: ConfigSystem = Depends(get_config_sys),
+):
+    """List all built component instances."""
+    components = config_sys.list_components()
+    return [ComponentInfo(**c) for c in components]
+
+
+@router.post("/components/{name}/rebuild", response_model=MessageResponse)
+async def rebuild_component(
+    name: str,
+    config_sys: ConfigSystem = Depends(get_config_sys),
+):
+    """Rebuild a component and its dependents."""
+    try:
+        await config_sys.rebuild(name)
+        return MessageResponse(message=f"Component '{name}' rebuilt")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/reload", response_model=MessageResponse)
+async def reload_configs(
+    config_sys: ConfigSystem = Depends(get_config_sys),
+):
     """Reload all configurations from disk."""
-    results = manager.reload_all()
-    
-    # Check if any failed
-    failures = {k: v[1] for k, v in results.items() if not v[0]}
-    
-    if failures:
-        return {
-            "message": "Some configurations failed to reload",
-            "failures": failures,
-            "results": results
-        }
-        
-    return {"message": "All configurations reloaded successfully", "results": results}
+    config_dir = os.getenv("AGIO_CONFIG_DIR", "./configs")
+
+    try:
+        stats = await config_sys.load_from_directory(config_dir)
+        await config_sys.build_all()
+        return MessageResponse(message="Configs reloaded", details=stats)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

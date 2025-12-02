@@ -1,11 +1,56 @@
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { configService, Config } from '../services/api'
-import { useState } from 'react'
+import { RefreshCw, Trash2, Bot, Wrench, Database, Brain, BookOpen, Server, ChevronDown, ChevronRight } from 'lucide-react'
+import toast from 'react-hot-toast'
+
+// Type metadata for display
+const TYPE_META: Record<string, { icon: typeof Bot; label: string; color: string; description: string }> = {
+  agent: { 
+    icon: Bot, 
+    label: 'Agents', 
+    color: 'text-blue-400 bg-blue-500/10 border-blue-500/30',
+    description: 'AI agents with specific capabilities'
+  },
+  model: { 
+    icon: Server, 
+    label: 'Models', 
+    color: 'text-purple-400 bg-purple-500/10 border-purple-500/30',
+    description: 'LLM model configurations'
+  },
+  tool: { 
+    icon: Wrench, 
+    label: 'Tools', 
+    color: 'text-orange-400 bg-orange-500/10 border-orange-500/30',
+    description: 'Tools available to agents'
+  },
+  repository: { 
+    icon: Database, 
+    label: 'Storage', 
+    color: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30',
+    description: 'Data persistence for agent runs'
+  },
+  memory: { 
+    icon: Brain, 
+    label: 'Memory', 
+    color: 'text-green-400 bg-green-500/10 border-green-500/30',
+    description: 'Conversation memory backends'
+  },
+  knowledge: { 
+    icon: BookOpen, 
+    label: 'Knowledge', 
+    color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30',
+    description: 'Knowledge bases and RAG sources'
+  },
+}
+
+// Order for display
+const TYPE_ORDER = ['agent', 'model', 'tool', 'repository', 'memory', 'knowledge']
 
 export default function ConfigList() {
   const queryClient = useQueryClient()
-  const [filterType, setFilterType] = useState<string>('all')
+  const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set(['agent', 'model', 'tool']))
 
   const { data: configs, isLoading, error } = useQuery({
     queryKey: ['configs'],
@@ -16,171 +61,249 @@ export default function ConfigList() {
     mutationFn: () => configService.reloadConfigs(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['configs'] })
-      alert('Configurations reloaded successfully')
+      toast.success('Configurations reloaded')
     },
     onError: (error) => {
-      alert(`Failed to reload configurations: ${(error as Error).message}`)
+      toast.error(`Failed to reload: ${(error as Error).message}`)
     },
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (name: string) => configService.deleteConfig(name),
+    mutationFn: ({ type, name }: { type: string; name: string }) => 
+      configService.deleteConfig(type, name),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['configs'] })
+      toast.success('Configuration deleted')
+    },
+    onError: () => {
+      toast.error('Failed to delete configuration')
     },
   })
+
+  const toggleType = (type: string) => {
+    setExpandedTypes(prev => {
+      const next = new Set(prev)
+      if (next.has(type)) {
+        next.delete(type)
+      } else {
+        next.add(type)
+      }
+      return next
+    })
+  }
 
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
-        <div className="text-gray-400">Loading...</div>
+        <div className="text-gray-400">Loading configurations...</div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="text-error">
+      <div className="text-red-400 bg-red-900/20 border border-red-500/30 rounded-lg p-4">
         Error loading configurations: {(error as Error).message}
       </div>
     )
   }
 
-  const configList = Object.values(configs || {})
-  const types = Array.from(new Set(configList.map((c) => c.type)))
-  
-  const filteredConfigs = filterType === 'all' 
-    ? configList 
-    : configList.filter((c) => c.type === filterType)
+  // Group configs by type
+  const configsByType: Record<string, Config[]> = {}
+  if (configs) {
+    Object.entries(configs).forEach(([type, items]) => {
+      if (Array.isArray(items) && items.length > 0) {
+        configsByType[type] = items
+      }
+    })
+  }
+
+  // Sort types by predefined order
+  const sortedTypes = Object.keys(configsByType).sort((a, b) => {
+    const aIndex = TYPE_ORDER.indexOf(a)
+    const bIndex = TYPE_ORDER.indexOf(b)
+    if (aIndex === -1 && bIndex === -1) return a.localeCompare(b)
+    if (aIndex === -1) return 1
+    if (bIndex === -1) return -1
+    return aIndex - bIndex
+  })
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6 max-w-6xl mx-auto">
+      {/* Header */}
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-white">
-          Configurations
-        </h1>
-        <div className="flex gap-2">
-          <button 
-            onClick={() => reloadMutation.mutate()}
-            disabled={reloadMutation.isPending}
-            className="px-3 py-1.5 bg-surfaceHighlight text-gray-300 rounded-lg hover:bg-border disabled:opacity-50 text-sm transition-colors"
-          >
-            {reloadMutation.isPending ? 'Reloading...' : 'Reload from Disk'}
-          </button>
-          <Link
-            to="/config/new"
-            className="px-3 py-1.5 bg-primary-600 text-white rounded-lg hover:bg-primary-500 text-sm transition-colors"
-          >
-            Create Config
-          </Link>
+        <div>
+          <h1 className="text-2xl font-semibold text-white">Configuration</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Manage agents, models, tools, and other system components
+          </p>
         </div>
-      </div>
-
-      <div className="flex gap-2 overflow-x-auto pb-2">
-        <button
-          onClick={() => setFilterType('all')}
-          className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-            filterType === 'all'
-              ? 'bg-primary-500/20 text-primary-400 border border-primary-500/50'
-              : 'bg-surfaceHighlight text-gray-400 border border-transparent hover:border-gray-600'
-          }`}
+        <button 
+          onClick={() => reloadMutation.mutate()}
+          disabled={reloadMutation.isPending}
+          className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-500 disabled:opacity-50 text-sm transition-colors"
         >
-          All
+          <RefreshCw className={`w-4 h-4 ${reloadMutation.isPending ? 'animate-spin' : ''}`} />
+          Reload All
         </button>
-        {types.map((type) => (
-          <button
-            key={type}
-            onClick={() => setFilterType(type)}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-              filterType === type
-                ? 'bg-primary-500/20 text-primary-400 border border-primary-500/50'
-                : 'bg-surfaceHighlight text-gray-400 border border-transparent hover:border-gray-600'
-            }`}
-          >
-            {type}
-          </button>
-        ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {filteredConfigs.map((config) => (
-          <ConfigCard 
-            key={config.name} 
-            config={config} 
-            onDelete={(name) => {
-              if (confirm(`Are you sure you want to delete ${name}?`)) {
-                deleteMutation.mutate(name)
-              }
-            }}
-          />
-        ))}
+      {/* Stats Overview */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        {TYPE_ORDER.map(type => {
+          const meta = TYPE_META[type]
+          const count = configsByType[type]?.length || 0
+          const Icon = meta?.icon || Server
+          return (
+            <div 
+              key={type}
+              className={`p-3 rounded-lg border ${meta?.color || 'text-gray-400 bg-gray-500/10 border-gray-500/30'} cursor-pointer hover:opacity-80 transition-opacity`}
+              onClick={() => {
+                if (count > 0) {
+                  setExpandedTypes(new Set([type]))
+                  document.getElementById(`section-${type}`)?.scrollIntoView({ behavior: 'smooth' })
+                }
+              }}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <Icon className="w-4 h-4" />
+                <span className="text-xs font-medium">{meta?.label || type}</span>
+              </div>
+              <div className="text-2xl font-bold">{count}</div>
+            </div>
+          )
+        })}
       </div>
 
-      {filteredConfigs.length === 0 && (
-        <div className="text-center py-12 text-gray-400">
-          No configurations found
+      {/* Grouped Sections */}
+      <div className="space-y-4">
+        {sortedTypes.map(type => {
+          const items = configsByType[type]
+          const meta = TYPE_META[type]
+          const Icon = meta?.icon || Server
+          const isExpanded = expandedTypes.has(type)
+
+          return (
+            <div 
+              key={type} 
+              id={`section-${type}`}
+              className="bg-surface border border-border rounded-xl overflow-hidden"
+            >
+              {/* Section Header */}
+              <button
+                onClick={() => toggleType(type)}
+                className="w-full flex items-center justify-between p-4 hover:bg-white/5 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg ${meta?.color || 'bg-gray-500/10'}`}>
+                    <Icon className="w-5 h-5" />
+                  </div>
+                  <div className="text-left">
+                    <h2 className="text-lg font-medium text-white">
+                      {meta?.label || type}
+                      <span className="ml-2 text-sm text-gray-500">({items.length})</span>
+                    </h2>
+                    <p className="text-xs text-gray-500">{meta?.description}</p>
+                  </div>
+                </div>
+                {isExpanded ? (
+                  <ChevronDown className="w-5 h-5 text-gray-400" />
+                ) : (
+                  <ChevronRight className="w-5 h-5 text-gray-400" />
+                )}
+              </button>
+
+              {/* Section Content */}
+              {isExpanded && (
+                <div className="border-t border-border">
+                  <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {items.map((config) => (
+                      <ConfigCard 
+                        key={`${config.type}-${config.name}`} 
+                        config={config}
+                        typeMeta={meta}
+                        onDelete={(type, name) => {
+                          if (confirm(`Are you sure you want to delete ${name}?`)) {
+                            deleteMutation.mutate({ type, name })
+                          }
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {sortedTypes.length === 0 && (
+        <div className="text-center py-16 text-gray-400">
+          <Server className="w-12 h-12 mx-auto mb-4 opacity-50" />
+          <p>No configurations found</p>
+          <p className="text-sm mt-1">Add configuration files to the configs directory</p>
         </div>
       )}
     </div>
   )
 }
 
-function ConfigCard({ config, onDelete }: { config: Config; onDelete: (name: string) => void }) {
+interface ConfigCardProps {
+  config: Config
+  typeMeta?: { icon: typeof Bot; label: string; color: string }
+  onDelete: (type: string, name: string) => void
+}
+
+function ConfigCard({ config, onDelete }: ConfigCardProps) {
   return (
-    <div className="bg-surface border border-border rounded-xl p-4 hover:border-primary-500/50 transition-all duration-200 hover:shadow-lg group">
-      <div className="flex justify-between items-start mb-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h3 className="text-base font-semibold text-white group-hover:text-primary-400 transition-colors">
-              {config.name}
-            </h3>
-            <span className="px-1.5 py-0.5 text-[10px] uppercase tracking-wider bg-surfaceHighlight rounded text-gray-400">
-              {config.type}
-            </span>
-          </div>
-          {config.description && (
-            <p className="mt-1 text-xs text-gray-400 line-clamp-2">
-              {config.description}
-            </p>
-          )}
-        </div>
-        {config.enabled !== undefined && (
-          <span
-            className={`px-1.5 py-0.5 text-[10px] rounded-full border ${
-              config.enabled
-                ? 'bg-green-900/30 text-green-400 border-green-900'
-                : 'bg-gray-800 text-gray-400 border-gray-700'
-            }`}
-          >
-            {config.enabled ? 'Active' : 'Inactive'}
+    <Link
+      to={`/config/${config.type}/${config.name}`}
+      className="block bg-background border border-border rounded-lg p-3 hover:border-primary-500/50 hover:bg-white/[0.02] transition-all group relative cursor-pointer"
+    >
+      {/* Delete button - appears on hover */}
+      <button 
+        onClick={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          onDelete(config.type, config.name)
+        }}
+        className="absolute top-2 right-2 p-1.5 text-gray-600 hover:text-red-400 hover:bg-red-900/20 rounded opacity-0 group-hover:opacity-100 transition-all"
+        title="Delete"
+      >
+        <Trash2 className="w-3.5 h-3.5" />
+      </button>
+
+      <div className="flex justify-between items-start mb-1 pr-6">
+        <h3 className="text-sm font-medium text-white group-hover:text-primary-400 transition-colors truncate">
+          {config.name}
+        </h3>
+        {config.enabled === false && (
+          <span className="px-1.5 py-0.5 text-[10px] bg-gray-700 text-gray-400 rounded flex-shrink-0">
+            Disabled
           </span>
         )}
       </div>
-
-      {config.tags && config.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-4">
-          {config.tags.map((tag) => (
-            <span key={tag} className="text-[10px] text-gray-400 bg-surfaceHighlight px-1.5 py-0.5 rounded">
-              #{tag}
-            </span>
-          ))}
-        </div>
+      
+      {config.description && (
+        <p className="text-xs text-gray-500 line-clamp-2 mb-2">
+          {config.description}
+        </p>
       )}
 
-      <div className="flex gap-2 mt-auto pt-2 border-t border-border/50">
-        <Link
-          to={`/config/${config.name}`}
-          className="flex-1 px-3 py-1.5 bg-surfaceHighlight text-gray-300 text-center rounded-md hover:bg-border text-xs transition-colors"
-        >
-          Edit
-        </Link>
-        <button 
-          onClick={() => onDelete(config.name)}
-          className="px-3 py-1.5 border border-red-900/30 text-red-400 rounded-md hover:bg-red-900/20 text-xs transition-colors"
-        >
-          Delete
-        </button>
-      </div>
-    </div>
+      {config.tags && config.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {config.tags.slice(0, 3).map(tag => (
+            <span key={tag} className="px-1.5 py-0.5 text-[10px] bg-surfaceHighlight text-gray-400 rounded">
+              {tag}
+            </span>
+          ))}
+          {config.tags.length > 3 && (
+            <span className="px-1.5 py-0.5 text-[10px] text-gray-500">
+              +{config.tags.length - 3}
+            </span>
+          )}
+        </div>
+      )}
+    </Link>
   )
 }

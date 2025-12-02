@@ -1,7 +1,7 @@
 type: agent
 name: code_assistant
 description: "AI coding assistant for development tasks"
-model: gpt-4o-mini
+model: deepseek
 system_prompt: |
   You are an expert software engineer and coding assistant. Your capabilities include:
   - Writing clean, efficient, and well-documented code
@@ -12,9 +12,14 @@ system_prompt: |
   
   Always provide code examples and explanations.
 tools:
-  - code_search
-  - run_tests
-  - format_code
+  # Just reference tool names - they will be loaded from configs/tools/
+  - file_read
+  - file_edit
+  - file_write
+  - grep
+  - glob
+  - ls
+  - bash
 repository: mongodb_repo
 hooks:
   - logging_hook

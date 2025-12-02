@@ -2,26 +2,30 @@ import { Routes, Route } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
-import AgentList from './pages/AgentList'
 import ConfigList from './pages/ConfigList'
 import ConfigEditor from './pages/ConfigEditor'
+import ChatSelect from './pages/ChatSelect'
 import Chat from './pages/Chat'
-import Runs from './pages/Runs'
+import Knowledge from './pages/Knowledge'
+import Memory from './pages/Memory'
+import Sessions from './pages/Sessions'
 import Metrics from './pages/Metrics'
 
 function App() {
   return (
     <>
-      <Toaster />
+      <Toaster position="top-right" />
       <Layout>
         <Routes>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/agents" element={<AgentList />} />
-          <Route path="/runs" element={<Runs />} />
+          <Route path="/chat" element={<ChatSelect />} />
+          <Route path="/chat/:agentId" element={<Chat />} />
+          <Route path="/knowledge" element={<Knowledge />} />
+          <Route path="/memory" element={<Memory />} />
+          <Route path="/sessions" element={<Sessions />} />
           <Route path="/metrics" element={<Metrics />} />
           <Route path="/config" element={<ConfigList />} />
-          <Route path="/config/:name" element={<ConfigEditor />} />
-          <Route path="/chat/:agentId" element={<Chat />} />
+          <Route path="/config/:type/:name" element={<ConfigEditor />} />
         </Routes>
       </Layout>
     </>

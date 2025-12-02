@@ -1,0 +1,12 @@
+type: tool
+name: bash
+description: "Execute bash commands in a controlled environment"
+tool_name: bash
+params:
+  # timeout_seconds: 300
+  # max_output_length: 30000
+enabled: true
+tags:
+  - system
+  - command
+  - execution

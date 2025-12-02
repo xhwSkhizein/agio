@@ -1,276 +1,323 @@
-# Agio - Agent Framework
+# Agio - Modern Agent Framework
 
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
 [![React](https://img.shields.io/badge/React-18+-61dafb.svg)](https://reactjs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5+-blue.svg)](https://www.typescriptlang.org/)
-[![uv](https://img.shields.io/badge/uv-managed-blue.svg)](https://github.com/astral-sh/uv)
 
-**Agio** 是一个现代化的 Agent 框架，提供完整的配置管理、执行控制、API 接口和可观测平台。
+**Agio** 是一个现代化、简洁的 Agent 框架，专注于核心功能和可扩展性。
+
+> 🎉 **v2.0 重构完成！** 架构大幅简化，包数量减少 53%，更易理解和维护。
 
 ## ✨ 核心特性
 
-### 🎯 配置系统
-- **YAML 配置驱动** - 声明式定义 Agent、Model、Tool
-- **动态热重载** - 无需重启即可更新配置
-- **环境变量支持** - `${ENV_VAR}` 语法
-- **配置继承** - `extends` 复用配置
+### 🏗️ 简洁架构
+- **7 个核心包** - 清晰的职责划分
+- **统一配置** - 一个配置系统管理所有设置
+- **零转换设计** - Step 模型直接映射 LLM 消息格式
+- **适配器模式** - 数据模型和转换逻辑分离
 
-### 💾 执行控制
-- **Checkpoint 快照** - 保存完整执行状态
-- **Resume/Fork** - 从任意点恢复或分支
-- **Pause/Resume/Cancel** - 灵活控制执行
-- **时光旅行调试** - 回到任意执行步骤
+### 💾 Step-based 执行
+- **统一的 Step 模型** - 用户消息、助手响应、工具调用统一表示
+- **流式执行** - 实时 SSE 事件流
+- **完整追踪** - 每个 Step 包含详细的 metrics
+- **Resume/Fork** - 从任意 Step 恢复或分支
+
+### 🔌 可插拔组件
+- **多模型支持** - OpenAI、Anthropic、Deepseek
+- **丰富的工具** - 内置工具库 + 自定义工具
+- **记忆系统** - 对话记忆 + 语义记忆
+- **知识库** - Vector 知识库集成
 
 ### 🚀 FastAPI Backend
 - **RESTful API** - 完整的 CRUD 操作
 - **SSE 流式传输** - 实时 Chat 交互
 - **自动文档** - Swagger UI + ReDoc
-- **执行控制 API** - Pause/Resume/Cancel 端点
-
-### 🎨 React Frontend
-- **现代化 UI** - TailwindCSS + 深色模式
-- **实时 Chat** - SSE 流式消息
-- **Agent 管理** - 可视化配置界面
-- **仪表盘** - 系统概览和指标
 
 ## 🚀 快速开始
 
-### 前置要求
-
-- Python 3.11+
-- [uv](https://github.com/astral-sh/uv) (Python 包管理器)
-- Node.js 18+
-
-### 安装 uv
+### 安装
 
 ```bash
-# macOS/Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Windows
-powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-### 一键启动
-
-```bash
-# 启动服务（后端 + 前端）
-./start.sh
-```
-
-启动脚本会自动:
-1. 安装 uv (如果未安装)
-2. 使用 uv 同步 Python 依赖
-3. 安装前端依赖
-4. 启动后端和前端服务
-
-访问:
-- **前端**: http://localhost:3000
-- **API 文档**: http://localhost:8000/docs
-- **健康检查**: http://localhost:8000/api/health
-
-### 手动启动
-
-#### 后端 (使用 uv)
-
-```bash
-# 同步依赖
+# 使用 uv (推荐)
 uv sync
 
-# 启动服务
-uv run uvicorn agio.api.app:app --reload
-
-# 或使用 Python 脚本
-uv run python main.py
+# 或使用 pip
+pip install -r requirements.txt
 ```
 
-#### 前端
+### 基础使用
+
+```python
+from agio.agent import Agent
+from agio.components.models.openai import OpenAIModel
+from agio.components.tools.builtin import SearchTool, CalculatorTool
+from agio.core import ExecutionConfig
+
+# 创建 Agent
+agent = Agent(
+    model=OpenAIModel(model_name="gpt-4"),
+    tools=[SearchTool(), CalculatorTool()],
+    system_prompt="You are a helpful assistant.",
+)
+
+# 运行 Agent (文本流)
+async for text in agent.arun("What is 2+2?"):
+    print(text, end="", flush=True)
+
+# 或获取完整的事件流
+async for event in agent.arun_stream("Search for Python tutorials"):
+    if event.type == "step_delta":
+        print(event.delta.content, end="")
+    elif event.type == "step_completed":
+        print(f"\nStep completed: {event.snapshot.role}")
+```
+
+### 配置
+
+使用环境变量或 `.env` 文件：
 
 ```bash
-cd agio-frontend
-npm install
-npm run dev
+# .env
+AGIO_DEBUG=false
+AGIO_LOG_LEVEL=INFO
+
+# OpenAI
+AGIO_OPENAI_API_KEY=sk-...
+AGIO_OPENAI_BASE_URL=https://api.openai.com/v1
+
+# MongoDB (可选)
+AGIO_MONGO_URI=mongodb://localhost:27017
+AGIO_MONGO_DB_NAME=agio
 ```
 
-### 停止服务
+在代码中使用：
 
-```bash
-./stop.sh
+```python
+from agio.core.config import settings, ExecutionConfig
+
+# 全局配置
+print(settings.log_level)
+
+# 运行时配置
+config = ExecutionConfig(
+    max_steps=20,
+    parallel_tool_calls=True,
+    timeout_per_step=120.0
+)
+
+agent = Agent(model=model, tools=tools)
+runner = StepRunner(agent=agent, config=config)
 ```
 
-## 📁 项目结构
+## 📦 架构概览
 
 ```
 agio/
-├── agio/
-│   ├── agent/              # Agent 核心
-│   ├── models/             # LLM 模型
-│   ├── tools/              # 工具集成
-│   ├── memory/             # 记忆系统
-│   ├── knowledge/          # 知识库
-│   ├── registry/           # 配置系统 ⭐
-│   │   ├── models.py       # Pydantic 配置模型
-│   │   ├── base.py         # 组件注册表
-│   │   ├── loader.py       # YAML 加载器
-│   │   ├── factory.py      # 组件工厂
-│   │   └── README.md
-│   ├── execution/          # 执行控制 ⭐
-│   │   ├── checkpoint.py   # Checkpoint 模型
-│   │   ├── control.py      # 执行控制器
-│   │   ├── resume.py       # 恢复执行
-│   │   ├── fork.py         # Fork 管理
-│   │   └── README.md
-│   └── api/                # FastAPI Backend ⭐
-│       ├── app.py          # FastAPI 应用
-│       ├── routes/         # API 路由
-│       └── README.md
-├── agio-frontend/          # React Frontend ⭐
-│   ├── src/
-│   │   ├── components/     # 组件
-│   │   ├── pages/          # 页面
-│   │   └── services/       # API 服务
-│   └── README.md
-├── configs/                # 配置文件
-│   ├── models/             # Model 配置
-│   ├── agents/             # Agent 配置
-│   └── tools/              # Tool 配置
-├── tests/                  # 测试
-├── pyproject.toml          # uv 项目配置
-├── start.sh                # 一键启动脚本
-└── README.md
+├── core/          # 核心模型、事件、配置
+│   ├── models.py      # Step, AgentRun, Session 等
+│   ├── events.py      # StepEvent, StepDelta 等
+│   ├── config.py      # 统一配置管理
+│   └── adapters.py    # 格式转换适配器
+│
+├── agent/         # Agent 核心
+│   ├── base.py        # Agent 类
+│   └── hooks.py       # 生命周期钩子
+│
+├── execution/     # 执行引擎
+│   ├── runner.py      # StepRunner - 管理 Run 生命周期
+│   ├── executor.py    # StepExecutor - LLM 循环
+│   ├── tools.py       # ToolExecutor - 工具执行
+│   └── context.py     # 上下文构建
+│
+├── components/    # 可插拔组件
+│   ├── models/        # LLM 模型适配器
+│   ├── tools/         # 工具实现
+│   ├── memory/        # 记忆系统
+│   └── knowledge/     # 知识库
+│
+├── storage/       # 持久化层
+│   ├── base.py        # Storage 接口
+│   ├── repository.py  # AgentRunRepository
+│   └── mongo.py       # MongoDB 实现
+│
+├── api/           # Web API
+└── utils/         # 工具函数
 ```
 
-## 📝 配置示例
+## 🔧 核心概念
 
-### Model 配置
+### Step 模型
 
-```yaml
-# configs/models/gpt4.yaml
-type: model
-name: gpt4
-provider: openai
-model: gpt-4-turbo-preview
-api_key: ${OPENAI_API_KEY}
-temperature: 0.7
-```
-
-### Agent 配置
-
-```yaml
-# configs/agents/assistant.yaml
-type: agent
-name: assistant
-model: gpt4
-system_prompt: "You are a helpful assistant."
-tools:
-  - search_tool
-  - calculator
-```
-
-## 🔧 使用示例
-
-### Python API
+Step 是 Agio 的核心数据模型，直接映射 LLM 消息格式：
 
 ```python
-from agio.registry import load_from_config, get_registry
+from agio.core import Step, MessageRole
 
-# 加载配置
-load_from_config("./configs")
+# 用户消息
+user_step = Step(
+    session_id="session_123",
+    run_id="run_456",
+    sequence=1,
+    role=MessageRole.USER,
+    content="Hello!"
+)
 
-# 获取 Agent
-registry = get_registry()
-agent = registry.get("assistant")
+# 助手响应（带工具调用）
+assistant_step = Step(
+    session_id="session_123",
+    run_id="run_456",
+    sequence=2,
+    role=MessageRole.ASSISTANT,
+    content="Let me search for that.",
+    tool_calls=[{
+        "id": "call_123",
+        "type": "function",
+        "function": {"name": "search", "arguments": "{}"}
+    }]
+)
 
-# 运行
-async for chunk in agent.arun("Hello!"):
-    print(chunk, end="", flush=True)
+# 工具结果
+tool_step = Step(
+    session_id="session_123",
+    run_id="run_456",
+    sequence=3,
+    role=MessageRole.TOOL,
+    content="Search results: ...",
+    tool_call_id="call_123",
+    name="search"
+)
 ```
 
-### REST API
+### StepAdapter
 
-```bash
-# 列出 Agents
-curl http://localhost:8000/api/agents
+用于格式转换，保持 Domain 模型纯粹：
 
-# Chat (流式)
-curl -X POST http://localhost:8000/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{"agent_id": "assistant", "message": "Hello", "stream": true}'
+```python
+from agio.core import StepAdapter
 
-# 暂停执行
-curl -X POST http://localhost:8000/api/runs/{run_id}/pause
+# Step → LLM Message
+message = StepAdapter.to_llm_message(step)
+
+# Steps → Messages
+messages = StepAdapter.steps_to_messages(steps)
+
+# 直接发送给 LLM
+response = await llm.chat(messages)
 ```
 
-## 📊 测试
+### 自定义工具
 
-```bash
-# 运行所有测试
-uv run pytest
+```python
+import time
+from agio.components.tools import BaseTool
+from agio.core.events import ToolResult
 
-# 配置系统测试
-uv run pytest tests/test_registry.py -v
+class MyTool(BaseTool):
+    """My custom tool"""
+    
+    def get_name(self) -> str:
+        return "my_tool"
+    
+    def get_description(self) -> str:
+        return "My custom tool description"
+    
+    def get_parameters(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "param1": {"type": "string", "description": "First parameter"},
+                "param2": {"type": "integer", "description": "Second parameter"},
+            },
+            "required": ["param1", "param2"],
+        }
+    
+    def is_concurrency_safe(self) -> bool:
+        return True
+    
+    async def execute(self, parameters: dict, abort_signal=None) -> ToolResult:
+        start_time = time.time()
+        param1 = parameters.get("param1", "")
+        param2 = parameters.get("param2", 0)
+        result = f"Result: {param1} {param2}"
+        
+        return ToolResult(
+            tool_name=self.name,
+            tool_call_id=parameters.get("tool_call_id", ""),
+            input_args=parameters,
+            content=result,
+            output=result,
+            start_time=start_time,
+            end_time=time.time(),
+            duration=time.time() - start_time,
+            is_success=True,
+        )
 
-# 执行控制测试
-uv run pytest tests/test_execution.py -v
-
-# API 测试
-uv run pytest tests/test_api.py -v
+# 使用
+agent = Agent(
+    model=model,
+    tools=[MyTool()]
+)
 ```
 
-**测试结果**: 24+ tests passing ✅
+### 自定义 Hook
 
-## 🛠️ 开发
+```python
+from agio.agent.hooks import AgentHook
+from agio.core import AgentRun, Step
 
-### 安装开发依赖
+class MyHook(AgentHook):
+    async def on_run_start(self, run: AgentRun):
+        print(f"Run started: {run.id}")
+    
+    async def on_step_end(self, run: AgentRun, step: Step):
+        print(f"Step completed: {step.sequence}")
 
-```bash
-uv sync --all-extras
-```
-
-### 代码格式化
-
-```bash
-uv run black agio/
-uv run isort agio/
-```
-
-### 类型检查
-
-```bash
-uv run mypy agio/
+# 使用
+agent = Agent(
+    model=model,
+    hooks=[MyHook()]
+)
 ```
 
 ## 📚 文档
 
-- [配置系统文档](agio/registry/README.md)
-- [执行控制文档](agio/execution/README.md)
-- [API 文档](agio/api/README.md)
-- [前端文档](agio-frontend/README.md)
-- [项目总结](PROJECT_SUMMARY.md)
+- [架构设计](REFACTORING_SUMMARY.md) - 详细的架构说明和重构总结
+- [API 文档](http://localhost:8000/docs) - 启动服务后访问
+- [测试总结](TEST_SUMMARY.md) - 测试套件运行结果
 
-详细设计文档:
-- [配置系统设计](agio/registry/DESIGN.md)
-- [执行控制设计](agio/execution/DESIGN.md)
-- [API 设计](agio/api/DESIGN.md)
-- [前端设计](agio-frontend/DESIGN.md)
+## 🔄 从 v1.x 迁移
+
+### 主要变更
+
+1. **包结构简化**
+   - `domain/` → `core/models.py`
+   - `protocol/` → `core/events.py`
+   - `runners/` + `execution/` → `execution/`
+   - `db/` → `storage/`
+   - `models/` → `components/models/`
+
+2. **配置统一**
+   - `AgentRunConfig` + `StepExecutorConfig` → `ExecutionConfig`
+   - 所有配置在 `core/config.py`
+
+3. **API 变更**
+   - `step.to_message_dict()` → `StepAdapter.to_llm_message(step)`
+   - `from agio.domain.step import Step` → `from agio.core import Step`
+
+4. **Registry 移除**
+   - 动态配置管理系统已移除
+   - 使用环境变量和代码配置
+
+详见 [REFACTORING_SUMMARY.md](REFACTORING_SUMMARY.md)
 
 ## 🤝 贡献
 
-欢迎贡献！请查看 [CONTRIBUTING.md](CONTRIBUTING.md) 了解详情。
+欢迎贡献！请查看 [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## 📄 许可证
 
-MIT License - 详见 [LICENSE](LICENSE)
+MIT License
 
 ## 🙏 致谢
 
-- [uv](https://github.com/astral-sh/uv) - 极速 Python 包管理器
-- [FastAPI](https://fastapi.tiangolo.com/) - 现代化 Python Web 框架
-- [React](https://reactjs.org/) - UI 库
-- [TailwindCSS](https://tailwindcss.com/) - CSS 框架
-- [Pydantic](https://pydantic.dev/) - 数据验证
-
----
-
-**Built with ❤️ by the Agio Team**
+感谢所有贡献者！
