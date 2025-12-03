@@ -6,7 +6,7 @@ Provides RESTful API for managing agents, configurations, and system data.
 Usage:
     # Mode 1: Standalone server
     from agio.api import start_server
-    start_server(host="0.0.0.0", port=8000)
+    start_server(host="0.0.0.0", port=8900)
 
     # Mode 2: Integrate with existing FastAPI
     from fastapi import FastAPI
@@ -27,7 +27,7 @@ from .router import create_router
 
 def start_server(
     host: str = "0.0.0.0",
-    port: int = 8000,
+    port: int = 8900,
     reload: bool = False,
     **kwargs,
 ):

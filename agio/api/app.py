@@ -33,6 +33,14 @@ async def lifespan(app: FastAPI):
             config_dir=config_dir,
             components=len(config_sys.list_components()),
         )
+
+        # Initialize LLM call tracker
+        from agio.observability.tracker import get_tracker
+
+        tracker = get_tracker()
+        await tracker.initialize()
+        logger.info("llm_tracker_initialized")
+
     except Exception as e:
         logger.error("agio_api_init_failed", error=str(e), exc_info=True)
         raise

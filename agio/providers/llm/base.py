@@ -54,7 +54,19 @@ class Model(BaseModel, ABC):
     max_tokens: int | None = Field(default=None, ge=1)
     top_p: float | None = Field(default=None, ge=0.0, le=1.0)
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    # Internal flag to prevent double-wrapping
+    _tracking_enabled: bool = False
+
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
+
+    def model_post_init(self, __context) -> None:
+        """Enable LLM call tracking after model initialization."""
+        if not self._tracking_enabled:
+            from agio.observability.tracker import get_tracker
+
+            tracker = get_tracker()
+            tracker.wrap_model(self)
+            object.__setattr__(self, "_tracking_enabled", True)
 
     @abstractmethod
     async def arun_stream(

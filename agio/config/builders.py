@@ -73,6 +73,7 @@ class ModelBuilder(ComponentBuilder):
                     name=config.name,
                     api_key=config.api_key,
                     model_name=config.model_name,
+                    base_url=config.base_url,
                     temperature=config.temperature,
                     max_tokens=config.max_tokens,
                 )

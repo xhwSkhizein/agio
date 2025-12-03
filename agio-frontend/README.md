@@ -80,7 +80,7 @@ agio-frontend/
 
 ## API Integration
 
-The frontend connects to the Agio API backend at `http://localhost:8000/api`.
+The frontend connects to the Agio API backend at `http://localhost:8900/api`.
 
 API proxy is configured in `vite.config.ts`:
 
@@ -88,7 +88,7 @@ API proxy is configured in `vite.config.ts`:
 server: {
   proxy: {
     '/api': {
-      target: 'http://localhost:8000',
+      target: 'http://localhost:8900',
       changeOrigin: true,
     },
   },
@@ -151,7 +151,7 @@ server {
   }
   
   location /api {
-    proxy_pass http://backend:8000;
+    proxy_pass http://backend:8900;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
   }

@@ -11,6 +11,7 @@ import {
   Settings,
   FileText,
   ExternalLink,
+  Activity,
 } from 'lucide-react'
 
 interface LayoutProps {
@@ -24,6 +25,7 @@ const navItems = [
   { path: '/memory', label: 'Memory', icon: Brain },
   { path: '/sessions', label: 'Sessions', icon: History },
   { path: '/metrics', label: 'Metrics', icon: BarChart3 },
+  { path: '/llm-logs', label: 'LLM Logs', icon: Activity },
 ]
 
 const bottomNavItems = [
@@ -53,7 +55,7 @@ export default function Layout({ children }: LayoutProps) {
     <div className="min-h-screen bg-background flex">
       {/* Sidebar */}
       <aside className="w-56 bg-surface border-r border-border flex flex-col fixed h-full">
-        {/* Logo & Workspace */}
+        {/* Logo & Status */}
         <div className="p-4 border-b border-border">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center text-white font-bold text-sm">
@@ -63,6 +65,10 @@ export default function Layout({ children }: LayoutProps) {
               <div className="text-sm font-semibold text-white truncate">Agio</div>
               <div className="text-xs text-gray-500 truncate">Control Plane</div>
             </div>
+            {/* Status Indicator */}
+            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+              health?.ready ? 'bg-green-400' : 'bg-yellow-400 animate-pulse'
+            }`} title={health?.ready ? 'Running' : 'Starting'} />
           </div>
         </div>
 
@@ -132,28 +138,6 @@ export default function Layout({ children }: LayoutProps) {
 
       {/* Main Content */}
       <div className="flex-1 ml-56 flex flex-col min-h-screen">
-        {/* Top Bar */}
-        <header className="h-12 bg-surface/50 backdrop-blur-md border-b border-border flex items-center justify-end px-4 sticky top-0 z-40">
-          <div className="flex items-center gap-3">
-            {/* Status Indicator */}
-            <div className={`flex items-center gap-2 px-2 py-1 rounded text-xs font-medium ${
-              health?.ready
-                ? 'bg-green-900/30 text-green-400 border border-green-900/50'
-                : 'bg-yellow-900/30 text-yellow-400 border border-yellow-900/50'
-            }`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${
-                health?.ready ? 'bg-green-400' : 'bg-yellow-400 animate-pulse'
-              }`} />
-              {health?.ready ? 'RUNNING' : 'STARTING'}
-            </div>
-
-            {/* User Avatar */}
-            <div className="w-7 h-7 bg-surfaceHighlight rounded-full flex items-center justify-center text-xs font-medium text-gray-300">
-              U
-            </div>
-          </div>
-        </header>
-
         {/* Page Content */}
         <main className="flex-1 p-6">
           {children}

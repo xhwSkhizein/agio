@@ -155,7 +155,7 @@ class MyTool(BaseTool):
 ## 📚 文档
 
 - [架构设计](docs/ARCHITECTURE.md) - 详细架构说明
-- [API 文档](http://localhost:8000/docs) - 启动服务后访问
+- [API 文档](http://localhost:8900/docs) - 启动服务后访问
 
 ## 🤝 贡献
 

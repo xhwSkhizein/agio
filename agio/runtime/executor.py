@@ -123,6 +123,7 @@ class StepExecutor:
         run_id: str,
         messages: list[dict],
         start_sequence: int = 1,
+        pending_tool_calls: list[dict] | None = None,
         abort_signal: "AbortSignal | None" = None,
     ) -> AsyncIterator[StepEvent]:
         """
@@ -133,6 +134,7 @@ class StepExecutor:
             run_id: Run ID
             messages: Initial message list (OpenAI format), modified in place
             start_sequence: Starting sequence number
+            pending_tool_calls: Tool calls to execute before starting LLM loop (for resume)
             abort_signal: Abort signal (optional)
 
         Yields:
@@ -140,6 +142,21 @@ class StepExecutor:
         """
         current_step = 0
         current_sequence = start_sequence
+
+        # Execute pending tool_calls first (for resume from assistant with tools)
+        if pending_tool_calls:
+            logger.debug(
+                "executor_executing_pending_tools",
+                session_id=session_id,
+                run_id=run_id,
+                tool_count=len(pending_tool_calls),
+            )
+            
+            async for event, new_seq in self._execute_tool_calls(
+                pending_tool_calls, session_id, run_id, current_sequence, messages, abort_signal
+            ):
+                current_sequence = new_seq
+                yield event
 
         tool_schemas = self._get_tool_schemas() if self.tools else None
 
@@ -248,32 +265,59 @@ class StepExecutor:
                 tool_count=len(final_tool_calls),
             )
 
-            results = await self.tool_executor.execute_batch(
-                final_tool_calls, abort_signal=abort_signal
+            async for event, new_seq in self._execute_tool_calls(
+                final_tool_calls, session_id, run_id, current_sequence, messages, abort_signal
+            ):
+                current_sequence = new_seq
+                yield event
+
+    async def _execute_tool_calls(
+        self,
+        tool_calls: list[dict],
+        session_id: str,
+        run_id: str,
+        current_sequence: int,
+        messages: list[dict],
+        abort_signal: "AbortSignal | None" = None,
+    ) -> AsyncIterator[tuple[StepEvent, int]]:
+        """
+        Execute tool calls and yield (event, new_sequence) tuples.
+        
+        Args:
+            tool_calls: Tool calls to execute
+            session_id: Session ID
+            run_id: Run ID  
+            current_sequence: Current sequence number
+            messages: Messages list (modified in place)
+            abort_signal: Abort signal
+            
+        Yields:
+            tuple[StepEvent, int]: (step_completed_event, updated_sequence)
+        """
+        results = await self.tool_executor.execute_batch(tool_calls, abort_signal=abort_signal)
+        
+        for result in results:
+            tool_step = Step(
+                id=str(uuid4()),
+                session_id=session_id,
+                run_id=run_id,
+                sequence=current_sequence,
+                role=MessageRole.TOOL,
+                content=result.content,
+                tool_call_id=result.tool_call_id,
+                name=result.tool_name,
+                metrics=StepMetrics(
+                    duration_ms=result.duration * 1000 if result.duration else None,
+                    tool_exec_time_ms=result.duration * 1000 if result.duration else None,
+                ),
             )
-
-            for result in results:
-                tool_step = Step(
-                    id=str(uuid4()),
-                    session_id=session_id,
-                    run_id=run_id,
-                    sequence=current_sequence,
-                    role=MessageRole.TOOL,
-                    content=result.content,
-                    tool_call_id=result.tool_call_id,
-                    name=result.tool_name,
-                    metrics=StepMetrics(
-                        duration_ms=result.duration * 1000 if result.duration else None,
-                        tool_exec_time_ms=result.duration * 1000 if result.duration else None,
-                    ),
-                )
-
-                yield create_step_completed_event(
-                    step_id=tool_step.id, run_id=run_id, snapshot=tool_step
-                )
-
-                messages.append(StepAdapter.to_llm_message(tool_step))
-                current_sequence += 1
+            
+            messages.append(StepAdapter.to_llm_message(tool_step))
+            current_sequence += 1
+            
+            yield create_step_completed_event(
+                step_id=tool_step.id, run_id=run_id, snapshot=tool_step
+            ), current_sequence
 
     def _get_tool_schemas(self) -> list[dict]:
         """Get OpenAI schema for tools."""

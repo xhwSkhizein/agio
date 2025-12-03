@@ -4,7 +4,7 @@ description: "Simple conversation memory for maintaining context"
 class_path: agio.memory.conversation.ConversationMemory
 max_history_length: 20
 max_tokens: 4000
-enabled: true
+enabled: false  # Disabled: missing backend field
 tags:
   - memory
   - conversation

@@ -28,6 +28,7 @@ from agio.domain import (
     create_run_started_event,
 )
 from agio.domain.adapters import StepAdapter
+from agio.observability.tracker import set_tracking_context, clear_tracking_context
 from agio.runtime.control import AbortSignal
 from agio.runtime.context import build_context_from_steps
 from agio.runtime.executor import StepExecutor
@@ -100,11 +101,20 @@ class StepRunner:
             status=RunStatus.STARTING,
         )
         run.metrics.start_time = time.time()
+
+        # Set tracking context for LLM call logging
+        set_tracking_context(
+            agent_name=self.agent.id,
+            session_id=session.session_id,
+            run_id=run.id,
+        )
         
         logger.info("run_started", run_id=run.id, session_id=session.session_id, query=query)
 
         # 2. Send Run started event
-        yield create_run_started_event(run_id=run.id, query=query)
+        yield create_run_started_event(
+            run_id=run.id, query=query, session_id=session.session_id
+        )
 
         # 3. Create User Step
         user_step = Step(
@@ -247,6 +257,9 @@ class StepRunner:
 
             yield create_run_failed_event(run_id=run.id, error=str(e))
             raise e
+        finally:
+            # Clear tracking context
+            clear_tracking_context()
 
     async def _get_next_sequence(self, session_id: str) -> int:
         """Get next sequence number."""
@@ -302,19 +315,25 @@ class StepRunner:
     async def resume_from_assistant_with_tools(
         self, session_id: str, last_step: Step
     ) -> AsyncIterator[StepEvent]:
-        """Resume from an assistant step that has tool calls."""
+        """
+        Resume from an assistant step that has tool calls.
+        
+        Delegates to StepExecutor with pending_tool_calls parameter.
+        """
         logger.info(
             "resuming_from_assistant_with_tools", session_id=session_id, step_id=last_step.id
         )
 
-        if self.repository:
-            messages = await build_context_from_steps(
-                session_id, self.repository, system_prompt=self.agent.system_prompt
-            )
-        else:
+        if not self.repository:
             raise ValueError("Repository required for resume")
 
+        # Build context (includes the assistant step with tool_calls)
+        messages = await build_context_from_steps(
+            session_id, self.repository, system_prompt=self.agent.system_prompt
+        )
+
         run_id = str(uuid4())
+        start_sequence = last_step.sequence + 1
 
         executor = StepExecutor(
             model=self.agent.model,
@@ -322,14 +341,16 @@ class StepRunner:
             config=self.config,
         )
 
-        start_sequence = last_step.sequence + 1
-
+        # Pass pending tool_calls to executor
         async for event in executor.execute(
-            session_id=session_id, run_id=run_id, messages=messages, start_sequence=start_sequence
+            session_id=session_id, 
+            run_id=run_id, 
+            messages=messages, 
+            start_sequence=start_sequence,
+            pending_tool_calls=last_step.tool_calls,
         ):
             if event.type == StepEventType.STEP_COMPLETED and event.snapshot:
-                if self.repository:
-                    await self.repository.save_step(event.snapshot)
+                await self.repository.save_step(event.snapshot)
 
             yield event
 

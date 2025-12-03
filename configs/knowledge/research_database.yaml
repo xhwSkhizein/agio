@@ -9,7 +9,7 @@ params:
   chunk_size: 1500
   chunk_overlap: 300
   data_path: ./data/research
-enabled: true
+enabled: false  # Disabled: missing backend field
 tags:
   - knowledge
   - research

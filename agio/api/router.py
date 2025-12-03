@@ -26,7 +26,7 @@ def create_router(prefix: str = "/agio") -> APIRouter:
         # Custom prefix
         app.include_router(create_router(prefix="/admin/agio"))
     """
-    from .routes import agents, chat, config, health, knowledge, memory, metrics, sessions
+    from .routes import agents, chat, config, health, knowledge, llm_logs, memory, metrics, sessions
 
     router = APIRouter(prefix=prefix)
 
@@ -53,5 +53,8 @@ def create_router(prefix: str = "/agio") -> APIRouter:
 
     # Metrics
     router.include_router(metrics.router, tags=["Metrics"])
+
+    # LLM Logs
+    router.include_router(llm_logs.router, tags=["LLM Logs"])
 
     return router

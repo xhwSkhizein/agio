@@ -55,5 +55,10 @@ class DeepseekModel(OpenAIModel):
                 base_url=resolved_base_url,
             )
 
+        # Call grandparent's model_post_init (skip OpenAIModel to avoid double client init)
+        from agio.providers.llm.base import Model
+
+        Model.model_post_init(self, __context)
+
 
 __all__ = ["DeepseekModel"]

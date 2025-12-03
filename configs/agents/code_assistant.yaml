@@ -15,7 +15,7 @@ tools:
   # Just reference tool names - they will be loaded from configs/tools/
   - file_read
   - file_edit
-  - file_write
+  # - file_write  # Disabled: requires bs4
   - grep
   - glob
   - ls

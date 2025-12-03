@@ -8,6 +8,7 @@ import uuid
 from typing import AsyncIterator
 
 from agio.domain import AgentSession, StepEvent, StepEventType
+from agio.domain.models import Step
 from agio.providers.llm import Model
 from agio.providers.tools import BaseTool
 
@@ -101,6 +102,34 @@ class Agent:
             raise ValueError("Repository not configured")
 
         return await fork_session(session_id, sequence, self.repository)
+
+    async def resume_from_step(
+        self, session_id: str, step: Step
+    ) -> AsyncIterator[StepEvent]:
+        """Resume execution from a specific step (typically assistant with tool_calls)."""
+        from agio.config import ExecutionConfig
+        from agio.runtime import StepRunner
+
+        if not self.repository:
+            raise ValueError("Repository not configured")
+
+        runner = StepRunner(
+            agent=self,
+            config=ExecutionConfig(),
+            repository=self.repository,
+        )
+
+        if step.role.value == "assistant" and step.tool_calls:
+            async for event in runner.resume_from_assistant_with_tools(session_id, step):
+                yield event
+        elif step.role.value == "user":
+            async for event in runner.resume_from_user_step(session_id, step):
+                yield event
+        elif step.role.value == "tool":
+            async for event in runner.resume_from_tool_step(session_id, step):
+                yield event
+        else:
+            raise ValueError(f"Cannot resume from step with role: {step.role.value}")
 
     async def list_runs(
         self, user_id: str | None = None, limit: int = 20, offset: int = 0

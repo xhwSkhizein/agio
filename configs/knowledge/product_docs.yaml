@@ -9,7 +9,7 @@ params:
   chunk_size: 1000
   chunk_overlap: 200
   data_path: ./data/product_docs
-enabled: true
+enabled: false  # Disabled: missing backend field
 tags:
   - knowledge
   - documentation

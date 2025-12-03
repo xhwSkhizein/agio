@@ -8,7 +8,7 @@ embedding_model: text-embedding-ada-002
 params:
   collection_name: agent_memory
   similarity_threshold: 0.75
-enabled: true  # Enabled for testing
+enabled: false  # Disabled: missing backend field
 tags:
   - memory
   - semantic

@@ -30,9 +30,9 @@ uvicorn agio.api.app:app --reload
 
 ### 3. Access the API
 
-- **API Base**: http://localhost:8000
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
+- **API Base**: http://localhost:8900
+- **Swagger UI**: http://localhost:8900/docs
+- **ReDoc**: http://localhost:8900/redoc
 
 ## API Endpoints
 
@@ -168,12 +168,12 @@ Content-Type: application/json
 import httpx
 
 # List agents
-response = httpx.get("http://localhost:8000/api/agents")
+response = httpx.get("http://localhost:8900/api/agents")
 agents = response.json()
 
 # Chat (non-streaming)
 response = httpx.post(
-    "http://localhost:8000/api/chat",
+    "http://localhost:8900/api/chat",
     json={
         "agent_id": "assistant",
         "message": "Hello!",
@@ -191,7 +191,7 @@ import httpx
 
 with httpx.stream(
     "POST",
-    "http://localhost:8000/api/chat",
+    "http://localhost:8900/api/chat",
     json={
         "agent_id": "assistant",
         "message": "Tell me a story",
@@ -252,15 +252,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 8000
-CMD ["uvicorn", "agio.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+EXPOSE 8900
+CMD ["uvicorn", "agio.api.app:app", "--host", "0.0.0.0", "--port", "8900"]
 ```
 
 ### Production
 
 ```bash
 # With multiple workers
-uvicorn agio.api.app:app --host 0.0.0.0 --port 8000 --workers 4
+uvicorn agio.api.app:app --host 0.0.0.0 --port 8900 --workers 4
 ```
 
 ## Configuration

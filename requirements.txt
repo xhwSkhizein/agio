@@ -2,11 +2,14 @@ fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 sse-starlette>=1.8.0
 pydantic>=2.5.0
+pydantic-settings>=2.0.0
 pyyaml>=6.0.1
 watchdog>=3.0.0
 python-multipart>=0.0.6
 httpx>=0.25.0
 openai==2.8.1
+motor>=3.3.0
+beautifulsoup4
 
 # Testing
 pytest>=7.4.0

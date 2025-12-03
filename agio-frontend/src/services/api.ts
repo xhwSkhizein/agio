@@ -1,8 +1,10 @@
 import axios, { AxiosError } from 'axios'
 import toast from 'react-hot-toast'
 
+const API_BASE_URL = '/agio'
+
 const api = axios.create({
-  baseURL: '/agio',
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -147,6 +149,18 @@ export interface Run {
   created_at: string
 }
 
+// Session Summary for aggregated view
+export interface SessionSummary {
+  session_id: string
+  agent_id: string
+  user_id: string | null
+  run_count: number
+  step_count: number
+  last_message: string | null
+  last_activity: string
+  status: string
+}
+
 export const sessionService = {
   async listSessions(params?: {
     user_id?: string
@@ -154,6 +168,15 @@ export const sessionService = {
     offset?: number
   }): Promise<PaginatedResponse<Run>> {
     const response = await api.get('/sessions', { params })
+    return response.data
+  },
+
+  async listSessionSummaries(params?: {
+    user_id?: string
+    limit?: number
+    offset?: number
+  }): Promise<PaginatedResponse<SessionSummary>> {
+    const response = await api.get('/sessions/summary', { params })
     return response.data
   },
 
@@ -169,6 +192,29 @@ export const sessionService = {
   async getSessionSteps(sessionId: string): Promise<any[]> {
     const response = await api.get(`/sessions/${sessionId}/steps`)
     return response.data
+  },
+
+  async forkSession(
+    sessionId: string, 
+    sequence: number, 
+    options?: { content?: string; tool_calls?: any[] }
+  ): Promise<{ 
+    new_session_id: string
+    copied_steps: number
+    last_sequence: number
+    pending_user_message?: string 
+  }> {
+    const response = await api.post(`/sessions/${sessionId}/fork`, { 
+      sequence, 
+      content: options?.content,
+      tool_calls: options?.tool_calls,
+    })
+    return response.data
+  },
+
+  // Resume session URL for SSE streaming (used directly with fetch POST)
+  getResumeSessionUrl(sessionId: string, agentId: string): string {
+    return `${API_BASE_URL}/sessions/${sessionId}/resume?agent_id=${encodeURIComponent(agentId)}`
   },
 }
 
@@ -259,6 +305,96 @@ export const healthService = {
   async ready(): Promise<{ ready: boolean; components: number; configs: number }> {
     const response = await api.get('/health/ready')
     return response.data
+  },
+}
+
+// LLM Logs Service
+export interface LLMCallLog {
+  id: string
+  timestamp: string
+  agent_name: string | null
+  session_id: string | null
+  run_id: string | null
+  model_id: string
+  model_name: string | null
+  provider: string
+  request: Record<string, any>
+  messages: Array<{ role: string; content: string; [key: string]: any }>
+  tools: Array<Record<string, any>> | null
+  response_content: string | null
+  response_tool_calls: Array<Record<string, any>> | null
+  finish_reason: string | null
+  status: 'running' | 'completed' | 'error'
+  error: string | null
+  duration_ms: number | null
+  first_token_ms: number | null
+  input_tokens: number | null
+  output_tokens: number | null
+  total_tokens: number | null
+}
+
+export interface LLMLogListResponse {
+  total: number
+  items: LLMCallLog[]
+  limit: number
+  offset: number
+}
+
+export interface LLMStats {
+  total_calls: number
+  completed_calls: number
+  error_calls: number
+  running_calls: number
+  success_rate: number
+  total_tokens: number
+  total_input_tokens: number
+  total_output_tokens: number
+  avg_duration_ms: number
+  avg_first_token_ms: number
+  provider_breakdown: Record<string, number>
+}
+
+export const llmLogsService = {
+  async listLogs(params?: {
+    agent_name?: string
+    session_id?: string
+    run_id?: string
+    model_id?: string
+    provider?: string
+    status?: string
+    limit?: number
+    offset?: number
+  }): Promise<LLMLogListResponse> {
+    const response = await api.get('/llm/logs', { params })
+    return response.data
+  },
+
+  async getLog(logId: string): Promise<LLMCallLog> {
+    const response = await api.get(`/llm/logs/${logId}`)
+    return response.data
+  },
+
+  async getStats(params?: {
+    agent_name?: string
+    start_time?: string
+    end_time?: string
+  }): Promise<LLMStats> {
+    const response = await api.get('/llm/stats', { params })
+    return response.data
+  },
+
+  // SSE streaming endpoint URL
+  getStreamUrl(params?: {
+    agent_name?: string
+    session_id?: string
+    run_id?: string
+  }): string {
+    const searchParams = new URLSearchParams()
+    if (params?.agent_name) searchParams.set('agent_name', params.agent_name)
+    if (params?.session_id) searchParams.set('session_id', params.session_id)
+    if (params?.run_id) searchParams.set('run_id', params.run_id)
+    const query = searchParams.toString()
+    return `/agio/llm/logs/stream${query ? `?${query}` : ''}`
   },
 }
 

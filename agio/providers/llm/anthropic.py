@@ -37,6 +37,7 @@ class AnthropicModel(Model):
         description="Actual model name for API calls (e.g., claude-3-5-sonnet-20241022)",
     )
     api_key: SecretStr | None = Field(default=None, exclude=True)
+    base_url: str | None = Field(default=None, description="Custom API base URL")
     client: AsyncAnthropic | None = Field(default=None, exclude=True)
 
     max_tokens_to_sample: int = Field(default=4096, ge=1)
@@ -55,8 +56,12 @@ class AnthropicModel(Model):
             resolved_api_key = os.getenv("ANTHROPIC_API_KEY")
 
         if self.client is None:
-            self.client = AsyncAnthropic(api_key=resolved_api_key)
+            client_kwargs = {"api_key": resolved_api_key}
+            if self.base_url:
+                client_kwargs["base_url"] = self.base_url
+            self.client = AsyncAnthropic(**client_kwargs)
 
+        # Call base class to enable tracking
         super().model_post_init(__context)
 
     def _convert_messages(self, messages: list[dict]) -> tuple[str | None, list[dict]]:

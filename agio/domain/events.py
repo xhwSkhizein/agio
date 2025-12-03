@@ -100,9 +100,13 @@ class ToolResult(BaseModel):
 # ============================================================================
 
 
-def create_run_started_event(run_id: str, query: str) -> StepEvent:
+def create_run_started_event(run_id: str, query: str, session_id: str) -> StepEvent:
     """Create a RUN_STARTED event"""
-    return StepEvent(type=StepEventType.RUN_STARTED, run_id=run_id, data={"query": query})
+    return StepEvent(
+        type=StepEventType.RUN_STARTED,
+        run_id=run_id,
+        data={"query": query, "session_id": session_id},
+    )
 
 
 def create_run_completed_event(

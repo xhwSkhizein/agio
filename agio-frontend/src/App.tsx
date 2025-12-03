@@ -4,12 +4,12 @@ import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import ConfigList from './pages/ConfigList'
 import ConfigEditor from './pages/ConfigEditor'
-import ChatSelect from './pages/ChatSelect'
 import Chat from './pages/Chat'
 import Knowledge from './pages/Knowledge'
 import Memory from './pages/Memory'
 import Sessions from './pages/Sessions'
 import Metrics from './pages/Metrics'
+import LLMLogs from './pages/LLMLogs'
 
 function App() {
   return (
@@ -18,12 +18,13 @@ function App() {
       <Layout>
         <Routes>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/chat" element={<ChatSelect />} />
-          <Route path="/chat/:agentId" element={<Chat />} />
+          <Route path="/chat" element={<Chat />} />
+          <Route path="/chat/:sessionId" element={<Chat />} />
           <Route path="/knowledge" element={<Knowledge />} />
           <Route path="/memory" element={<Memory />} />
           <Route path="/sessions" element={<Sessions />} />
           <Route path="/metrics" element={<Metrics />} />
+          <Route path="/llm-logs" element={<LLMLogs />} />
           <Route path="/config" element={<ConfigList />} />
           <Route path="/config/:type/:name" element={<ConfigEditor />} />
         </Routes>
