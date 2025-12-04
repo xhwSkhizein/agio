@@ -14,7 +14,7 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/agio': {
-        target: 'http://localhost:8900',
+        target: 'http://localhost:8000',
         changeOrigin: true,
       },
     },

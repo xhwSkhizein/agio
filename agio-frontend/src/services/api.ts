@@ -295,6 +295,63 @@ export const knowledgeService = {
   },
 }
 
+// Runnable Service (unified Agent/Workflow API)
+export interface RunnableInfo {
+  id: string
+  type: string  // "Agent", "PipelineWorkflow", "LoopWorkflow", "ParallelWorkflow"
+  description?: string
+}
+
+export interface RunnableListResponse {
+  agents: RunnableInfo[]
+  workflows: RunnableInfo[]
+}
+
+export interface WorkflowStage {
+  id: string
+  runnable: string
+  input_template: string
+  condition: string | null
+}
+
+export interface WorkflowStructure {
+  id: string
+  type: string
+  stages: WorkflowStage[]
+  loop_condition?: string
+  max_iterations?: number
+  merge_template?: string
+}
+
+export const runnableService = {
+  async listRunnables(): Promise<RunnableListResponse> {
+    const response = await api.get('/runnables')
+    return response.data
+  },
+
+  async getRunnableInfo(runnableId: string): Promise<any> {
+    const response = await api.get(`/runnables/${runnableId}`)
+    return response.data
+  },
+
+  // Get SSE stream URL for running a Runnable
+  getRunUrl(runnableId: string): string {
+    return `${API_BASE_URL}/runnables/${runnableId}/run`
+  },
+}
+
+export const workflowService = {
+  async listWorkflows(): Promise<Array<{ id: string; type: string; stage_count: number }>> {
+    const response = await api.get('/workflows')
+    return response.data
+  },
+
+  async getWorkflowStructure(workflowId: string): Promise<WorkflowStructure> {
+    const response = await api.get(`/workflows/${workflowId}`)
+    return response.data
+  },
+}
+
 // Health Service
 export const healthService = {
   async check(): Promise<{ status: string; version: string }> {

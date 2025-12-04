@@ -331,3 +331,8 @@ export function testAll(): void {
 // Export for manual testing in browser console:
 // import { testAll } from './utils/stepsToEvents.test'
 // testAll()
+
+// Auto-run if executed directly
+if (typeof window === 'undefined') {
+  testAll()
+}

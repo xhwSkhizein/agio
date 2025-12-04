@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { agentService, sessionService } from '../services/api'
+import { agentService, sessionService, runnableService } from '../services/api'
+import { parseSSEBuffer } from '../utils/sseParser'
 import { TimelineItem } from '../components/TimelineItem'
 import { ToolCall } from '../components/ToolCall'
 import { MessageContent } from '../components/MessageContent'
@@ -76,11 +77,27 @@ export default function Chat() {
     queryFn: () => agentService.listAgents(),
   })
 
-  // Current agent details
+  // Fetch all available runnables (agents + workflows)
+  const { data: runnables } = useQuery({
+    queryKey: ['runnables'],
+    queryFn: () => runnableService.listRunnables(),
+  })
+
+  // Check if selected is a workflow
+  const isWorkflow = runnables?.workflows?.some(w => w.id === selectedAgentId) ?? false
+
+  // Current agent details (only for agents, not workflows)
   const { data: agent } = useQuery({
     queryKey: ['agent', selectedAgentId],
     queryFn: () => agentService.getAgent(selectedAgentId),
-    enabled: !!selectedAgentId,
+    enabled: !!selectedAgentId && !isWorkflow,
+  })
+
+  // Current runnable info (for display)
+  const { data: runnableInfo } = useQuery({
+    queryKey: ['runnable', selectedAgentId],
+    queryFn: () => runnableService.getRunnableInfo(selectedAgentId),
+    enabled: !!selectedAgentId && isWorkflow,
   })
   
   // Load existing session steps if sessionId is provided in URL
@@ -176,17 +193,22 @@ export default function Chat() {
     abortControllerRef.current = new AbortController()
 
     try {
-      const response = await fetch(`/agio/chat/${selectedAgentId}`, {
+      // Use runnable API for workflows, chat API for agents
+      const apiUrl = isWorkflow 
+        ? `/agio/runnables/${selectedAgentId}/run`
+        : `/agio/chat/${selectedAgentId}`
+      
+      const requestBody = isWorkflow
+        ? { query: userMessage, session_id: currentSessionId }
+        : { message: userMessage, stream: true, session_id: currentSessionId }
+
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Accept: 'text/event-stream',
         },
-        body: JSON.stringify({
-          message: userMessage,
-          stream: true,
-          session_id: currentSessionId,
-        }),
+        body: JSON.stringify(requestBody),
         signal: abortControllerRef.current.signal,
       })
 
@@ -203,34 +225,16 @@ export default function Chat() {
 
         buffer += decoder.decode(value, { stream: true })
         
-        // Parse SSE events - split by double newline (event separator)
-        const eventBlocks = buffer.split('\n\n')
-        // Keep the last incomplete block in buffer
-        buffer = eventBlocks.pop() || ''
+        // Parse SSE events using utility (handles both CRLF and LF line endings)
+        const { events: sseEvents, remaining } = parseSSEBuffer(buffer)
+        buffer = remaining
         
-        for (const block of eventBlocks) {
-          if (!block.trim()) continue
-          
-          const lines = block.split('\n')
-          let eventType = ''
-          let dataStr = ''
-          
-          for (const line of lines) {
-            if (line.startsWith('event:')) {
-              eventType = line.slice(6).trim()
-            } else if (line.startsWith('data:')) {
-              dataStr = line.slice(5).trim()
-            }
-          }
-          
-          if (!eventType || !dataStr) continue
+        for (const sseEvent of sseEvents) {
+          const eventType = sseEvent.event
+          const dataStr = sseEvent.data
 
           try {
             const data = JSON.parse(dataStr)
-            // Reduce console noise - only log non-delta events
-            if (eventType !== 'step_delta') {
-              console.log('SSE Event:', eventType, data)
-            }
             
             // Capture event type and data in closure
             const currentEvent = eventType
@@ -490,6 +494,17 @@ export default function Chat() {
                     })
                     break
                   }
+                  
+                  // Workflow-specific events (ignore for now, just log)
+                  case 'stage_started':
+                  case 'stage_completed':
+                  case 'iteration_started':
+                  case 'iteration_completed':
+                    console.log(`Workflow event: ${currentEvent}`, data.stage_id || data.iteration)
+                    break
+                    
+                  default:
+                    console.log('Unhandled event:', currentEvent, data)
                 }
                 
                 return newEvents
@@ -732,14 +747,53 @@ export default function Chat() {
               onClick={() => setShowAgentDropdown(!showAgentDropdown)}
               className="flex items-center gap-2 px-3 py-2 bg-surface border border-border rounded-lg hover:border-primary-500/50 transition-colors"
             >
+              {isWorkflow && (
+                <span className="px-1.5 py-0.5 text-[10px] bg-primary-500/20 text-primary-400 rounded">
+                  {runnableInfo?.type?.replace('Workflow', '') || 'WF'}
+                </span>
+              )}
               <span className="text-sm font-medium text-white">
-                {agent?.name?.replace(/_/g, ' ') || 'Select Agent'}
+                {isWorkflow 
+                  ? (runnableInfo?.id || selectedAgentId)?.replace(/_/g, ' ')
+                  : agent?.name?.replace(/_/g, ' ') || 'Select Agent'}
               </span>
               <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showAgentDropdown ? 'rotate-180' : ''}`} />
             </button>
             
             {showAgentDropdown && (
-              <div className="absolute top-full left-0 mt-1 w-64 bg-surface border border-border rounded-lg shadow-xl z-50 py-1 max-h-80 overflow-y-auto">
+              <div className="absolute top-full left-0 mt-1 w-72 bg-surface border border-border rounded-lg shadow-xl z-50 py-1 max-h-96 overflow-y-auto">
+                {/* Workflows Section */}
+                {runnables?.workflows && runnables.workflows.length > 0 && (
+                  <>
+                    <div className="px-3 py-2 text-xs font-semibold text-primary-400 uppercase tracking-wider border-b border-border">
+                      Workflows
+                    </div>
+                    {runnables.workflows.map((w) => (
+                      <button
+                        key={w.id}
+                        onClick={() => {
+                          setSelectedAgentId(w.id)
+                          setShowAgentDropdown(false)
+                        }}
+                        className={`w-full text-left px-3 py-2 hover:bg-surfaceHighlight transition-colors ${
+                          selectedAgentId === w.id ? 'bg-surfaceHighlight' : ''
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="px-1.5 py-0.5 text-[10px] bg-primary-500/20 text-primary-400 rounded">
+                            {w.type.replace('Workflow', '')}
+                          </span>
+                          <span className="text-sm font-medium text-white">{w.id.replace(/_/g, ' ')}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </>
+                )}
+                
+                {/* Agents Section */}
+                <div className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider border-b border-border mt-1">
+                  Agents
+                </div>
                 {agents?.items?.map((a) => (
                   <button
                     key={a.name}
