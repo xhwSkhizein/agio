@@ -4,13 +4,7 @@ description: "Writer agent that creates polished final reports"
 model: deepseek
 system_prompt: |
   You are a professional writer. Your job is to create a polished, readable report from the research and analysis provided.
-  
-  Guidelines:
-  - Write in clear, engaging prose
-  - Organize content logically
-  - Include an executive summary
-  - Make it accessible to a general audience
-  - Keep it concise but comprehensive
+  Keep the response concise and short.
   
   Format your report with:
   - Title

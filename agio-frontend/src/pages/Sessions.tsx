@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { sessionService, SessionSummary } from '../services/api'
-import { History, Trash2, ChevronRight, Loader2, MessageSquare, GitBranch, X } from 'lucide-react'
+import { History, Trash2, ChevronRight, ChevronDown, Loader2, MessageSquare, GitBranch, X, Maximize2, Minimize2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface ForkModalState {
@@ -14,11 +14,49 @@ interface ForkModalState {
   agentId: string
 }
 
+// Group sessions by workflow_id
+interface SessionGroup {
+  workflow_id: string | null
+  sessions: SessionSummary[]
+}
+
+function groupSessionsByWorkflow(sessions: SessionSummary[]): SessionGroup[] {
+  const groups = new Map<string, SessionSummary[]>()
+  const standalones: SessionSummary[] = []
+
+  for (const session of sessions) {
+    if (session.workflow_id) {
+      if (!groups.has(session.workflow_id)) {
+        groups.set(session.workflow_id, [])
+      }
+      groups.get(session.workflow_id)!.push(session)
+    } else {
+      standalones.push(session)
+    }
+  }
+
+  const result: SessionGroup[] = []
+  
+  // Add workflow groups first
+  for (const [workflow_id, groupSessions] of groups) {
+    result.push({ workflow_id, sessions: groupSessions })
+  }
+  
+  // Add standalone sessions
+  for (const session of standalones) {
+    result.push({ workflow_id: null, sessions: [session] })
+  }
+
+  return result
+}
+
 export default function Sessions() {
   const [selectedSession, setSelectedSession] = useState<string | null>(null)
   const [forkModal, setForkModal] = useState<ForkModalState | null>(null)
   const [forkContent, setForkContent] = useState('')
   const [forkToolCalls, setForkToolCalls] = useState('')
+  const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set())
+  const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set())
   const queryClient = useQueryClient()
   const navigate = useNavigate()
 
@@ -106,6 +144,118 @@ export default function Sessions() {
     return date.toLocaleString()
   }
 
+  // Toggle session tree expansion
+  const toggleSessionExpand = (sessionId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setExpandedSessions(prev => {
+      const next = new Set(prev)
+      if (next.has(sessionId)) {
+        next.delete(sessionId)
+      } else {
+        next.add(sessionId)
+      }
+      return next
+    })
+  }
+
+  // Toggle step content expansion
+  const toggleStepExpand = (stepId: string) => {
+    setExpandedSteps(prev => {
+      const next = new Set(prev)
+      if (next.has(stepId)) {
+        next.delete(stepId)
+      } else {
+        next.add(stepId)
+      }
+      return next
+    })
+  }
+
+  // Group sessions by workflow
+  const sessionGroups = sessions ? groupSessionsByWorkflow(sessions.items) : []
+
+  // Render a single session item
+  const renderSessionItem = (session: SessionSummary) => (
+    <div
+      key={session.session_id}
+      onClick={() => setSelectedSession(session.session_id)}
+      className={`bg-surface border rounded-lg p-3 cursor-pointer transition-all ${
+        selectedSession === session.session_id
+          ? 'border-primary-500'
+          : 'border-border hover:border-primary-500/50'
+      }`}
+    >
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-medium text-gray-400">
+          {session.agent_id}
+        </span>
+        <span className="text-[10px] text-gray-500">
+          {session.run_count} runs · {session.step_count} steps
+        </span>
+      </div>
+      <p className="text-sm text-white truncate mb-1">
+        {session.last_message || 'No messages'}
+      </p>
+      <div className="flex items-center justify-between mt-2">
+        <span className="text-xs text-gray-500">
+          {formatDate(session.last_activity)}
+        </span>
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            handleContinueChat(session.session_id)
+          }}
+          className="flex items-center gap-1 px-2 py-1 text-xs bg-primary-500/20 text-primary-400 rounded hover:bg-primary-500/30 transition-colors"
+        >
+          <MessageSquare className="w-3 h-3" />
+          Continue
+        </button>
+      </div>
+    </div>
+  )
+
+  // Render a workflow group
+  const renderSessionGroup = (group: SessionGroup) => {
+    if (!group.workflow_id) {
+      // Standalone session
+      return renderSessionItem(group.sessions[0])
+    }
+
+    const isExpanded = expandedSessions.has(group.workflow_id)
+    
+    return (
+      <div key={group.workflow_id} className="space-y-2">
+        {/* Workflow group header */}
+        <div
+          onClick={(e) => toggleSessionExpand(group.workflow_id!, e)}
+          className="flex items-center gap-2 px-2 py-1.5 bg-purple-900/20 border border-purple-500/30 rounded-lg cursor-pointer hover:bg-purple-900/30 transition-colors"
+        >
+          <button className="p-0.5 text-purple-400">
+            {isExpanded ? (
+              <ChevronDown className="w-3 h-3" />
+            ) : (
+              <ChevronRight className="w-3 h-3" />
+            )}
+          </button>
+          <GitBranch className="w-3 h-3 text-purple-400" />
+          <span className="text-xs font-medium text-purple-300">
+            {group.workflow_id}
+          </span>
+          <span className="text-[10px] text-purple-400/70 ml-auto">
+            {group.sessions.length} sessions
+          </span>
+        </div>
+        
+        {/* Grouped sessions */}
+        {isExpanded && (
+          <div className="ml-4 space-y-2 border-l-2 border-purple-500/20 pl-3">
+            {group.sessions.map(session => renderSessionItem(session))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-5xl">
       <div className="mb-8">
@@ -128,42 +278,9 @@ export default function Sessions() {
               Recent Sessions
             </h2>
             <div className="space-y-2">
-              {sessions.items.map((session: SessionSummary) => (
-                <div
-                  key={session.session_id}
-                  onClick={() => setSelectedSession(session.session_id)}
-                  className={`bg-surface border rounded-lg p-3 cursor-pointer transition-all ${
-                    selectedSession === session.session_id
-                      ? 'border-primary-500'
-                      : 'border-border hover:border-primary-500/50'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-medium text-gray-400">
-                      {session.agent_id}
-                    </span>
-                    <span className="text-[10px] text-gray-500">
-                      {session.run_count} runs · {session.step_count} steps
-                    </span>
-                  </div>
-                  <p className="text-sm text-white truncate mb-1">
-                    {session.last_message || 'No messages'}
-                  </p>
-                  <div className="flex items-center justify-between mt-2">
-                    <span className="text-xs text-gray-500">
-                      {formatDate(session.last_activity)}
-                    </span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleContinueChat(session.session_id)
-                      }}
-                      className="flex items-center gap-1 px-2 py-1 text-xs bg-primary-500/20 text-primary-400 rounded hover:bg-primary-500/30 transition-colors"
-                    >
-                      <MessageSquare className="w-3 h-3" />
-                      Continue
-                    </button>
-                  </div>
+              {sessionGroups.map((group, idx) => (
+                <div key={group.workflow_id || `standalone-${idx}`}>
+                  {renderSessionGroup(group)}
                 </div>
               ))}
             </div>
@@ -208,63 +325,102 @@ export default function Sessions() {
                   <div className="text-gray-500">No steps found</div>
                 ) : (
                   <div className="space-y-2">
-                    {sessionSteps.map((step) => (
-                      <div
-                        key={step.id}
-                        className="bg-surface border border-border rounded-lg p-4 group"
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-500">#{step.sequence}</span>
-                            <span className={`px-2 py-0.5 text-xs rounded ${
-                              step.role === 'user'
-                                ? 'bg-blue-900/30 text-blue-400'
-                                : step.role === 'assistant'
-                                ? 'bg-green-900/30 text-green-400'
-                                : 'bg-purple-900/30 text-purple-400'
-                            }`}>
-                              {step.role}
-                            </span>
+                    {sessionSteps.map((step) => {
+                      const isExpanded = expandedSteps.has(step.id)
+                      const hasLongContent = (step.content?.length || 0) > 500 || (step.tool_calls?.length || 0) > 0
+                      
+                      return (
+                        <div
+                          key={step.id}
+                          className="bg-surface border border-border rounded-lg p-4 group"
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-gray-500">#{step.sequence}</span>
+                              <span className={`px-2 py-0.5 text-xs rounded ${
+                                step.role === 'user'
+                                  ? 'bg-blue-900/30 text-blue-400'
+                                  : step.role === 'assistant'
+                                  ? 'bg-green-900/30 text-green-400'
+                                  : 'bg-purple-900/30 text-purple-400'
+                              }`}>
+                                {step.role}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              {/* Expand/Collapse button */}
+                              {hasLongContent && (
+                                <button
+                                  onClick={() => toggleStepExpand(step.id)}
+                                  className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-all"
+                                  title={isExpanded ? 'Collapse' : 'Expand'}
+                                >
+                                  {isExpanded ? (
+                                    <Minimize2 className="w-3 h-3" />
+                                  ) : (
+                                    <Maximize2 className="w-3 h-3" />
+                                  )}
+                                </button>
+                              )}
+                              {/* Fork button - for assistant and user steps */}
+                              {(step.role === 'assistant' || step.role === 'user') && (
+                                <button
+                                  onClick={() => {
+                                    const currentSession = sessions?.items.find((s: SessionSummary) => s.session_id === selectedSession)
+                                    openForkModal(
+                                      selectedSession!, 
+                                      step.sequence, 
+                                      step.role as 'assistant' | 'user',
+                                      step.content || '',
+                                      step.tool_calls,
+                                      currentSession?.agent_id
+                                    )
+                                  }}
+                                  className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400 hover:text-primary-400 hover:bg-primary-500/10 rounded transition-all"
+                                  title={step.role === 'user' ? 'Fork and edit this message' : 'Fork from this response'}
+                                >
+                                  <GitBranch className="w-3 h-3" />
+                                  Fork
+                                </button>
+                              )}
+                            </div>
                           </div>
-                          {/* Fork button - for assistant and user steps */}
-                          {(step.role === 'assistant' || step.role === 'user') && (
+                          {/* Content with height limit */}
+                          <div 
+                            className={`transition-all ${
+                              isExpanded 
+                                ? 'max-h-[75vh] overflow-y-auto' 
+                                : 'max-h-32 overflow-hidden'
+                            }`}
+                          >
+                            {step.content && (
+                              <p className="text-sm text-gray-300 whitespace-pre-wrap">
+                                {step.content}
+                              </p>
+                            )}
+                            {step.tool_calls && step.tool_calls.length > 0 && (
+                              <div className="mt-2 space-y-1">
+                                {step.tool_calls.map((tc: any, i: number) => (
+                                  <div key={i} className="text-xs text-gray-500">
+                                    <span className="text-primary-400">{tc.function?.name}</span>
+                                    ({tc.function?.arguments?.slice(0, 200)}...)
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          {/* Show expand hint when collapsed and has more content */}
+                          {!isExpanded && hasLongContent && (
                             <button
-                              onClick={() => {
-                                const currentSession = sessions?.items.find((s: SessionSummary) => s.session_id === selectedSession)
-                                openForkModal(
-                                  selectedSession!, 
-                                  step.sequence, 
-                                  step.role as 'assistant' | 'user',
-                                  step.content || '',
-                                  step.tool_calls,
-                                  currentSession?.agent_id
-                                )
-                              }}
-                              className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400 hover:text-primary-400 hover:bg-primary-500/10 rounded transition-all"
-                              title={step.role === 'user' ? 'Fork and edit this message' : 'Fork from this response'}
+                              onClick={() => toggleStepExpand(step.id)}
+                              className="mt-2 text-xs text-gray-500 hover:text-primary-400 transition-colors"
                             >
-                              <GitBranch className="w-3 h-3" />
-                              Fork
+                              Click to expand...
                             </button>
                           )}
                         </div>
-                        {step.content && (
-                          <p className="text-sm text-gray-300 whitespace-pre-wrap">
-                            {step.content}
-                          </p>
-                        )}
-                        {step.tool_calls && step.tool_calls.length > 0 && (
-                          <div className="mt-2 space-y-1">
-                            {step.tool_calls.map((tc: any, i: number) => (
-                              <div key={i} className="text-xs text-gray-500">
-                                <span className="text-primary-400">{tc.function?.name}</span>
-                                ({tc.function?.arguments?.slice(0, 200)}...)
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </div>

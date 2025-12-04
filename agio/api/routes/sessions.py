@@ -72,6 +72,7 @@ class SessionSummary(BaseModel):
     session_id: str
     agent_id: str
     user_id: str | None
+    workflow_id: str | None  # Workflow ID（用于分组展示同一 Workflow 的 session）
     run_count: int
     step_count: int
     last_message: str | None
@@ -115,6 +116,7 @@ async def list_session_summaries(
                 "session_id": sid,
                 "agent_id": run.agent_id,
                 "user_id": run.user_id,
+                "workflow_id": run.workflow_id,
                 "runs": [],
                 "last_activity": run.created_at,
                 "status": run.status.value,
@@ -142,6 +144,7 @@ async def list_session_summaries(
             session_id=sid,
             agent_id=data["agent_id"],
             user_id=data["user_id"],
+            workflow_id=data["workflow_id"],
             run_count=len(data["runs"]),
             step_count=step_count,
             last_message=last_message[:100] if last_message else None,

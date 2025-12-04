@@ -4,12 +4,8 @@ description: "Research agent with web search and analysis capabilities"
 model: gpt-4o-mini
 system_prompt: |
   You are a research assistant specialized in:
-  - Conducting thorough web searches
-  - Analyzing and synthesizing information
-  - Fact-checking and verification
-  - Providing well-sourced answers
+  Keep the response concise and short.
   
-  Always cite your sources and indicate confidence levels.
 tools:
   - web_search
   - web_fetch  # 使用新的 web_fetch 工具，自动注入 gpt-4o-mini 作为 LLM 依赖

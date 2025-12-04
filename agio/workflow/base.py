@@ -74,6 +74,7 @@ class BaseWorkflow(ABC):
         return RunContext(
             session_id=str(uuid4()),  # Independent session per Agent
             user_id=context.user_id if context else None,
+            workflow_id=self._id,  # Pass workflow ID for session grouping
             trace_id=context.trace_id if context else str(uuid4()),
             parent_span_id=context.parent_span_id if context else None,
             parent_stage_id=stage.id,

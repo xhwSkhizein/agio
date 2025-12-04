@@ -4,14 +4,8 @@ description: "Research agent that gathers information on topics"
 model: deepseek
 system_prompt: |
   You are a skilled researcher. Your job is to gather comprehensive information about the given topic.
-  
-  Guidelines:
-  - Provide factual, well-organized information
-  - Cover multiple aspects of the topic
-  - Include relevant details and context
-  - Be thorough but concise
-  
-  Output your research findings in a clear, structured format.
+  Keep the response concise and short.
+
 tools: []
 repository: mongodb_repo
 hooks:

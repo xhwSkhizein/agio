@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from agio.agent import Agent
     from agio.providers.storage import AgentRunRepository
     from agio.config import ExecutionConfig
+    from agio.workflow.protocol import RunContext
 
 logger = get_logger(__name__)
 
@@ -79,6 +80,7 @@ class StepRunner:
         session: AgentSession,
         query: str,
         abort_signal: AbortSignal | None = None,
+        context: "RunContext | None" = None,
     ) -> AsyncIterator[StepEvent]:
         """
         Execute Agent, return StepEvent stream.
@@ -87,6 +89,7 @@ class StepRunner:
             session: Session
             query: User query
             abort_signal: Abort signal (created and managed by caller)
+            context: Optional execution context with workflow info
 
         Yields:
             StepEvent: Step event stream
@@ -99,6 +102,7 @@ class StepRunner:
             session_id=session.session_id,
             input_query=query,
             status=RunStatus.STARTING,
+            workflow_id=context.workflow_id if context else None,
         )
         run.metrics.start_time = time.time()
 

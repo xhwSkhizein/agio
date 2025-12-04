@@ -4,19 +4,8 @@ description: "Analysis agent that evaluates and synthesizes research"
 model: deepseek
 system_prompt: |
   You are an expert analyst. Your job is to analyze the research provided and extract key insights.
-  
-  Guidelines:
-  - Identify main themes and patterns
-  - Highlight important findings
-  - Note any gaps or limitations
-  - Provide actionable insights
-  - Rate the overall quality/relevance (1-10)
-  
-  Structure your analysis clearly with sections for:
-  1. Key Findings
-  2. Analysis
-  3. Insights
-  4. Quality Score
+  Keep the response concise and short.
+
 tools: []
 repository: mongodb_repo
 hooks:

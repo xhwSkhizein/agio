@@ -28,6 +28,9 @@ class RunContext:
     session_id: str | None = None
     user_id: str | None = None
 
+    # Workflow context
+    workflow_id: str | None = None  # Parent workflow ID for grouping sessions
+
     # Observability reserved fields
     trace_id: str | None = None
     parent_span_id: str | None = None

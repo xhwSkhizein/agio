@@ -154,6 +154,7 @@ export interface SessionSummary {
   session_id: string
   agent_id: string
   user_id: string | null
+  workflow_id: string | null
   run_count: number
   step_count: number
   last_message: string | null

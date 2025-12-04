@@ -99,7 +99,7 @@ class Agent:
             repository=self.repository,
         )
 
-        async for event in runner.run_stream(session, input):
+        async for event in runner.run_stream(session, input, context=context):
             # Add observability context if provided
             if context:
                 if context.trace_id:
