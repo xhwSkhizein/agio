@@ -37,7 +37,7 @@ class TestHealthEndpoint:
     """Test health check endpoint."""
 
     def test_health_check(self):
-        response = client.get("/api/health")
+        response = client.get("/agio/health")
         assert response.status_code == 200
 
         data = response.json()
@@ -50,7 +50,7 @@ class TestAgentEndpoints:
     """Test agent endpoints."""
 
     def test_list_agents(self):
-        response = client.get("/api/agents")
+        response = client.get("/agio/agents")
         assert response.status_code == 200
 
         data = response.json()
@@ -59,7 +59,7 @@ class TestAgentEndpoints:
         assert isinstance(data["items"], list)
 
     def test_get_nonexistent_agent(self):
-        response = client.get("/api/agents/nonexistent")
+        response = client.get("/agio/agents/nonexistent")
         assert response.status_code == 404
 
 
@@ -67,15 +67,15 @@ class TestRunEndpoints:
     """Test run endpoints."""
 
     def test_pause_nonexistent_run(self):
-        response = client.post("/api/runs/nonexistent/pause")
+        response = client.post("/agio/runs/nonexistent/pause")
         assert response.status_code == 404
 
     def test_resume_nonexistent_run(self):
-        response = client.post("/api/runs/nonexistent/resume")
+        response = client.post("/agio/runs/nonexistent/resume")
         assert response.status_code == 404
 
     def test_cancel_nonexistent_run(self):
-        response = client.post("/api/runs/nonexistent/cancel")
+        response = client.post("/agio/runs/nonexistent/cancel")
         assert response.status_code == 404
 
 
@@ -83,7 +83,7 @@ class TestCheckpointEndpoints:
     """Test checkpoint endpoints."""
 
     def test_list_checkpoints(self):
-        response = client.get("/api/checkpoints/runs/test_run/checkpoints")
+        response = client.get("/agio/checkpoints/runs/test_run/checkpoints")
         assert response.status_code == 404
 
 

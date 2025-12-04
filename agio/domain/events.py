@@ -26,6 +26,14 @@ class StepEventType(str, Enum):
     RUN_COMPLETED = "run_completed"
     RUN_FAILED = "run_failed"
 
+    # Workflow events (new)
+    STAGE_STARTED = "stage_started"
+    STAGE_COMPLETED = "stage_completed"
+    STAGE_SKIPPED = "stage_skipped"  # Condition not met
+    ITERATION_STARTED = "iteration_started"  # Loop only
+    BRANCH_STARTED = "branch_started"  # Parallel only
+    BRANCH_COMPLETED = "branch_completed"  # Parallel only
+
     # Error events
     ERROR = "error"
 
@@ -66,6 +74,17 @@ class StepEvent(BaseModel):
 
     # For RUN_* and ERROR events
     data: dict | None = None
+
+    # Workflow context (new)
+    stage_id: str | None = None
+    branch_id: str | None = None
+    iteration: int | None = None
+
+    # Observability reserved (new)
+    trace_id: str | None = None
+    span_id: str | None = None
+    parent_span_id: str | None = None
+    depth: int = 0
 
     def to_sse(self) -> str:
         """

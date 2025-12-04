@@ -234,7 +234,12 @@ async def test_fork_creates_new_session(repository):
         await repository.save_step(step)
 
     # Fork at sequence 2
-    new_session_id = await fork_session("original_session", 2, repository)
+    new_session_id, last_sequence, _ = await fork_session(
+        original_session_id="original_session",
+        sequence=2,
+        repository=repository,
+        exclude_last=False
+    )
 
     # Check new session has copied steps
     new_steps = await repository.get_steps(new_session_id)
@@ -243,6 +248,7 @@ async def test_fork_creates_new_session(repository):
     assert new_steps[1].content == "Response 1"
     assert new_steps[0].session_id == new_session_id
     assert new_steps[1].session_id == new_session_id
+    assert last_sequence == 2  # Last sequence number should be 2
 
     # Original session should be unchanged
     original_steps = await repository.get_steps("original_session")

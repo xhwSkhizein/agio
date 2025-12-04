@@ -137,6 +137,16 @@ class Step(BaseModel):
     metrics: StepMetrics | None = None
     created_at: datetime = Field(default_factory=datetime.now)
 
+    # --- Multi-Agent Context (new) ---
+    workflow_id: str | None = None  # Parent workflow ID
+    stage_id: str | None = None  # Parent stage ID
+
+    # --- Observability (new) ---
+    trace_id: str | None = None  # Trace ID for distributed tracing
+    span_id: str | None = None  # Span ID
+    parent_span_id: str | None = None  # Parent span ID
+    depth: int = 0  # Nesting depth in workflow
+
     def is_user_step(self) -> bool:
         """Check if this is a user message"""
         return self.role == MessageRole.USER
@@ -199,9 +209,16 @@ class AgentRun(BaseModel):
     # 聚合的元数据
     response_content: str | None = None  # 最终响应内容（从 Steps 提取）
     metrics: AgentRunMetrics = Field(default_factory=AgentRunMetrics)
-    
+
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
+
+    # --- Multi-Agent Context (new) ---
+    workflow_id: str | None = None  # Parent workflow ID
+    stage_id: str | None = None  # Parent stage ID
+
+    # --- Observability (new) ---
+    trace_id: str | None = None  # Associated trace ID
 
 
 class AgentSession(BaseModel):

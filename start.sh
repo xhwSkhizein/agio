@@ -37,8 +37,17 @@ echo ""
 echo "✅ All dependencies installed"
 echo ""
 
-# 创建日志目录
-mkdir -p logs
+echo "🧪 Running backend tests..."
+uv run pytest
+
+echo "🧪 Running frontend tests..."
+cd agio-frontend
+npm test
+cd ..
+
+echo ""
+echo "✅ All dependencies installed"
+echo ""
 
 # 设置默认环境变量以避免组件加载失败
 export TICKETING_API_URL="http://mock-ticketing-api.com"

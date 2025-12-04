@@ -22,6 +22,8 @@ from agio.config.schema import (
     StorageConfig,
     RepositoryConfig,
     AgentConfig,
+    StageConfig,
+    WorkflowConfig,
 )
 
 # Exceptions
@@ -54,6 +56,8 @@ __all__ = [
     "StorageConfig",
     "RepositoryConfig",
     "AgentConfig",
+    "StageConfig",
+    "WorkflowConfig",
     # System
     "ConfigSystem",
     "get_config_system",

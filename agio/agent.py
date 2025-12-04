@@ -2,15 +2,19 @@
 Agent - Top-level agent class.
 
 This is the main entry point for creating and running agents.
+Implements the Runnable protocol for multi-agent orchestration.
 """
 
 import uuid
-from typing import AsyncIterator
+from typing import TYPE_CHECKING, AsyncIterator
 
 from agio.domain import AgentSession, StepEvent, StepEventType
 from agio.domain.models import Step
 from agio.providers.llm import Model
 from agio.providers.tools import BaseTool
+
+if TYPE_CHECKING:
+    from agio.workflow.protocol import RunContext
 
 
 class Agent:
@@ -19,6 +23,10 @@ class Agent:
 
     Holds the configuration for Model, Tools, Memory, etc.
     Delegates execution to StepRunner.
+
+    Implements the Runnable protocol for multi-agent orchestration:
+    - run(input, context) -> AsyncIterator[StepEvent]
+    - last_output property
     """
 
     def __init__(
@@ -32,7 +40,7 @@ class Agent:
         user_id: str | None = None,
         system_prompt: str | None = None,
     ):
-        self.id = name
+        self._id = name
         self.model = model
         self.tools = tools or []
         self.memory = memory
@@ -40,22 +48,50 @@ class Agent:
         self.repository = repository
         self.user_id = user_id
         self.system_prompt = system_prompt
+        self._last_output: str | None = None
 
-    async def arun_stream(
-        self, query: str, user_id: str | None = None, session_id: str | None = None
+    @property
+    def id(self) -> str:
+        """Unique identifier for the agent."""
+        return self._id
+
+    @property
+    def last_output(self) -> str | None:
+        """Get the final output of the most recent execution."""
+        return self._last_output
+
+    async def run(
+        self,
+        input: str,
+        *,
+        context: "RunContext | None" = None,
     ) -> AsyncIterator[StepEvent]:
         """
-        Execute Agent, return StepEvent stream.
+        Runnable protocol implementation.
 
-        This is the recommended API for full control over the execution flow.
+        Executes the agent with the given input and returns an event stream.
+
+        Args:
+            input: Input string (user message)
+            context: Optional execution context with session info
+
+        Yields:
+            StepEvent: Events during execution
         """
         from agio.config import ExecutionConfig
         from agio.runtime import StepRunner
 
-        current_session_id = session_id or str(uuid.uuid4())
-        current_user_id = user_id or self.user_id
+        self._last_output = None
 
-        session = AgentSession(session_id=current_session_id, user_id=current_user_id)
+        # Use context session_id if provided, otherwise create new
+        if context:
+            session_id = context.session_id or str(uuid.uuid4())
+            current_user_id = context.user_id or self.user_id
+        else:
+            session_id = str(uuid.uuid4())
+            current_user_id = self.user_id
+
+        session = AgentSession(session_id=session_id, user_id=current_user_id)
 
         runner = StepRunner(
             agent=self,
@@ -63,7 +99,37 @@ class Agent:
             repository=self.repository,
         )
 
-        async for event in runner.run_stream(session, query):
+        async for event in runner.run_stream(session, input):
+            # Add observability context if provided
+            if context:
+                if context.trace_id:
+                    event.trace_id = context.trace_id
+                if context.parent_span_id:
+                    event.parent_span_id = context.parent_span_id
+                event.depth = context.depth
+
+            yield event
+
+            # Track final output
+            if event.type == StepEventType.RUN_COMPLETED and event.data:
+                self._last_output = event.data.get("response", "")
+
+    async def arun_stream(
+        self, query: str, user_id: str | None = None, session_id: str | None = None
+    ) -> AsyncIterator[StepEvent]:
+        """
+        Execute Agent, return StepEvent stream.
+
+        This is the convenience API that wraps run() with session parameters.
+        """
+        from agio.workflow.protocol import RunContext
+
+        context = RunContext(
+            session_id=session_id or str(uuid.uuid4()),
+            user_id=user_id or self.user_id,
+        )
+
+        async for event in self.run(query, context=context):
             yield event
 
     async def get_steps(self, session_id: str):

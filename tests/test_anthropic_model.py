@@ -6,12 +6,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agio.components.models.anthropic import AnthropicModel, StreamChunk
+from agio.providers.llm.anthropic import AnthropicModel
 
 
 @pytest.fixture
 def mock_anthropic():
-    with patch("agio.components.models.anthropic.AsyncAnthropic") as mock:
+    with patch("agio.providers.llm.anthropic.AsyncAnthropic") as mock:
         yield mock
 
 
@@ -19,7 +19,7 @@ def mock_anthropic():
 async def test_anthropic_init(mock_anthropic):
     """Test initialization."""
     model = AnthropicModel(
-        id="anthropic/claude-3-opus", name="claude-3-opus", provider="anthropic", api_key="sk-test"
+        id="anthropic/claude-3-opus", name="claude-3-opus", api_key="sk-test"
     )
     assert model.name == "claude-3-opus"
     mock_anthropic.assert_called_once_with(api_key="sk-test")
@@ -29,7 +29,7 @@ async def test_anthropic_init(mock_anthropic):
 async def test_convert_messages(mock_anthropic):
     """Test message conversion."""
     model = AnthropicModel(
-        id="anthropic/claude-3-opus", name="claude-3-opus", provider="anthropic", api_key="sk-test"
+        id="anthropic/claude-3-opus", name="claude-3-opus", api_key="sk-test"
     )
 
     messages = [

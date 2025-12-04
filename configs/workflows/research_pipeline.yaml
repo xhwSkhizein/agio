@@ -1,0 +1,38 @@
+type: workflow
+name: research_pipeline
+description: "A research pipeline that researches, analyzes, and writes reports"
+workflow_type: pipeline
+
+stages:
+  - id: research
+    runnable: researcher
+    input: "Please research the following topic thoroughly:\n\n{query}"
+  
+  - id: analyze
+    runnable: analyst
+    input: |
+      Based on the following research, please provide your analysis:
+      
+      Original Query: {query}
+      
+      Research Findings:
+      {research}
+  
+  - id: write
+    runnable: writer
+    input: |
+      Please write a polished report based on:
+      
+      Original Query: {query}
+      
+      Research:
+      {research}
+      
+      Analysis:
+      {analyze}
+
+enabled: true
+tags:
+  - research
+  - pipeline
+  - demo

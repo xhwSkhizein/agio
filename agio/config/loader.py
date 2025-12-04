@@ -46,6 +46,7 @@ class ConfigLoader:
             ComponentType.STORAGE: [],
             ComponentType.REPOSITORY: [],
             ComponentType.AGENT: [],
+            ComponentType.WORKFLOW: [],
         }
 
         # 扫描各个子目录
@@ -57,6 +58,7 @@ class ConfigLoader:
             "storages": ComponentType.STORAGE,
             "repositories": ComponentType.REPOSITORY,
             "agents": ComponentType.AGENT,
+            "workflows": ComponentType.WORKFLOW,
         }
 
         for dir_name, component_type in type_dir_mapping.items():

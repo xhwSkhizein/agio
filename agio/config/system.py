@@ -21,6 +21,7 @@ from agio.config.builders import (
     RepositoryBuilder,
     StorageBuilder,
     ToolBuilder,
+    WorkflowBuilder,
 )
 from agio.config.exceptions import (
     ComponentBuildError,
@@ -38,6 +39,7 @@ from agio.config.schema import (
     RepositoryConfig,
     StorageConfig,
     ToolConfig,
+    WorkflowConfig,
 )
 
 logger = logging.getLogger(__name__)
@@ -78,6 +80,7 @@ class ConfigSystem:
         ComponentType.KNOWLEDGE: 1,
         ComponentType.TOOL: 2,
         ComponentType.AGENT: 3,
+        ComponentType.WORKFLOW: 4,  # Workflows depend on agents
     }
 
     # 配置类型映射
@@ -89,6 +92,7 @@ class ConfigSystem:
         ComponentType.STORAGE: StorageConfig,
         ComponentType.REPOSITORY: RepositoryConfig,
         ComponentType.AGENT: AgentConfig,
+        ComponentType.WORKFLOW: WorkflowConfig,
     }
 
     def __init__(self):
@@ -110,6 +114,7 @@ class ConfigSystem:
             ComponentType.STORAGE: StorageBuilder(),
             ComponentType.REPOSITORY: RepositoryBuilder(),
             ComponentType.AGENT: AgentBuilder(),
+            ComponentType.WORKFLOW: WorkflowBuilder(),
         }
 
         # 变更回调
@@ -241,6 +246,30 @@ class ConfigSystem:
     def get_or_none(self, name: str) -> Any | None:
         """获取组件实例，不存在返回 None"""
         return self._instances.get(name)
+
+    def get_instance(self, name: str) -> Any:
+        """
+        获取组件实例 (get 的别名)
+
+        Args:
+            name: 组件名称
+
+        Returns:
+            组件实例
+
+        Raises:
+            ComponentNotFoundError: 组件不存在
+        """
+        return self.get(name)
+
+    def get_all_instances(self) -> dict[str, Any]:
+        """
+        获取所有组件实例
+
+        Returns:
+            组件名称到实例的映射
+        """
+        return dict(self._instances)
 
     async def build_all(self) -> dict[str, int]:
         """
@@ -419,6 +448,10 @@ class ConfigSystem:
             # Tool dependencies (e.g., llm_model)
             for param_name, dep_name in config.effective_dependencies.items():
                 dependencies[param_name] = self.get(dep_name)
+
+        elif isinstance(config, WorkflowConfig):
+            # Workflow needs access to all instances (agents, other workflows)
+            dependencies["_all_instances"] = self._instances
 
         return dependencies
     

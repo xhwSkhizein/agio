@@ -291,7 +291,7 @@ class StepRunner:
         # Create Run record so session appears in session list
         run = AgentRun(
             id=run_id,
-            agent_id=self.agent.name,
+            agent_id=self.agent.id,  # Use id instead of name to ensure it's a string
             session_id=session_id,
             status=RunStatus.RUNNING,
             input_query="[resumed]",
@@ -361,7 +361,7 @@ class StepRunner:
         # Create Run record so session appears in session list
         run = AgentRun(
             id=run_id,
-            agent_id=self.agent.name,
+            agent_id=self.agent.id,  # Use id instead of name to ensure it's a string
             session_id=session_id,
             status=RunStatus.RUNNING,
             input_query="[resumed from tool_calls]",

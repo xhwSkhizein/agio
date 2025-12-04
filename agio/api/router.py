@@ -26,7 +26,19 @@ def create_router(prefix: str = "/agio") -> APIRouter:
         # Custom prefix
         app.include_router(create_router(prefix="/admin/agio"))
     """
-    from .routes import agents, chat, config, health, knowledge, llm_logs, memory, metrics, sessions
+    from .routes import (
+        agents,
+        chat,
+        config,
+        health,
+        knowledge,
+        llm_logs,
+        memory,
+        metrics,
+        runnables,
+        sessions,
+        workflows,
+    )
 
     router = APIRouter(prefix=prefix)
 
@@ -38,6 +50,12 @@ def create_router(prefix: str = "/agio") -> APIRouter:
 
     # Agent management
     router.include_router(agents.router, tags=["Agents"])
+
+    # Runnable API (unified Agent/Workflow)
+    router.include_router(runnables.router, tags=["Runnables"])
+
+    # Workflow management
+    router.include_router(workflows.router, tags=["Workflows"])
 
     # Chat testing
     router.include_router(chat.router, tags=["Chat"])

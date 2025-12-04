@@ -64,6 +64,7 @@ class ComponentType(str, Enum):
     AGENT = "agent"
     STORAGE = "storage"
     REPOSITORY = "repository"
+    WORKFLOW = "workflow"
 
 
 class ComponentConfig(BaseModel):
@@ -194,6 +195,34 @@ class AgentConfig(ComponentConfig):
     tags: list[str] = Field(default_factory=list)
 
 
+class StageConfig(BaseModel):
+    """Configuration for a workflow stage"""
+
+    id: str
+    runnable: str | dict  # Agent/Workflow ID or inline workflow config
+    input: str = "{query}"  # Input template
+    condition: str | None = None  # Condition expression
+
+
+class WorkflowConfig(ComponentConfig):
+    """Configuration for workflow components"""
+
+    type: Literal["workflow"] = "workflow"
+    workflow_type: Literal["pipeline", "loop", "parallel"] = "pipeline"
+
+    # Stages (for pipeline and loop)
+    stages: list[StageConfig] = Field(default_factory=list)
+
+    # Loop specific
+    condition: str | None = None  # Continue condition for loop
+    max_iterations: int = 10
+
+    # Parallel specific
+    merge_template: str | None = None  # Template for merging branch outputs
+
+    tags: list[str] = Field(default_factory=list)
+
+
 __all__ = [
     "ExecutionConfig",
     "ComponentType",
@@ -205,4 +234,6 @@ __all__ = [
     "StorageConfig",
     "RepositoryConfig",
     "AgentConfig",
+    "StageConfig",
+    "WorkflowConfig",
 ]

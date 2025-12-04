@@ -15,6 +15,7 @@ from agio.config.schema import (
     RepositoryConfig,
     StorageConfig,
     ToolConfig,
+    WorkflowConfig,
 )
 
 
@@ -344,3 +345,80 @@ class AgentBuilder(ComponentBuilder):
 
         except Exception as e:
             raise ComponentBuildError(f"Failed to build agent {config.name}: {e}")
+
+
+class WorkflowBuilder(ComponentBuilder):
+    """Builder for workflow components."""
+
+    async def build(
+        self, config: WorkflowConfig, dependencies: dict[str, Any]
+    ) -> Any:
+        """
+        Build workflow instance.
+
+        Dependencies:
+            - _all_instances: dict of all component instances (agents, etc.)
+        """
+        try:
+            from agio.workflow import (
+                LoopWorkflow,
+                ParallelWorkflow,
+                PipelineWorkflow,
+                Stage,
+            )
+
+            # Get all instances as registry (passed from ConfigSystem)
+            registry = dependencies.get("_all_instances", {})
+
+            # Build stages
+            stages = []
+            for stage_config in config.stages:
+                # Handle inline workflow config
+                runnable_ref = stage_config.runnable
+                if isinstance(runnable_ref, dict):
+                    # Recursively build nested workflow
+                    nested_config = WorkflowConfig(
+                        name=runnable_ref.get("id", f"{config.name}_nested"),
+                        **runnable_ref,
+                    )
+                    nested_workflow = await self.build(nested_config, dependencies)
+                    registry[nested_workflow.id] = nested_workflow
+                    runnable_ref = nested_workflow.id
+
+                stages.append(
+                    Stage(
+                        id=stage_config.id,
+                        runnable=runnable_ref,
+                        input=stage_config.input,
+                        condition=stage_config.condition,
+                    )
+                )
+
+            # Build workflow based on type
+            if config.workflow_type == "pipeline":
+                workflow = PipelineWorkflow(id=config.name, stages=stages)
+            elif config.workflow_type == "loop":
+                workflow = LoopWorkflow(
+                    id=config.name,
+                    stages=stages,
+                    condition=config.condition or "true",
+                    max_iterations=config.max_iterations,
+                )
+            elif config.workflow_type == "parallel":
+                workflow = ParallelWorkflow(
+                    id=config.name,
+                    stages=stages,
+                    merge_template=config.merge_template,
+                )
+            else:
+                raise ComponentBuildError(
+                    f"Unknown workflow type: {config.workflow_type}"
+                )
+
+            # Set registry so workflow can resolve runnable references
+            workflow.set_registry(registry)
+
+            return workflow
+
+        except Exception as e:
+            raise ComponentBuildError(f"Failed to build workflow {config.name}: {e}")
