@@ -22,18 +22,22 @@ export function TimelineItem({ type, children, isLast = false }: TimelineItemPro
     }
   };
 
+  // Dot: 6px (w-1.5 h-1.5), positioned at left-[2px]
+  // Dot center X = 2px + 3px = 5px, so line should be at left-[4.5px] (centered on 1px line)
+  // Dot top = 1.05rem ≈ 17px, dot bottom = 17 + 6 = 23px ≈ 1.45rem
+  
   return (
-    <div className="relative pl-6 py-1 group">
-      {/* Vertical Line */}
+    <div className="relative pl-5 pt-3 group">
+      {/* Vertical Line - from below this dot to next dot */}
       {!isLast && (
-        <div className="absolute left-[7px] top-5 bottom-0 w-px bg-border group-hover:bg-gray-700 transition-colors" />
+        <div className="absolute left-[4.5px] top-[1.45rem] bottom-[-1rem] w-px bg-border group-hover:bg-gray-700 transition-colors" />
       )}
 
-      {/* Dot Marker */}
-      <div className={`absolute left-0 top-2 w-1.5 h-1.5 rounded-full border-1 border-background ${getDotColor()} ring-1 transition-all duration-300 z-10`} />
+      {/* Dot Marker - vertically centered with first line text */}
+      <div className={`absolute left-[2px] top-[1.05rem] w-1.5 h-1.5 rounded-full ${getDotColor()} ring-1 transition-all duration-300 z-10`} />
 
       {/* Content */}
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0">
         {children}
       </div>
     </div>

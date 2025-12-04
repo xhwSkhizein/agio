@@ -7,6 +7,7 @@ import { ToolCall } from '../components/ToolCall'
 import { MessageContent } from '../components/MessageContent'
 import { AgentConfigModal } from '../components/AgentConfigModal'
 import { ChevronDown, Plus, Settings, MessageSquare, Play } from 'lucide-react'
+import { stepsToEvents } from '../utils/stepsToEvents'
 
 // Generate unique ID
 let idCounter = 0
@@ -37,30 +38,6 @@ interface ToolCallTracker {
     eventId: string  // The event ID in newEvents
     toolCallId?: string  // The actual tool_call_id from OpenAI
   }
-}
-
-// Helper: Convert backend steps to frontend events
-function stepsToEvents(steps: any[]): TimelineEvent[] {
-  return steps.map(step => {
-    if (step.role === 'tool') {
-      return {
-        id: step.id,
-        type: 'tool' as const,
-        toolName: step.name || 'Tool',
-        toolArgs: step.tool_calls?.[0]?.function?.arguments || '{}',
-        toolResult: step.content,
-        toolStatus: 'completed' as const,
-        timestamp: new Date(step.created_at).getTime(),
-      }
-    }
-    
-    return {
-      id: step.id,
-      type: step.role as 'user' | 'assistant',
-      content: step.content || '',
-      timestamp: new Date(step.created_at).getTime(),
-    }
-  })
 }
 
 // Default agent to use when none is specified

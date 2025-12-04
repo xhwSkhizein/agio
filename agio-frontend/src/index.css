@@ -75,5 +75,5 @@ body {
 }
 
 .prose p {
-  @apply mb-4 leading-relaxed;
+  @apply mb-0.5 leading-snug;
 }

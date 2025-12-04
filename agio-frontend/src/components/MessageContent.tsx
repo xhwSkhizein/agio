@@ -1,6 +1,8 @@
 import { memo, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 interface MessageContentProps {
   content: string;
@@ -10,54 +12,72 @@ interface MessageContentProps {
 export const MessageContent = memo(function MessageContent({ content }: MessageContentProps) {
   // Memoize the markdown components to prevent re-creation
   const components = useMemo(() => ({
-    pre: ({ children }: any) => (
-      <div className="my-2 rounded-lg border border-border bg-surface overflow-hidden">
-        <pre className="p-2 overflow-x-auto text-xs font-mono text-gray-200 bg-transparent m-0 border-0">
-          {children}
-        </pre>
-      </div>
-    ),
-    code: ({ inline, className, children }: any) => {
-      if (inline) {
-        return (
-          <code className="px-1 py-0.5 rounded bg-surfaceHighlight text-purple-300 text-xs font-mono">
-            {children}
-          </code>
-        );
-      }
-      const lang = className?.replace('language-', '') || '';
+    // Handle code blocks (inside pre tags)
+    pre: ({ children }: any) => {
+      // Extract code element props
+      const codeElement = children?.props;
+      const className = codeElement?.className || '';
+      const lang = className.replace('language-', '') || '';
+      const codeString = String(codeElement?.children || '').replace(/\n$/, '');
+
       return (
-        <>
+        <div className="my-2 rounded-lg border border-border bg-surface overflow-hidden">
           {lang && (
-            <div className="px-2 py-0.5 bg-surfaceHighlight border-b border-border text-[10px] text-gray-400 font-mono -mt-2 -mx-2 mb-2">
+            <div className="px-3 py-1 bg-surfaceHighlight border-b border-border text-[10px] text-gray-400 font-mono">
               {lang}
             </div>
           )}
-          <code className="text-gray-200">{children}</code>
-        </>
+          <SyntaxHighlighter
+            style={oneDark}
+            language={lang || 'text'}
+            PreTag="div"
+            customStyle={{
+              margin: 0,
+              padding: '0.75rem',
+              background: '#09090b',
+              fontSize: '0.75rem',
+              lineHeight: '1.4',
+            }}
+            codeTagProps={{
+              style: {
+                background: '#09090b', // 内层 <code> 背景
+                padding: '0',          // 可选：避免双重 padding
+                margin: 0,
+              }
+            }}
+          >
+            {codeString}
+          </SyntaxHighlighter>
+        </div>
       );
     },
-    p: ({ children }: any) => <p className="mb-1.5 last:mb-0">{children}</p>,
-    ul: ({ children }: any) => <ul className="list-disc list-inside mb-1.5 space-y-0.5">{children}</ul>,
-    ol: ({ children }: any) => <ol className="list-decimal list-inside mb-1.5 space-y-0.5">{children}</ol>,
-    li: ({ children }: any) => <li className="text-gray-300">{children}</li>,
-    h1: ({ children }: any) => <h1 className="text-lg font-bold mb-1.5 mt-3 first:mt-0">{children}</h1>,
-    h2: ({ children }: any) => <h2 className="text-base font-bold mb-1.5 mt-2 first:mt-0">{children}</h2>,
-    h3: ({ children }: any) => <h3 className="text-sm font-bold mb-1.5 mt-1.5 first:mt-0">{children}</h3>,
+    // Handle inline code
+    code: ({ children }: any) => (
+      <code className="px-1 py-0.5 rounded bg-surfaceHighlight text-purple-300 text-xs font-mono">
+        {children}
+      </code>
+    ),
+    p: ({ children }: any) => <p className="mb-1 last:mb-0 leading-snug">{children}</p>,
+    ul: ({ children }: any) => <ul className="list-disc pl-5 mb-1 space-y-0.5">{children}</ul>,
+    ol: ({ children }: any) => <ol className="list-decimal pl-5 mb-1 space-y-0.5">{children}</ol>,
+    li: ({ children }: any) => <li className="text-gray-300 pl-1">{children}</li>,
+    h1: ({ children }: any) => <h1 className="text-lg font-bold mb-1 mt-2 first:mt-0">{children}</h1>,
+    h2: ({ children }: any) => <h2 className="text-base font-bold mb-1 mt-1.5 first:mt-0">{children}</h2>,
+    h3: ({ children }: any) => <h3 className="text-sm font-bold mb-1 mt-1 first:mt-0">{children}</h3>,
     a: ({ href, children }: any) => (
       <a href={href} className="text-primary-400 hover:underline" target="_blank" rel="noopener noreferrer">
         {children}
       </a>
     ),
     blockquote: ({ children }: any) => (
-      <blockquote className="border-l-2 border-gray-600 pl-2 my-1.5 text-gray-400 italic text-xs">
+      <blockquote className="border-l-2 border-gray-600 pl-2 my-1 text-gray-400 italic text-xs">
         {children}
       </blockquote>
     ),
   }), []);
 
   return (
-    <div className="prose prose-invert prose-sm max-w-none text-gray-300">
+    <div className="max-w-none text-gray-300">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {content}
       </ReactMarkdown>

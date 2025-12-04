@@ -32,12 +32,25 @@ class RunResponse(BaseModel):
 
 
 class StepResponse(BaseModel):
+    """
+    Response model for a conversation step.
+    
+    Different roles have different fields populated:
+    - user: content only
+    - assistant: content and/or tool_calls
+    - tool: name, tool_call_id, and content (tool result)
+    """
     id: str
     session_id: str
     sequence: int
     role: str
     content: str | None
+    # Assistant step: list of tool calls to execute
     tool_calls: list[dict] | None = None
+    # Tool step: name of the tool that was called
+    name: str | None = None
+    # Tool step: ID linking to the tool_call in assistant step
+    tool_call_id: str | None = None
     created_at: str
 
 
@@ -269,6 +282,8 @@ async def get_session_steps(
             role=step.role.value,
             content=step.content,
             tool_calls=step.tool_calls,
+            name=step.name,
+            tool_call_id=step.tool_call_id,
             created_at=step.created_at.isoformat() if step.created_at else "",
         )
         for step in steps

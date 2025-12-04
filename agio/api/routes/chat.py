@@ -79,7 +79,7 @@ async def stream_chat_events(
 
 
 async def chat_non_streaming(
-    agent, message: str, user_id: str | None, session_id: str | None
+    agent: Agent, message: str, user_id: str | None, session_id: str | None
 ) -> ChatResponse:
     """Non-streaming chat."""
     response_content = ""

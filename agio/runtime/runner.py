@@ -279,14 +279,25 @@ class StepRunner:
         """Resume from a user step (most common retry case)."""
         logger.info("resuming_from_user_step", session_id=session_id, step_id=last_step.id)
 
-        if self.repository:
-            messages = await build_context_from_steps(
-                session_id, self.repository, system_prompt=self.agent.system_prompt
-            )
-        else:
+        if not self.repository:
             raise ValueError("Repository required for resume")
 
+        messages = await build_context_from_steps(
+            session_id, self.repository, system_prompt=self.agent.system_prompt
+        )
+
         run_id = str(uuid4())
+        
+        # Create Run record so session appears in session list
+        run = AgentRun(
+            id=run_id,
+            agent_id=self.agent.name,
+            session_id=session_id,
+            status=RunStatus.RUNNING,
+            input_query="[resumed]",
+            metrics=AgentRunMetrics(start_time=time.time()),
+        )
+        await self.repository.save_run(run)
 
         executor = StepExecutor(
             model=self.agent.model,
@@ -296,14 +307,26 @@ class StepRunner:
 
         start_sequence = last_step.sequence + 1
 
-        async for event in executor.execute(
-            session_id=session_id, run_id=run_id, messages=messages, start_sequence=start_sequence
-        ):
-            if event.type == StepEventType.STEP_COMPLETED and event.snapshot:
-                if self.repository:
+        try:
+            async for event in executor.execute(
+                session_id=session_id, run_id=run_id, messages=messages, start_sequence=start_sequence
+            ):
+                if event.type == StepEventType.STEP_COMPLETED and event.snapshot:
                     await self.repository.save_step(event.snapshot)
 
-            yield event
+                yield event
+            
+            # Update run status on completion
+            run.status = RunStatus.COMPLETED
+            run.metrics.end_time = time.time()
+            run.metrics.duration = run.metrics.end_time - run.metrics.start_time
+            await self.repository.save_run(run)
+        except Exception as e:
+            run.status = RunStatus.FAILED
+            run.metrics.end_time = time.time()
+            run.metrics.duration = run.metrics.end_time - run.metrics.start_time
+            await self.repository.save_run(run)
+            raise
 
     async def resume_from_tool_step(
         self, session_id: str, last_step: Step
@@ -334,6 +357,17 @@ class StepRunner:
 
         run_id = str(uuid4())
         start_sequence = last_step.sequence + 1
+        
+        # Create Run record so session appears in session list
+        run = AgentRun(
+            id=run_id,
+            agent_id=self.agent.name,
+            session_id=session_id,
+            status=RunStatus.RUNNING,
+            input_query="[resumed from tool_calls]",
+            metrics=AgentRunMetrics(start_time=time.time()),
+        )
+        await self.repository.save_run(run)
 
         executor = StepExecutor(
             model=self.agent.model,
@@ -341,18 +375,31 @@ class StepRunner:
             config=self.config,
         )
 
-        # Pass pending tool_calls to executor
-        async for event in executor.execute(
-            session_id=session_id, 
-            run_id=run_id, 
-            messages=messages, 
-            start_sequence=start_sequence,
-            pending_tool_calls=last_step.tool_calls,
-        ):
-            if event.type == StepEventType.STEP_COMPLETED and event.snapshot:
-                await self.repository.save_step(event.snapshot)
+        try:
+            # Pass pending tool_calls to executor
+            async for event in executor.execute(
+                session_id=session_id, 
+                run_id=run_id, 
+                messages=messages, 
+                start_sequence=start_sequence,
+                pending_tool_calls=last_step.tool_calls,
+            ):
+                if event.type == StepEventType.STEP_COMPLETED and event.snapshot:
+                    await self.repository.save_step(event.snapshot)
 
-            yield event
+                yield event
+            
+            # Update run status on completion
+            run.status = RunStatus.COMPLETED
+            run.metrics.end_time = time.time()
+            run.metrics.duration = run.metrics.end_time - run.metrics.start_time
+            await self.repository.save_run(run)
+        except Exception as e:
+            run.status = RunStatus.FAILED
+            run.metrics.end_time = time.time()
+            run.metrics.duration = run.metrics.end_time - run.metrics.start_time
+            await self.repository.save_run(run)
+            raise
 
 
 __all__ = ["StepRunner"]

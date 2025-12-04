@@ -258,7 +258,7 @@ export default function Sessions() {
                             {step.tool_calls.map((tc: any, i: number) => (
                               <div key={i} className="text-xs text-gray-500">
                                 <span className="text-primary-400">{tc.function?.name}</span>
-                                ({tc.function?.arguments?.slice(0, 50)}...)
+                                ({tc.function?.arguments?.slice(0, 200)}...)
                               </div>
                             ))}
                           </div>

@@ -133,7 +133,8 @@ class LLMCallTracker:
 
         # Accumulate response
         content_parts: list[str] = []
-        tool_calls: list[dict] = []
+        # Use dict to merge streaming tool_calls by index
+        tool_calls_map: dict[int, dict] = {}
         usage_data: dict[str, int] | None = None
 
         try:
@@ -146,9 +147,32 @@ class LLMCallTracker:
                 if chunk.content:
                     content_parts.append(chunk.content)
 
-                # Accumulate tool calls
+                # Merge streaming tool calls by index
                 if chunk.tool_calls:
-                    tool_calls.extend(chunk.tool_calls)
+                    for tc in chunk.tool_calls:
+                        idx = tc.get("index", 0)
+                        if idx not in tool_calls_map:
+                            # Initialize new tool call entry
+                            tool_calls_map[idx] = {
+                                "id": tc.get("id", ""),
+                                "type": tc.get("type", "function"),
+                                "function": {
+                                    "name": "",
+                                    "arguments": "",
+                                },
+                            }
+                        
+                        # Update id if present (usually only in first chunk)
+                        if tc.get("id"):
+                            tool_calls_map[idx]["id"] = tc["id"]
+                        
+                        # Merge function data
+                        if "function" in tc:
+                            func = tc["function"]
+                            if func.get("name"):
+                                tool_calls_map[idx]["function"]["name"] += func["name"]
+                            if func.get("arguments"):
+                                tool_calls_map[idx]["function"]["arguments"] += func["arguments"]
 
                 # Capture usage
                 if chunk.usage:
@@ -164,7 +188,9 @@ class LLMCallTracker:
             end_time = time.time()
             log.status = "completed"
             log.response_content = "".join(content_parts) if content_parts else None
-            log.response_tool_calls = tool_calls if tool_calls else None
+            # Convert merged tool_calls map to sorted list
+            tool_calls = [tool_calls_map[i] for i in sorted(tool_calls_map.keys())] if tool_calls_map else None
+            log.response_tool_calls = tool_calls
             log.duration_ms = (end_time - start_time) * 1000
 
             if first_token_time:
