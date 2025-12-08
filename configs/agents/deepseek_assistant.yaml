@@ -4,7 +4,8 @@ description: "Cost-effective assistant using DeepSeek model"
 model: deepseek
 system_prompt: "You are a helpful assistant. Answer questions clearly and concisely."
 tools: []
-repository: inmemory_repo
+repository: mongodb_session_store
+trace_store: trace_store
 hooks:
   - logging_hook
 max_steps: 10

@@ -3,7 +3,6 @@ FileWriteTool - 文件写入工具
 """
 
 import difflib
-import logging
 import os
 import time
 from pathlib import Path
@@ -11,14 +10,16 @@ from typing import Any, TYPE_CHECKING
 
 from pydantic import BaseModel
 
+from agio.domain import ToolResult
 from agio.providers.tools.base import RiskLevel, ToolCategory
 from agio.providers.tools.builtin.adapter import AppSettings
 from agio.providers.tools.builtin.common.file_operation_base import FileOperationBaseTool
-from agio.domain import ToolResult
+from agio.utils.logging import get_logger
 
 if TYPE_CHECKING:
     from agio.runtime.control import AbortSignal
-logger = logging.getLogger(__name__)
+
+logger = get_logger(__name__)
 
 
 class Hunk(BaseModel):

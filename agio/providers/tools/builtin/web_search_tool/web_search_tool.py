@@ -6,7 +6,7 @@ WebSearchTool - 网页搜索工具
 
 import http.client
 import json
-import logging
+from agio.utils.logging import get_logger
 import os
 import time
 from datetime import datetime
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     )
     from agio.runtime.control import AbortSignal
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class WebSearchTool(BaseTool):

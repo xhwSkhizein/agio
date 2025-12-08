@@ -37,6 +37,7 @@ def create_router(prefix: str = "/agio") -> APIRouter:
         metrics,
         runnables,
         sessions,
+        traces,
         workflows,
     )
 
@@ -74,5 +75,8 @@ def create_router(prefix: str = "/agio") -> APIRouter:
 
     # LLM Logs
     router.include_router(llm_logs.router, tags=["LLM Logs"])
+
+    # Traces (Observability)
+    router.include_router(traces.router, tags=["Observability"])
 
     return router

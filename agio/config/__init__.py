@@ -12,18 +12,25 @@ from agio.config.settings import AgioSettings, settings
 
 # Schema
 from agio.config.schema import (
-    ExecutionConfig,
-    ComponentType,
-    ComponentConfig,
-    ModelConfig,
-    ToolConfig,
-    MemoryConfig,
-    KnowledgeConfig,
-    StorageConfig,
-    RepositoryConfig,
     AgentConfig,
+    ComponentConfig,
+    ComponentType,
+    ExecutionConfig,
+    KnowledgeConfig,
+    MemoryConfig,
+    ModelConfig,
+    SessionStoreConfig,
+    TraceStoreConfig,
+    RunnableToolConfig,
     StageConfig,
+    ToolConfig,
+    ToolReference,
     WorkflowConfig,
+)
+from .tool_reference import (
+    ParsedToolReference,
+    parse_tool_reference,
+    parse_tool_references,
 )
 
 # Exceptions
@@ -42,19 +49,22 @@ from agio.config.system import (
 )
 
 __all__ = [
-    # Settings
-    "AgioSettings",
-    "settings",
-    # Schema
-    "ExecutionConfig",
+    "ConfigSystem",
+    "get_config_system",
     "ComponentType",
     "ComponentConfig",
+    "ExecutionConfig",
     "ModelConfig",
     "ToolConfig",
+    "RunnableToolConfig",
+    "ToolReference",
+    "ParsedToolReference",
+    "parse_tool_reference",
+    "parse_tool_references",
     "MemoryConfig",
     "KnowledgeConfig",
-    "StorageConfig",
-    "RepositoryConfig",
+    "SessionStoreConfig",
+    "TraceStoreConfig",
     "AgentConfig",
     "StageConfig",
     "WorkflowConfig",

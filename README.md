@@ -3,163 +3,109 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
 
-**Agio** 是一个现代化、简洁的 Agent 框架，专注于核心功能和可扩展性。
+Agio 是一个专注**可组合、多代理编排**的现代 Agent 框架，提供一致的事件流、工具系统、可观测性与配置驱动能力。
 
-## ✨ 核心特性
+## ✨ 设计要点
 
-- **清晰分层** - domain/runtime/providers/config 四层架构
-- **Step-based 执行** - 统一的消息模型，支持流式、重试、分支
-- **可插拔组件** - LLM、存储、工具均可替换
-- **配置驱动** - YAML 配置 + 环境变量，支持热重载
+- **清晰分层**：`domain`（纯模型）→ `runtime`（执行引擎）→ `providers`（LLM/存储/工具）→ `config`（动态装配）
+- **统一事件流**：`StepEvent` 描述 LLM 输出、工具调用、运行完成等全过程，便于回放与观测
+- **可插拔工具**：内置文件/Web/系统工具，可通过注册表或 YAML 配置扩展
+- **配置驱动**：`ConfigSystem` 从 `configs/` 目录加载组件，按依赖拓扑构建并支持热更新
+- **可观测性内置**：集中埋点与 LLM 调用记录，前端仪表盘实时查看
+- **API+前端**：FastAPI 控制平面 + React 仪表盘，开箱即用
 
-## 🚀 快速开始
-
-### 安装
+## 🚀 安装与运行
 
 ```bash
-uv sync  # 推荐
-# 或
-pip install -r requirements.txt
+# 安装依赖（推荐）
+uv sync
 ```
 
-### 基础使用
+开发环境运行 FastAPI：
+
+```bash
+python main.py  # 监听 0.0.0.0:8900，API 前缀 /agio
+```
+
+## 🔧 最小示例（代码方式）
 
 ```python
-from agio import Agent, OpenAIModel
+import asyncio
+from agio import Agent, OpenAIModel, StepEventType
 from agio.providers.tools.builtin import FileReadTool, GrepTool
 
-# 创建 Agent
-agent = Agent(
-    model=OpenAIModel(model_name="gpt-4"),
-    tools=[FileReadTool(), GrepTool()],
-    system_prompt="You are a helpful assistant.",
-)
+async def main():
+    agent = Agent(
+        model=OpenAIModel(model_name="gpt-4o"),
+        tools=[FileReadTool(), GrepTool()],
+        system_prompt="You are a helpful assistant.",
+    )
 
-# 运行 (文本流)
-async for text in agent.arun("What is 2+2?"):
-    print(text, end="")
+    async for event in agent.arun_stream("Read README.md and summarize"):
+        if event.type == StepEventType.STEP_DELTA:
+            print(event.delta.content, end="")
 
-# 或获取完整事件流
-async for event in agent.arun_stream("Search for Python tutorials"):
-    if event.type == StepEventType.STEP_DELTA:
-        print(event.delta.content, end="")
+asyncio.run(main())
 ```
 
-### 配置
-
-```bash
-# .env
-AGIO_OPENAI_API_KEY=sk-...
-AGIO_MONGO_URI=mongodb://localhost:27017  # 可选
-```
+## 🧩 配置驱动示例
 
 ```python
-from agio.config import settings, ExecutionConfig
+import asyncio
+from agio.config import init_config_system
 
-# 全局配置
-print(settings.openai_api_key)
+async def main():
+    config_sys = await init_config_system("./configs")
+    agent = config_sys.get("code_assistant")
 
-# 运行时配置
-config = ExecutionConfig(max_steps=20, parallel_tool_calls=True)
+    async for event in agent.arun_stream("Find logging usage"):
+        if event.type.name == "RUN_COMPLETED":
+            print(event.data.get("response"))
+
+asyncio.run(main())
 ```
 
-## 📦 架构概览
+`.env` 关键变量：
+
+```bash
+AGIO_OPENAI_API_KEY=sk-...
+AGIO_ANTHROPIC_API_KEY=sk-...
+AGIO_DEEPSEEK_API_KEY=sk-...
+AGIO_MONGO_URI=mongodb://localhost:27017  # 可选，启用持久化
+AGIO_CONFIG_DIR=./configs                  # API 服务启动时加载
+```
+
+## 📦 目录速览
 
 ```
 agio/
-├── __init__.py          # 顶层入口
-├── agent.py             # Agent 类
-│
-├── domain/              # 纯领域模型（无外部依赖）
-│   ├── models.py        # Step, AgentRun, AgentSession
-│   ├── events.py        # StepEvent, StepDelta, ToolResult
-│   └── adapters.py      # StepAdapter
-│
-├── runtime/             # 执行引擎
-│   ├── runner.py        # StepRunner - Run 生命周期
-│   ├── executor.py      # StepExecutor - LLM 调用循环
-│   ├── tool_executor.py # ToolExecutor - 工具执行
-│   ├── context.py       # 上下文构建
-│   └── control.py       # AbortSignal, retry, fork
-│
-├── providers/           # 外部服务适配器
-│   ├── llm/             # LLM 模型 (OpenAI, Anthropic, Deepseek)
-│   ├── storage/         # 持久化 (InMemory, MongoDB)
-│   └── tools/           # 工具 (base, registry, builtin/)
-│
-├── config/              # 配置系统
-│   ├── settings.py      # AgioSettings (环境变量)
-│   ├── schema.py        # ExecutionConfig, ComponentConfig
-│   ├── system.py        # ConfigSystem (动态加载)
-│   └── builders.py      # 组件构建器
-│
-├── api/                 # FastAPI 路由
-└── utils/               # 工具函数
+├── agent.py          # Agent 容器，遵循 Runnable 协议
+├── domain/           # 纯领域模型：Step/StepEvent/ToolResult 等
+├── runtime/          # StepRunner/Executor/ToolExecutor 控制循环
+├── providers/        # LLM、存储库、工具（含 builtin 工具）
+├── config/           # ConfigSystem、Pydantic schema、构建器
+├── api/              # FastAPI 控制平面（默认前缀 /agio）
+├── workflow/         # 多阶段/条件/并行编排与可运行工具封装
+└── observability/    # LLM 调用追踪与指标
 ```
 
-详细架构说明见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+更多细节参见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
-## 🔧 核心概念
+## 🧪 测试
 
-### Step 模型
-
-```python
-from agio.domain import Step, MessageRole
-
-# 用户消息
-user_step = Step(
-    session_id="session_123",
-    run_id="run_456",
-    sequence=1,
-    role=MessageRole.USER,
-    content="Hello!"
-)
-
-# 助手响应（带工具调用）
-assistant_step = Step(
-    role=MessageRole.ASSISTANT,
-    content="Let me search.",
-    tool_calls=[{"id": "call_1", "type": "function", ...}]
-)
+```bash
+pytest -q
 ```
 
-### 自定义工具
+## 📚 相关文档
 
-```python
-from agio.providers.tools import BaseTool
-from agio.domain import ToolResult
-
-class MyTool(BaseTool):
-    def get_name(self) -> str:
-        return "my_tool"
-    
-    def get_description(self) -> str:
-        return "My custom tool"
-    
-    def get_parameters(self) -> dict:
-        return {
-            "type": "object",
-            "properties": {"query": {"type": "string"}},
-            "required": ["query"]
-        }
-    
-    async def execute(self, parameters: dict, abort_signal=None) -> ToolResult:
-        result = f"Result for: {parameters['query']}"
-        return ToolResult(
-            tool_name=self.name,
-            content=result,
-            is_success=True
-        )
-```
-
-## 📚 文档
-
-- [架构设计](docs/ARCHITECTURE.md) - 详细架构说明
-- [API 文档](http://localhost:8900/docs) - 启动服务后访问
+- 架构文档：`docs/ARCHITECTURE.md`
+- API：运行服务后访问 `http://localhost:8900/agio/docs`
+- 前端：`agio-frontend/`（Vite + React 18）
 
 ## 🤝 贡献
 
-欢迎贡献！请查看 [CONTRIBUTING.md](CONTRIBUTING.md)
+欢迎提交 PR / Issue，参与共建。请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 📄 许可证
 

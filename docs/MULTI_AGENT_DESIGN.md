@@ -222,7 +222,7 @@ class Agent:
         tools: list[BaseTool] | None = None,
         name: str = "agent",
         system_prompt: str | None = None,
-        repository: AgentRunRepository | None = None,
+        session_store: SessionStore | None = None,
         # ... 其他现有参数
     ):
         self._id = name
@@ -262,7 +262,7 @@ class Agent:
         runner = StepRunner(
             agent=self,
             config=ExecutionConfig(),
-            repository=self.repository,
+            session_store=self.session_store,
         )
         
         async for event in runner.run_stream(session, input):
@@ -2032,13 +2032,13 @@ Workflow Run (trace_id = "trace_001")
 - 通过 `trace_id` 关联同一 Workflow 执行的所有 Session
 - 通过 `workflow_id` + `stage_id` 定位 Session 所属位置
 
-### 11.4 Repository 扩展
+### 11.4 SessionStore 扩展
 
 ```python
 # agio/providers/storage/base.py - 扩展
 
-class AgentRunRepository(ABC):
-    """扩展的 Repository 接口"""
+class SessionStore(ABC):
+    """扩展的 SessionStore 接口"""
     
     # === 现有方法（保持不变） ===
     async def save_step(self, step: Step): ...
@@ -2230,7 +2230,7 @@ agio/
 | `domain/models.py` | 修改 | Step/Run 扩展字段 |
 | `config/loader.py` | 修改 | 支持 Workflow 加载 |
 | `api/routes/` | 新增 | 统一 API 路由 |
-| `providers/storage/base.py` | 修改 | Repository 接口扩展 |
+| `providers/storage/base.py` | 修改 | SessionStore 接口扩展 |
 
 ---
 

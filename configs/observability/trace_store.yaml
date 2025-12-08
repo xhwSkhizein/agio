@@ -1,0 +1,11 @@
+type: trace_store
+name: trace_store
+enabled: true
+
+# MongoDB connection
+mongo_uri: ${AGIO_MONGO_URI:mongodb://localhost:27017}
+mongo_db_name: ${AGIO_MONGO_DB:agio}
+
+# Buffer configuration
+buffer_size: 1000
+flush_interval: 60

@@ -26,6 +26,7 @@ const navItems = [
   { path: '/sessions', label: 'Sessions', icon: History },
   { path: '/metrics', label: 'Metrics', icon: BarChart3 },
   { path: '/llm-logs', label: 'LLM Logs', icon: Activity },
+  { path: '/traces', label: 'Traces', icon: Activity },
 ]
 
 const bottomNavItems = [

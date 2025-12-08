@@ -6,17 +6,25 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from agio.api.deps import get_config_sys
-from agio.config import ConfigSystem
-from agio.config import ComponentType
+from agio.config import ConfigSystem, ComponentType, parse_tool_references
 
 router = APIRouter(prefix="/agents")
 
 
 # Response Models
+class ToolInfo(BaseModel):
+    """Tool information in response."""
+    type: str
+    name: str | None = None
+    agent: str | None = None
+    workflow: str | None = None
+    description: str | None = None
+
+
 class AgentResponse(BaseModel):
     name: str
     model: str
-    tools: list[str] = []
+    tools: list[ToolInfo] = []
     memory: str | None = None
     knowledge: str | None = None
     system_prompt: str | None = None
@@ -49,11 +57,26 @@ async def list_agents(
     items = []
     for config_doc in configs:
         config = config_doc.get("config", {})
+        
+        # Parse tools using unified parser
+        tools_config = config.get("tools", [])
+        parsed_tools = parse_tool_references(tools_config)
+        tools = [
+            ToolInfo(
+                type=t.type,
+                name=t.name,
+                agent=t.agent,
+                workflow=t.workflow,
+                description=t.description,
+            )
+            for t in parsed_tools
+        ]
+        
         items.append(
             AgentResponse(
                 name=config.get("name"),
                 model=config.get("model"),
-                tools=config.get("tools", []),
+                tools=tools,
                 memory=config.get("memory"),
                 knowledge=config.get("knowledge"),
                 system_prompt=config.get("system_prompt"),
@@ -78,10 +101,24 @@ async def get_agent(
     if not config:
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
 
+    # Parse tools using unified parser
+    tools_config = config.get("tools", [])
+    parsed_tools = parse_tool_references(tools_config)
+    tools = [
+        ToolInfo(
+            type=t.type,
+            name=t.name,
+            agent=t.agent,
+            workflow=t.workflow,
+            description=t.description,
+        )
+        for t in parsed_tools
+    ]
+    
     return AgentResponse(
         name=config.get("name"),
         model=config.get("model"),
-        tools=config.get("tools", []),
+        tools=tools,
         memory=config.get("memory"),
         knowledge=config.get("knowledge"),
         system_prompt=config.get("system_prompt"),

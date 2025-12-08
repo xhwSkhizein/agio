@@ -1,13 +1,7 @@
 """
 ConfigSystem - 配置系统核心入口
-
-提供统一的配置管理和组件生命周期管理：
-- 配置加载和存储
-- 组件构建和依赖注入
-- 配置变更和热重载
 """
 
-import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
@@ -18,9 +12,9 @@ from agio.config.builders import (
     KnowledgeBuilder,
     MemoryBuilder,
     ModelBuilder,
-    RepositoryBuilder,
-    StorageBuilder,
+    SessionStoreBuilder,
     ToolBuilder,
+    TraceStoreBuilder,
     WorkflowBuilder,
 )
 from agio.config.exceptions import (
@@ -36,13 +30,15 @@ from agio.config.schema import (
     KnowledgeConfig,
     MemoryConfig,
     ModelConfig,
-    RepositoryConfig,
-    StorageConfig,
+    SessionStoreConfig,
+    RunnableToolConfig,
     ToolConfig,
+    TraceStoreConfig,
     WorkflowConfig,
 )
+from agio.utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ComponentMeta:
@@ -74,8 +70,8 @@ class ConfigSystem:
     # 组件类型优先级（用于确定构建顺序）
     TYPE_PRIORITY = {
         ComponentType.MODEL: 0,
-        ComponentType.STORAGE: 0,
-        ComponentType.REPOSITORY: 0,
+        ComponentType.SESSION_STORE: 0,
+        ComponentType.TRACE_STORE: 0,
         ComponentType.MEMORY: 1,
         ComponentType.KNOWLEDGE: 1,
         ComponentType.TOOL: 2,
@@ -89,8 +85,8 @@ class ConfigSystem:
         ComponentType.TOOL: ToolConfig,
         ComponentType.MEMORY: MemoryConfig,
         ComponentType.KNOWLEDGE: KnowledgeConfig,
-        ComponentType.STORAGE: StorageConfig,
-        ComponentType.REPOSITORY: RepositoryConfig,
+        ComponentType.SESSION_STORE: SessionStoreConfig,
+        ComponentType.TRACE_STORE: TraceStoreConfig,
         ComponentType.AGENT: AgentConfig,
         ComponentType.WORKFLOW: WorkflowConfig,
     }
@@ -111,8 +107,8 @@ class ConfigSystem:
             ComponentType.TOOL: ToolBuilder(),
             ComponentType.MEMORY: MemoryBuilder(),
             ComponentType.KNOWLEDGE: KnowledgeBuilder(),
-            ComponentType.STORAGE: StorageBuilder(),
-            ComponentType.REPOSITORY: RepositoryBuilder(),
+            ComponentType.SESSION_STORE: SessionStoreBuilder(),
+            ComponentType.TRACE_STORE: TraceStoreBuilder(),
             ComponentType.AGENT: AgentBuilder(),
             ComponentType.WORKFLOW: WorkflowBuilder(),
         }
@@ -149,7 +145,7 @@ class ConfigSystem:
                 logger.info(f"Loaded config: {component_type.value}/{name}")
                 stats["loaded"] += 1
             except Exception as e:
-                logger.error(f"Failed to load {component_type.value}/{name}: {e}")
+                logger.exception(f"Failed to load {component_type.value}/{name}: {e}")
                 stats["failed"] += 1
 
         logger.info(f"Config loading completed: {stats}")
@@ -293,7 +289,7 @@ class ConfigSystem:
                 await self._build_component(component_type, name)
                 stats["built"] += 1
             except Exception as e:
-                logger.error(f"Failed to build {component_type.value}/{name}: {e}")
+                logger.exception(f"Failed to build {component_type.value}/{name}: {e}")
                 stats["failed"] += 1
 
         logger.info(f"Build completed: {stats}")
@@ -427,10 +423,13 @@ class ConfigSystem:
             # Model (required)
             dependencies["model"] = self.get(config.model)
 
-            # Tools (list) - support both registered tools and built-in tools
+            # Tools (list) - support string refs, agent_tool, workflow_tool
             tools = []
-            for tool_name in config.tools:
-                tool = await self._get_or_create_tool(tool_name)
+            for tool_ref in config.tools:
+                # Pass current agent name for self-reference detection
+                tool = await self._resolve_tool_reference(
+                    tool_ref, current_component=config.name
+                )
                 tools.append(tool)
             dependencies["tools"] = tools
 
@@ -441,8 +440,11 @@ class ConfigSystem:
             if config.knowledge:
                 dependencies["knowledge"] = self.get(config.knowledge)
 
-            if config.repository:
-                dependencies["repository"] = self.get(config.repository)
+            if config.session_store:
+                dependencies["session_store"] = self.get(config.session_store)
+
+            if config.trace_store:
+                dependencies["trace_store"] = self.get(config.trace_store)
 
         elif isinstance(config, ToolConfig):
             # Tool dependencies (e.g., llm_model)
@@ -455,6 +457,140 @@ class ConfigSystem:
 
         return dependencies
     
+    async def _resolve_tool_reference(
+        self, 
+        tool_ref: str | dict | RunnableToolConfig,
+        current_component: str | None = None,
+    ) -> Any:
+        """
+        Resolve a tool reference to a tool instance.
+        
+        Supports:
+        1. String: tool name (built-in or configured)
+        2. RunnableToolConfig: Pydantic-parsed agent_tool/workflow_tool config
+        3. Dict with type="agent_tool": wrap an Agent as Tool
+        4. Dict with type="workflow_tool": wrap a Workflow as Tool
+        
+        Args:
+            tool_ref: Tool reference (string, RunnableToolConfig, or dict)
+            current_component: Name of the component being built (for self-reference detection)
+            
+        Returns:
+            Tool instance (BaseTool or RunnableTool)
+        """
+        # Case 1: String reference - use existing logic
+        if isinstance(tool_ref, str):
+            return await self._get_or_create_tool(tool_ref)
+        
+        # Case 2: RunnableToolConfig (Pydantic auto-converted from dict)
+        if isinstance(tool_ref, RunnableToolConfig):
+            config_dict = tool_ref.model_dump()
+            if tool_ref.type == "agent_tool":
+                return await self._create_agent_tool(config_dict, current_component)
+            elif tool_ref.type == "workflow_tool":
+                return await self._create_workflow_tool(config_dict, current_component)
+        
+        # Case 3: Dict-based configuration (use unified parser)
+        if isinstance(tool_ref, dict):
+            from agio.config.tool_reference import parse_tool_reference
+            parsed = parse_tool_reference(tool_ref)
+            
+            if parsed.type == "agent_tool":
+                return await self._create_agent_tool(parsed.raw, current_component)
+            elif parsed.type == "workflow_tool":
+                return await self._create_workflow_tool(parsed.raw, current_component)
+            else:
+                raise ComponentBuildError(
+                    f"Unknown tool reference format: {tool_ref}. "
+                    f"Expected string (tool name) or dict with type='agent_tool'/'workflow_tool'"
+                )
+        
+        raise ComponentBuildError(f"Invalid tool reference type: {type(tool_ref)}")
+    
+    async def _create_agent_tool(
+        self, 
+        config: dict, 
+        current_component: str | None = None,
+    ) -> Any:
+        """
+        Create a RunnableTool wrapping an Agent.
+        
+        Args:
+            config: Dict with 'agent', 'description', 'name' keys
+            current_component: Name of the component being built (for self-reference detection)
+            
+        Returns:
+            RunnableTool instance
+            
+        Raises:
+            ComponentBuildError: If self-reference detected or agent not found
+        """
+        from agio.workflow import as_tool
+        
+        agent_id = config.get("agent")
+        if not agent_id:
+            raise ComponentBuildError("agent_tool config missing 'agent' field")
+        
+        # Safety check: Detect self-reference
+        if current_component and agent_id == current_component:
+            raise ComponentBuildError(
+                f"Self-reference detected: Agent '{current_component}' cannot use itself as a tool. "
+                f"This would cause infinite recursion."
+            )
+        
+        # Get the agent instance
+        agent = self.get(agent_id)
+        
+        # Create RunnableTool
+        description = config.get("description")
+        name = config.get("name")
+        
+        tool = as_tool(agent, description=description, name=name)
+        logger.info(f"Created agent_tool: {tool.get_name()} (wrapping {agent_id})")
+        return tool
+    
+    async def _create_workflow_tool(
+        self, 
+        config: dict,
+        current_component: str | None = None,
+    ) -> Any:
+        """
+        Create a RunnableTool wrapping a Workflow.
+        
+        Args:
+            config: Dict with 'workflow', 'description', 'name' keys
+            current_component: Name of the component being built (for self-reference detection)
+            
+        Returns:
+            RunnableTool instance
+            
+        Raises:
+            ComponentBuildError: If self-reference detected or workflow not found
+        """
+        from agio.workflow import as_tool
+        
+        workflow_id = config.get("workflow")
+        if not workflow_id:
+            raise ComponentBuildError("workflow_tool config missing 'workflow' field")
+        
+        # Safety check: Detect self-reference
+        if current_component and workflow_id == current_component:
+            raise ComponentBuildError(
+                f"Self-reference detected: Workflow '{current_component}' cannot use itself as a tool. "
+                f"This would cause infinite recursion."
+            )
+        
+        # Get the workflow instance
+        workflow = self.get(workflow_id)
+        
+        # Create RunnableTool
+        description = config.get("description")
+        name = config.get("name")
+        
+        tool = as_tool(workflow, description=description, name=name)
+        logger.info(f"Created workflow_tool: {tool.get_name()} (wrapping {workflow_id})")
+        return tool
+
     async def _get_or_create_tool(self, tool_name: str) -> Any:
         """
         Get tool instance by name.

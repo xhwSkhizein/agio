@@ -9,11 +9,11 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from agio.agent import Agent
-from agio.api.deps import get_config_sys, get_repository
+from agio.api.deps import get_config_sys, get_session_store
 from agio.config import ConfigSystem
 from agio.domain import MessageRole
 from agio.domain.models import Step
-from agio.providers.storage import AgentRunRepository
+from agio.providers.storage import SessionStore
 from agio.runtime import fork_session
 
 router = APIRouter(prefix="/sessions")
@@ -93,7 +93,7 @@ async def list_session_summaries(
     user_id: str | None = None,
     limit: int = 20,
     offset: int = 0,
-    repository: AgentRunRepository = Depends(get_repository),
+    session_store: SessionStore = Depends(get_session_store),
 ) -> PaginatedSessionSummaries:
     """
     List aggregated session summaries.
@@ -102,7 +102,7 @@ async def list_session_summaries(
     including run count, step count, and last activity.
     """
     # Get all runs (we'll aggregate by session_id)
-    runs = await repository.list_runs(user_id=user_id, limit=500, offset=0)
+    runs = await session_store.list_runs(user_id=user_id, limit=500, offset=0)
     
     # Aggregate by session_id
     session_map: dict[str, dict] = {}
@@ -134,10 +134,10 @@ async def list_session_summaries(
     # Build summaries with step counts
     summaries: list[SessionSummary] = []
     for sid, data in session_map.items():
-        step_count = await repository.get_step_count(sid)
+        step_count = await session_store.get_step_count(sid)
         
         # Get last user message as preview
-        steps = await repository.get_steps(sid, limit=1)
+        steps = await session_store.get_steps(sid, limit=1)
         last_message = steps[0].content if steps else None
         
         summaries.append(SessionSummary(
@@ -172,10 +172,10 @@ async def list_sessions(
     user_id: str | None = None,
     limit: int = 20,
     offset: int = 0,
-    repository: AgentRunRepository = Depends(get_repository),
+    session_store: SessionStore = Depends(get_session_store),
 ) -> PaginatedRuns:
     """List all sessions (runs)."""
-    runs = await repository.list_runs(user_id=user_id, limit=limit, offset=offset)
+    runs = await session_store.list_runs(user_id=user_id, limit=limit, offset=offset)
 
     items = [
         RunResponse(
@@ -197,15 +197,15 @@ async def list_sessions(
 @router.get("/{session_id}")
 async def get_session(
     session_id: str,
-    repository: AgentRunRepository = Depends(get_repository),
+    session_store: SessionStore = Depends(get_session_store),
 ) -> SessionResponse:
     """Get session details."""
-    runs = await repository.list_runs(session_id=session_id, limit=100)
+    runs = await session_store.list_runs(session_id=session_id, limit=100)
 
     if not runs:
         raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
 
-    step_count = await repository.get_step_count(session_id)
+    step_count = await session_store.get_step_count(session_id)
 
     return SessionResponse(
         session_id=session_id,
@@ -229,16 +229,16 @@ async def get_session(
 @router.delete("/{session_id}", status_code=204)
 async def delete_session(
     session_id: str,
-    repository: AgentRunRepository = Depends(get_repository),
+    session_store: SessionStore = Depends(get_session_store),
 ):
     """Delete a session and all its data."""
     # Delete all runs in session
-    runs = await repository.list_runs(session_id=session_id, limit=1000)
+    runs = await session_store.list_runs(session_id=session_id, limit=1000)
     for run in runs:
-        await repository.delete_run(run.id)
+        await session_store.delete_run(run.id)
 
     # Delete all steps
-    await repository.delete_steps(session_id, start_seq=0)
+    await session_store.delete_steps(session_id, start_seq=0)
 
 
 @router.get("/{session_id}/runs")
@@ -246,10 +246,10 @@ async def get_session_runs(
     session_id: str,
     limit: int = 20,
     offset: int = 0,
-    repository: AgentRunRepository = Depends(get_repository),
+    session_store: SessionStore = Depends(get_session_store),
 ) -> PaginatedRuns:
     """Get runs for a session."""
-    runs = await repository.list_runs(session_id=session_id, limit=limit, offset=offset)
+    runs = await session_store.list_runs(session_id=session_id, limit=limit, offset=offset)
 
     items = [
         RunResponse(
@@ -272,10 +272,10 @@ async def get_session_runs(
 async def get_session_steps(
     session_id: str,
     limit: int = 100,
-    repository: AgentRunRepository = Depends(get_repository),
+    session_store: SessionStore = Depends(get_session_store),
 ) -> list[StepResponse]:
     """Get all steps for a session."""
-    steps = await repository.get_steps(session_id, limit=limit)
+    steps = await session_store.get_steps(session_id, limit=limit)
 
     return [
         StepResponse(
@@ -313,7 +313,7 @@ class ForkResponse(BaseModel):
 async def fork_session_endpoint(
     session_id: str,
     request: ForkRequest,
-    repository: AgentRunRepository = Depends(get_repository),
+    session_store: SessionStore = Depends(get_session_store),
 ) -> ForkResponse:
     """
     Fork a session at a specific step (assistant or user).
@@ -327,12 +327,12 @@ async def fork_session_endpoint(
         - Returns the user message in pending_user_message for the input box
     """
     # Validate session exists
-    steps = await repository.get_steps(session_id, limit=1)
+    steps = await session_store.get_steps(session_id, limit=1)
     if not steps:
         raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
     
     # Validate sequence exists
-    all_steps = await repository.get_steps(session_id, end_seq=request.sequence)
+    all_steps = await session_store.get_steps(session_id, end_seq=request.sequence)
     if not all_steps:
         raise HTTPException(
             status_code=400, 
@@ -353,7 +353,7 @@ async def fork_session_endpoint(
         new_session_id, last_sequence, pending_user_message = await fork_session(
             original_session_id=session_id,
             sequence=request.sequence,
-            repository=repository,
+            session_store=session_store,
             modified_content=request.content,
             modified_tool_calls=request.tool_calls,
         )
@@ -376,7 +376,7 @@ async def fork_session_endpoint(
 async def resume_session_endpoint(
     session_id: str,
     agent_id: str,
-    repository: AgentRunRepository = Depends(get_repository),
+    session_store: SessionStore = Depends(get_session_store),
     config_sys: ConfigSystem = Depends(get_config_sys),
 ):
     """
@@ -393,7 +393,7 @@ async def resume_session_endpoint(
     Returns SSE stream of step events.
     """
     # 1. Get the last step
-    steps: list[Step] = await repository.get_steps(session_id, limit=100)
+    steps: list[Step] = await session_store.get_steps(session_id, limit=100)
     if not steps:
         raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
     

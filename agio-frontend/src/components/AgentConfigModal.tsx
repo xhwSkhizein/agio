@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { configService, Agent } from '../services/api'
 import toast from 'react-hot-toast'
+import { toolsToString, stringToTools } from '../utils/toolHelpers'
 
 interface AgentConfigModalProps {
   agent: Agent
@@ -12,12 +13,12 @@ interface AgentConfigModalProps {
 export function AgentConfigModal({ agent, isOpen, onClose }: AgentConfigModalProps) {
   const queryClient = useQueryClient()
   const [config, setConfig] = useState<Agent>(agent)
-  const [toolsInput, setToolsInput] = useState(agent.tools?.join(', ') || '')
+  const [toolsInput, setToolsInput] = useState(toolsToString(agent.tools || []))
   const [tagsInput, setTagsInput] = useState(agent.tags?.join(', ') || '')
 
   useEffect(() => {
     setConfig(agent)
-    setToolsInput(agent.tools?.join(', ') || '')
+    setToolsInput(toolsToString(agent.tools || []))
     setTagsInput(agent.tags?.join(', ') || '')
   }, [agent])
 
@@ -38,7 +39,7 @@ export function AgentConfigModal({ agent, isOpen, onClose }: AgentConfigModalPro
   const handleSave = () => {
     const updatedConfig = {
       ...config,
-      tools: toolsInput.split(',').map(t => t.trim()).filter(Boolean),
+      tools: stringToTools(toolsInput),
       tags: tagsInput.split(',').map(t => t.trim()).filter(Boolean),
     }
     updateMutation.mutate(updatedConfig)

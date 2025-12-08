@@ -10,14 +10,14 @@ from agio.domain import Step, StepAdapter
 from agio.utils.logging import get_logger
 
 if TYPE_CHECKING:
-    from agio.providers.storage import AgentRunRepository
+    from agio.providers.storage import SessionStore
 
 logger = get_logger(__name__)
 
 
 async def build_context_from_steps(
     session_id: str,
-    repository: "AgentRunRepository",
+    session_store: "SessionStore",
     system_prompt: str | None = None,
 ) -> list[dict]:
     """
@@ -25,7 +25,7 @@ async def build_context_from_steps(
 
     Args:
         session_id: Session ID
-        repository: Repository to fetch steps from
+        session_store: Repository to fetch steps from
         system_prompt: Optional system prompt to prepend
 
     Returns:
@@ -33,8 +33,8 @@ async def build_context_from_steps(
     """
     logger.debug("building_context", session_id=session_id)
 
-    # 1. Query steps from repository
-    steps = await repository.get_steps(session_id)
+    # 1. Query steps from session_store
+    steps = await session_store.get_steps(session_id)
 
     logger.debug("context_steps_loaded", session_id=session_id, count=len(steps))
 
@@ -52,7 +52,7 @@ async def build_context_from_steps(
 
 async def build_context_from_sequence_range(
     session_id: str,
-    repository: "AgentRunRepository",
+    session_store: "SessionStore",
     start_seq: int | None = None,
     end_seq: int | None = None,
     system_prompt: str | None = None,
@@ -62,7 +62,7 @@ async def build_context_from_sequence_range(
 
     Args:
         session_id: Session ID
-        repository: Repository
+        session_store: Repository
         start_seq: Start sequence (inclusive), None = from beginning
         end_seq: End sequence (inclusive), None = to end
         system_prompt: Optional system prompt
@@ -70,7 +70,7 @@ async def build_context_from_sequence_range(
     Returns:
         list[dict]: Messages in OpenAI format
     """
-    steps = await repository.get_steps(session_id, start_seq=start_seq, end_seq=end_seq)
+    steps = await session_store.get_steps(session_id, start_seq=start_seq, end_seq=end_seq)
     messages = StepAdapter.steps_to_messages(steps)
 
     if system_prompt:
@@ -125,19 +125,19 @@ def validate_context(messages: list[dict]) -> bool:
 
 async def get_context_summary(
     session_id: str,
-    repository: "AgentRunRepository",
+    session_store: "SessionStore",
 ) -> dict:
     """
     Get a summary of the context without building full messages.
 
     Args:
         session_id: Session ID
-        repository: Repository
+        session_store: Repository
 
     Returns:
         dict: Summary with counts and stats
     """
-    steps = await repository.get_steps(session_id)
+    steps = await session_store.get_steps(session_id)
 
     return {
         "total_steps": len(steps),

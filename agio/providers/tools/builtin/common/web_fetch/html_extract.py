@@ -4,7 +4,6 @@
 """
 
 import json
-import logging
 import re
 from urllib.parse import urljoin, urlparse
 
@@ -12,8 +11,9 @@ from bs4 import BeautifulSoup, Comment
 from pydantic import BaseModel
 from trafilatura import extract
 from trafilatura.settings import use_config
+from agio.utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 config = use_config()
 config.set("DEFAULT", "image_len_threshold", "2048")

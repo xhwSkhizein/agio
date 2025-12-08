@@ -1,12 +1,12 @@
 """
-MongoDB implementation of AgentRunRepository.
+MongoDB implementation of SessionStore.
 """
 
 from typing import List, Optional
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from agio.providers.storage.base import AgentRunRepository
+from agio.providers.storage.base import SessionStore
 from agio.domain import AgentRun, Step
 from agio.utils.logging import get_logger
 
@@ -38,9 +38,9 @@ def filter_none_values(data: dict) -> dict:
     return filtered
 
 
-class MongoRepository(AgentRunRepository):
+class MongoSessionStore(SessionStore):
     """
-    MongoDB implementation of AgentRunRepository.
+    MongoDB implementation of SessionStore.
 
     Collections:
     - runs: Stores AgentRun documents
@@ -264,4 +264,4 @@ class MongoRepository(AgentRunRepository):
             raise
 
 
-__all__ = ["MongoRepository"]
+__all__ = ["MongoSessionStore"]

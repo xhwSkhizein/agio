@@ -3,7 +3,6 @@
 将 Model 的流式接口适配为工具友好的请求-响应接口。
 """
 
-import logging
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
@@ -12,7 +11,9 @@ if TYPE_CHECKING:
     from agio.providers.llm.base import Model
     from agio.runtime.control import AbortSignal
 
-logger = logging.getLogger(__name__)
+from agio.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class LLMMessage(BaseModel):

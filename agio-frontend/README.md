@@ -1,171 +1,90 @@
 # Agio Frontend
 
-Modern React-based observability platform for the Agio Agent Framework.
+现代化 React 仪表盘，面向 Agio Agent 框架的可观测性与控制面。
 
-## Features
+## ✨ 特性
 
-- 📊 **Dashboard** - System overview with key metrics
-- 🤖 **Agent Management** - List and manage agents
-- 💬 **Real-time Chat** - SSE streaming chat interface
-- 🎨 **Modern UI** - TailwindCSS + Dark mode support
-- ⚡ **Fast** - Vite + React 18
-- 🔄 **State Management** - TanStack Query for server state
+- 📊 Dashboard：系统指标总览、运行态状态
+- 🤖 Agents & Workflows：列表、状态与跳转测试
+- 💬 Chat：SSE 流式对话，支持 session 继续 / 分叉
+- 🧠 Memory & Knowledge：数据检索与预览
+- 📈 Metrics & LLM Logs：模型调用日志、统计与流式订阅
+- ⚡ 技术栈：Vite + React 18 + TypeScript + TailwindCSS + TanStack Query
 
-## Quick Start
-
-### Install Dependencies
+## 🚀 快速开始
 
 ```bash
 cd agio-frontend
 npm install
-```
-
-### Run Development Server
-
-```bash
 npm run dev
+# 浏览器访问 http://localhost:3000
 ```
 
-The app will be available at http://localhost:3000
-
-### Build for Production
+生产构建：
 
 ```bash
 npm run build
 ```
 
-## Project Structure
+## ⚙️ 后端联调
+
+- 后端默认前缀：`/agio`
+- 前端 API 基址：`/agio`（见 `src/services/api.ts`）
+- 开发代理：在 `vite.config.ts` 将 `/agio` 转发到 `http://localhost:8900`
+
+确保后端启动且 `AGIO_CONFIG_DIR=./configs` 已加载所需 Agent/Workflow。
+
+## 🗂️ 目录速览
 
 ```
 agio-frontend/
 ├── src/
-│   ├── components/      # Reusable components
-│   │   └── Layout.tsx   # Main layout with navigation
-│   ├── pages/           # Page components
-│   │   ├── Dashboard.tsx
-│   │   ├── AgentList.tsx
-│   │   └── Chat.tsx
-│   ├── services/        # API services
-│   │   └── api.ts
-│   ├── hooks/           # Custom hooks
-│   ├── stores/          # Zustand stores
-│   ├── types/           # TypeScript types
-│   ├── utils/           # Utility functions
-│   ├── App.tsx          # Main app component
-│   ├── main.tsx         # Entry point
-│   └── index.css        # Global styles
-├── index.html
-├── package.json
-├── vite.config.ts
-├── tailwind.config.js
-└── tsconfig.json
+│   ├── components/      # 布局与通用组件
+│   ├── pages/           # Dashboard/Chat/Config/Knowledge/Memory/Metrics/LLMLogs/Sessions
+│   ├── services/        # API 封装（axios，基址 /agio）
+│   ├── hooks/           # 数据/状态 hooks
+│   ├── stores/          # Zustand 全局状态
+│   ├── utils/           # SSE 解析等工具
+│   ├── App.tsx          # 路由入口
+│   └── main.tsx         # 应用挂载
+└── vite.config.ts       # 开发代理与构建配置
 ```
 
-## Pages
+## 🔌 主要功能入口
 
-### Dashboard
-- System overview
-- Key metrics (agents, runs, checkpoints, tokens)
-- Recent activity
+- Dashboard：系统概览与关键指标
+- Chat：流式对话，支持 sessionId 续聊与 fork
+- Config：读取/编辑配置（通过后端 ConfigSystem）
+- Knowledge / Memory：查询与检索
+- Metrics / LLM Logs：指标与日志列表，LLM 日志支持 SSE 订阅
+- Sessions：会话/运行历史与步骤明细
 
-### Agent List
-- View all agents
-- Filter by tags
-- Quick access to chat
-
-### Chat
-- Real-time streaming chat with agents
-- SSE-based message streaming
-- Message history
-
-## API Integration
-
-The frontend connects to the Agio API backend at `http://localhost:8900/api`.
-
-API proxy is configured in `vite.config.ts`:
-
-```typescript
-server: {
-  proxy: {
-    '/api': {
-      target: 'http://localhost:8900',
-      changeOrigin: true,
-    },
-  },
-}
-```
-
-## Technologies
-
-- **React 18** - UI library
-- **TypeScript** - Type safety
-- **Vite** - Build tool
-- **TailwindCSS** - Styling
-- **React Router** - Routing
-- **TanStack Query** - Server state management
-- **Axios** - HTTP client
-
-## Development
-
-### Hot Reload
-
-Vite provides instant hot module replacement (HMR) for a smooth development experience.
-
-### Type Checking
+## 🧪 开发与校验
 
 ```bash
-npm run build  # Runs tsc for type checking
+npm run dev      # 本地调试
+npm run build    # 类型检查 + 产物构建
+npm run test     # 运行前端内置单测
 ```
 
-## Deployment
-
-### Docker
+## 🚀 部署参考
 
 ```dockerfile
-FROM node:18-alpine as build
-
+FROM node:18-alpine AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
-
 COPY . .
 RUN npm run build
 
 FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 ```
 
-### Nginx Configuration
+Nginx 需转发 `/agio` 到后端 `http://backend:8900`，其余路径静态托管 `dist/`。
 
-```nginx
-server {
-  listen 80;
-  
-  location / {
-    root /usr/share/nginx/html;
-    try_files $uri $uri/ /index.html;
-  }
-  
-  location /api {
-    proxy_pass http://backend:8900;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-  }
-}
-```
-
-## Next Steps
-
-- Add authentication
-- Implement run detail page
-- Add checkpoint visualization
-- Implement config editor
-- Add metrics charts
-
-## License
+## 📄 许可证
 
 MIT

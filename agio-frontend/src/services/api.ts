@@ -40,10 +40,18 @@ api.interceptors.response.use(
   }
 )
 
+export interface ToolInfo {
+  type: string
+  name?: string | null
+  agent?: string | null
+  workflow?: string | null
+  description?: string | null
+}
+
 export interface Agent {
   name: string
   model: string
-  tools: string[]
+  tools: (string | ToolInfo)[]
   memory: string | null
   knowledge: string | null
   system_prompt: string | null

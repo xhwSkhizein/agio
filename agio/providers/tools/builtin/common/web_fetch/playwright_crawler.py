@@ -4,7 +4,6 @@
 """
 
 import asyncio
-import logging
 import time
 
 from playwright.async_api import Page, async_playwright
@@ -14,8 +13,9 @@ from agio.providers.tools.builtin.common.web_fetch.html_extract import (
     HtmlContent,
     extract_content_from_html,
 )
+from agio.utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class PlaywrightCrawlerException(Exception):

@@ -4,7 +4,7 @@ Integration test for Step-based execution flow.
 Tests the complete flow:
 1. StepRunner creates Steps
 2. StepExecutor emits StepEvents
-3. Steps are saved to repository
+3. Steps are saved to session_store
 4. Context is built from Steps
 5. Retry works correctly
 """
@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from agio.providers.storage import InMemoryRepository
+from agio.providers.storage import InMemorySessionStore
 from agio.domain import MessageRole, Step, StepEventType, AgentSession
 from agio.runtime import StepRunner, StepExecutor, retry_from_sequence
 from agio.providers.llm import StreamChunk
@@ -54,9 +54,9 @@ def mock_agent(mock_model):
 
 
 @pytest.fixture
-def repository():
-    """Create in-memory repository"""
-    return InMemoryRepository()
+def session_store():
+    """Create in-memory session store"""
+    return InMemorySessionStore()
 
 
 @pytest.fixture
@@ -66,7 +66,7 @@ def session():
 
 
 @pytest.mark.asyncio
-async def test_step_executor_creates_steps(mock_model, repository):
+async def test_step_executor_creates_steps(mock_model, session_store):
     """Test that StepExecutor creates proper Steps"""
     executor = StepExecutor(model=mock_model, tools=[])
 
@@ -97,10 +97,10 @@ async def test_step_executor_creates_steps(mock_model, repository):
 
 
 @pytest.mark.asyncio
-async def test_step_runner_end_to_end(mock_agent, repository, session):
+async def test_step_runner_end_to_end(mock_agent, session_store, session):
     """Test complete StepRunner flow"""
     runner = StepRunner(
-        agent=mock_agent, config=ExecutionConfig(max_steps=5), repository=repository
+        agent=mock_agent, config=ExecutionConfig(max_steps=5), session_store=session_store
     )
 
     events = []
@@ -116,8 +116,8 @@ async def test_step_runner_end_to_end(mock_agent, repository, session):
     assert len(run_completed) == 1
     assert len(step_completed) >= 1  # At least assistant step
 
-    # Check steps were saved to repository
-    steps = await repository.get_steps("session_123")
+    # Check steps were saved to session_store
+    steps = await session_store.get_steps("session_123")
 
     # Should have user step + assistant step
     assert len(steps) >= 2
@@ -136,11 +136,11 @@ async def test_step_runner_end_to_end(mock_agent, repository, session):
 
 
 @pytest.mark.asyncio
-async def test_context_building_from_steps(mock_agent, repository, session):
+async def test_context_building_from_steps(mock_agent, session_store, session):
     """Test that context is correctly built from saved steps"""
     from agio.runtime import build_context_from_steps
 
-    runner = StepRunner(agent=mock_agent, repository=repository)
+    runner = StepRunner(agent=mock_agent, session_store=session_store)
 
     # Run first conversation
     async for event in runner.run_stream(session, "Hello"):
@@ -148,7 +148,7 @@ async def test_context_building_from_steps(mock_agent, repository, session):
 
     # Build context
     messages = await build_context_from_steps(
-        "session_123", repository, system_prompt="You are helpful"
+        "session_123", session_store, system_prompt="You are helpful"
     )
 
     # Should have: system + user + assistant
@@ -162,36 +162,36 @@ async def test_context_building_from_steps(mock_agent, repository, session):
 
 
 @pytest.mark.asyncio
-async def test_retry_deletes_and_regenerates(mock_agent, repository, session):
+async def test_retry_deletes_and_regenerates(mock_agent, session_store, session):
     """Test retry functionality"""
-    runner = StepRunner(agent=mock_agent, repository=repository)
+    runner = StepRunner(agent=mock_agent, session_store=session_store)
 
     # Run initial conversation
     async for event in runner.run_stream(session, "Hello"):
         pass
 
     # Check we have steps
-    steps_before = await repository.get_steps("session_123")
+    steps_before = await session_store.get_steps("session_123")
     assert len(steps_before) >= 2
 
     # Retry from sequence 2 (delete assistant response)
-    deleted = await repository.delete_steps("session_123", start_seq=2)
+    deleted = await session_store.delete_steps("session_123", start_seq=2)
     assert deleted >= 1
 
     # Check steps were deleted
-    steps_after_delete = await repository.get_steps("session_123")
+    steps_after_delete = await session_store.get_steps("session_123")
     assert len(steps_after_delete) == 1  # Only user step remains
     assert steps_after_delete[0].role == MessageRole.USER
 
     # Resume from last step
-    last_step = await repository.get_last_step("session_123")
+    last_step = await session_store.get_last_step("session_123")
 
     events = []
     async for event in runner.resume_from_user_step("session_123", last_step):
         events.append(event)
 
     # Check new steps were created
-    steps_after_retry = await repository.get_steps("session_123")
+    steps_after_retry = await session_store.get_steps("session_123")
     assert len(steps_after_retry) >= 2
 
     # New assistant response should be there
@@ -201,7 +201,7 @@ async def test_retry_deletes_and_regenerates(mock_agent, repository, session):
 
 
 @pytest.mark.asyncio
-async def test_fork_creates_new_session(repository):
+async def test_fork_creates_new_session(session_store):
     """Test fork functionality"""
     from agio.runtime import fork_session
 
@@ -231,18 +231,18 @@ async def test_fork_creates_new_session(repository):
     ]
 
     for step in steps:
-        await repository.save_step(step)
+        await session_store.save_step(step)
 
     # Fork at sequence 2
     new_session_id, last_sequence, _ = await fork_session(
         original_session_id="original_session",
         sequence=2,
-        repository=repository,
+        session_store=session_store,
         exclude_last=False
     )
 
     # Check new session has copied steps
-    new_steps = await repository.get_steps(new_session_id)
+    new_steps = await session_store.get_steps(new_session_id)
     assert len(new_steps) == 2  # Steps 1 and 2
     assert new_steps[0].content == "Step 1"
     assert new_steps[1].content == "Response 1"
@@ -251,20 +251,20 @@ async def test_fork_creates_new_session(repository):
     assert last_sequence == 2  # Last sequence number should be 2
 
     # Original session should be unchanged
-    original_steps = await repository.get_steps("original_session")
+    original_steps = await session_store.get_steps("original_session")
     assert len(original_steps) == 3
 
 
 @pytest.mark.asyncio
-async def test_step_metrics_tracking(mock_agent, repository, session):
+async def test_step_metrics_tracking(mock_agent, session_store, session):
     """Test that metrics are properly tracked"""
-    runner = StepRunner(agent=mock_agent, repository=repository)
+    runner = StepRunner(agent=mock_agent, session_store=session_store)
 
     async for event in runner.run_stream(session, "Hello"):
         pass
 
     # Get assistant step
-    steps = await repository.get_steps("session_123")
+    steps = await session_store.get_steps("session_123")
     assistant_step = next(s for s in steps if s.is_assistant_step())
 
     # Check metrics

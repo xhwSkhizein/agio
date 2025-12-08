@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import logging
 import time
 from pathlib import Path
 
 from agio.providers.tools.builtin.adapter import AppSettings, SettingsRegistry
+from agio.utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class FileUtils:

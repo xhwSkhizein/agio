@@ -35,7 +35,8 @@ class Agent:
         tools: list[BaseTool] | None = None,
         memory=None,
         knowledge=None,
-        repository=None,
+        session_store=None,
+        trace_store=None,
         name: str = "agio_agent",
         user_id: str | None = None,
         system_prompt: str | None = None,
@@ -45,7 +46,8 @@ class Agent:
         self.tools = tools or []
         self.memory = memory
         self.knowledge = knowledge
-        self.repository = repository
+        self.session_store = session_store
+        self.trace_store = trace_store
         self.user_id = user_id
         self.system_prompt = system_prompt
         self._last_output: str | None = None
@@ -65,6 +67,7 @@ class Agent:
         input: str,
         *,
         context: "RunContext | None" = None,
+        enable_tracing: bool = True,
     ) -> AsyncIterator[StepEvent]:
         """
         Runnable protocol implementation.
@@ -74,12 +77,14 @@ class Agent:
         Args:
             input: Input string (user message)
             context: Optional execution context with session info
+            enable_tracing: Enable distributed tracing (default: True)
 
         Yields:
             StepEvent: Events during execution
         """
         from agio.config import ExecutionConfig
         from agio.runtime import StepRunner
+        from agio.observability import TraceCollector, get_otlp_exporter
 
         self._last_output = None
 
@@ -87,19 +92,44 @@ class Agent:
         if context:
             session_id = context.session_id or str(uuid.uuid4())
             current_user_id = context.user_id or self.user_id
+            trace_id = context.trace_id
         else:
             session_id = str(uuid.uuid4())
             current_user_id = self.user_id
+            trace_id = None
 
         session = AgentSession(session_id=session_id, user_id=current_user_id)
 
         runner = StepRunner(
             agent=self,
             config=ExecutionConfig(),
-            repository=self.repository,
+            session_store=self.session_store,
         )
 
-        async for event in runner.run_stream(session, input, context=context):
+        # Create event stream
+        event_stream = runner.run_stream(session, input, context=context)
+
+        # Wrap with TraceCollector if tracing is enabled and trace_store is configured
+        if enable_tracing and self.trace_store:
+            try:
+                collector = TraceCollector(store=self.trace_store)
+                event_stream = collector.wrap_stream(
+                    event_stream,
+                    trace_id=trace_id,
+                    agent_id=self._id,
+                    session_id=session_id,
+                    user_id=current_user_id,
+                    input_query=input,
+                )
+                # Export to OTLP after completion (async)
+                # Note: Export happens in TraceCollector.wrap_stream's finally block
+            except Exception as e:
+                # If tracing fails, log and continue without tracing
+                from agio.utils.logging import get_logger
+                logger = get_logger(__name__)
+                logger.warning("trace_collection_failed", error=str(e))
+
+        async for event in event_stream:
             # Add observability context if provided
             if context:
                 if context.trace_id:
@@ -134,10 +164,10 @@ class Agent:
 
     async def get_steps(self, session_id: str):
         """Get all Steps for a Session."""
-        if not self.repository:
-            raise ValueError("Repository not configured")
+        if not self.session_store:
+            raise ValueError("SessionStore not configured")
 
-        return await self.repository.get_steps(session_id)
+        return await self.session_store.get_steps(session_id)
 
     async def retry_from_sequence(
         self, session_id: str, sequence: int
@@ -146,17 +176,17 @@ class Agent:
         from agio.config import ExecutionConfig
         from agio.runtime import StepRunner, retry_from_sequence
 
-        if not self.repository:
-            raise ValueError("Repository not configured")
+        if not self.session_store:
+            raise ValueError("SessionStore not configured")
 
         runner = StepRunner(
             agent=self,
             config=ExecutionConfig(),
-            repository=self.repository,
+            session_store=self.session_store,
         )
 
         async for event in retry_from_sequence(
-            session_id, sequence, self.repository, runner
+            session_id, sequence, self.session_store, runner
         ):
             yield event
 
@@ -164,10 +194,10 @@ class Agent:
         """Fork a session at a specific sequence."""
         from agio.runtime import fork_session
 
-        if not self.repository:
-            raise ValueError("Repository not configured")
+        if not self.session_store:
+            raise ValueError("SessionStore not configured")
 
-        return await fork_session(session_id, sequence, self.repository)
+        return await fork_session(session_id, sequence, self.session_store)
 
     async def resume_from_step(
         self, session_id: str, step: Step
@@ -176,13 +206,13 @@ class Agent:
         from agio.config import ExecutionConfig
         from agio.runtime import StepRunner
 
-        if not self.repository:
-            raise ValueError("Repository not configured")
+        if not self.session_store:
+            raise ValueError("SessionStore not configured")
 
         runner = StepRunner(
             agent=self,
             config=ExecutionConfig(),
-            repository=self.repository,
+            session_store=self.session_store,
         )
 
         if step.role.value == "assistant" and step.tool_calls:
@@ -201,10 +231,10 @@ class Agent:
         self, user_id: str | None = None, limit: int = 20, offset: int = 0
     ):
         """List historical Runs."""
-        if not self.repository:
-            raise ValueError("Repository not configured")
+        if not self.session_store:
+            raise ValueError("SessionStore not configured")
 
-        return await self.repository.list_runs(
+        return await self.session_store.list_runs(
             user_id=user_id, limit=limit, offset=offset
         )
 

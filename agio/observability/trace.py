@@ -1,0 +1,211 @@
+"""
+Trace and Span models for distributed tracing.
+
+Supports both internal storage and OpenTelemetry export.
+"""
+
+from datetime import datetime, timezone
+from enum import Enum
+from typing import Any
+from uuid import uuid4
+
+from pydantic import BaseModel, Field
+
+
+class SpanKind(str, Enum):
+    """Span type classification"""
+
+    WORKFLOW = "workflow"
+    STAGE = "stage"
+    AGENT = "agent"
+    LLM_CALL = "llm_call"
+    TOOL_CALL = "tool_call"
+
+
+class SpanStatus(str, Enum):
+    """Span execution status"""
+
+    UNSET = "unset"
+    RUNNING = "running"
+    OK = "ok"
+    ERROR = "error"
+
+
+class Span(BaseModel):
+    """
+    Execution span - minimal tracing unit.
+
+    Design follows OpenTelemetry Span specification with Agio-specific extensions.
+    """
+
+    # === Identity ===
+    span_id: str = Field(default_factory=lambda: str(uuid4()))
+    trace_id: str
+    parent_span_id: str | None = None
+
+    # === Type & Name ===
+    kind: SpanKind
+    name: str  # e.g., "research_agent", "web_search"
+
+    # === Timing ===
+    start_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    end_time: datetime | None = None
+    duration_ms: float | None = None
+
+    # === Status ===
+    status: SpanStatus = SpanStatus.RUNNING
+    error_message: str | None = None
+
+    # === Hierarchy ===
+    depth: int = 0
+
+    # === Context Attributes ===
+    attributes: dict[str, Any] = Field(default_factory=dict)
+    # Common attributes:
+    # - workflow_id: Workflow ID
+    # - stage_id: Stage ID
+    # - agent_id: Agent ID
+    # - model_id: LLM model ID
+    # - tool_name: Tool name
+    # - iteration: Loop iteration number
+    # - branch_id: Parallel branch ID
+
+    # === Input/Output Preview ===
+    input_preview: str | None = None  # First 500 chars
+    output_preview: str | None = None
+
+    # === Metrics ===
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    # Common metrics:
+    # - tokens.input: Input token count
+    # - tokens.output: Output token count
+    # - tokens.total: Total token count
+    # - first_token_ms: Time to first token
+
+    # === Associations ===
+    llm_log_id: str | None = None  # Associated LLMCallLog ID
+    run_id: str | None = None  # Associated AgentRun ID
+    step_id: str | None = None  # Associated Step ID
+
+    def complete(
+        self,
+        status: SpanStatus = SpanStatus.OK,
+        error_message: str | None = None,
+        output_preview: str | None = None,
+    ):
+        """Mark span as completed"""
+        self.end_time = datetime.now(timezone.utc)
+        self.status = status
+        self.error_message = error_message
+        if output_preview is not None:
+            self.output_preview = output_preview
+        if self.start_time and self.end_time:
+            delta = self.end_time - self.start_time
+            self.duration_ms = delta.total_seconds() * 1000
+
+    def to_otel_span_kind(self) -> int:
+        """
+        Convert to OpenTelemetry SpanKind.
+
+        OTEL SpanKind values:
+        - INTERNAL = 1
+        - SERVER = 2
+        - CLIENT = 3
+        - PRODUCER = 4
+        - CONSUMER = 5
+        """
+        mapping = {
+            SpanKind.WORKFLOW: 1,  # INTERNAL
+            SpanKind.STAGE: 1,  # INTERNAL
+            SpanKind.AGENT: 1,  # INTERNAL
+            SpanKind.LLM_CALL: 3,  # CLIENT (calling external LLM API)
+            SpanKind.TOOL_CALL: 3,  # CLIENT
+        }
+        return mapping.get(self.kind, 1)
+
+    def to_otel_status_code(self) -> int:
+        """
+        Convert to OpenTelemetry StatusCode.
+
+        OTEL StatusCode values:
+        - UNSET = 0
+        - OK = 1
+        - ERROR = 2
+        """
+        mapping = {
+            SpanStatus.UNSET: 0,
+            SpanStatus.RUNNING: 0,  # Treat as UNSET
+            SpanStatus.OK: 1,
+            SpanStatus.ERROR: 2,
+        }
+        return mapping.get(self.status, 0)
+
+
+class Trace(BaseModel):
+    """
+    Complete execution trace.
+
+    A Trace contains one complete user request processing,
+    which may be a single Agent run or a full Workflow execution.
+    """
+
+    # === Identity ===
+    trace_id: str = Field(default_factory=lambda: str(uuid4()))
+
+    # === Context ===
+    workflow_id: str | None = None  # Workflow ID (if workflow execution)
+    agent_id: str | None = None  # Agent ID (if single agent execution)
+    session_id: str | None = None
+    user_id: str | None = None
+
+    # === Timing ===
+    start_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    end_time: datetime | None = None
+    duration_ms: float | None = None
+
+    # === Status ===
+    status: SpanStatus = SpanStatus.RUNNING
+
+    # === Span List ===
+    root_span_id: str | None = None
+    spans: list[Span] = Field(default_factory=list)
+
+    # === Aggregated Metrics ===
+    total_tokens: int = 0
+    total_llm_calls: int = 0
+    total_tool_calls: int = 0
+    max_depth: int = 0
+
+    # === Input/Output ===
+    input_query: str | None = None
+    final_output: str | None = None
+
+    def add_span(self, span: Span):
+        """Add a span to the trace"""
+        self.spans.append(span)
+        self.max_depth = max(self.max_depth, span.depth)
+
+        # Update aggregated metrics
+        if span.kind == SpanKind.LLM_CALL:
+            self.total_llm_calls += 1
+            if "tokens.total" in span.metrics:
+                self.total_tokens += span.metrics["tokens.total"]
+        elif span.kind == SpanKind.TOOL_CALL:
+            self.total_tool_calls += 1
+
+    def complete(
+        self,
+        status: SpanStatus = SpanStatus.OK,
+        final_output: str | None = None,
+    ):
+        """Mark trace as completed"""
+        self.end_time = datetime.now(timezone.utc)
+        self.status = status
+        if final_output is not None:
+            self.final_output = final_output
+        if self.start_time and self.end_time:
+            delta = self.end_time - self.start_time
+            self.duration_ms = delta.total_seconds() * 1000
+
+
+__all__ = ["Span", "SpanKind", "SpanStatus", "Trace"]

@@ -1,281 +1,79 @@
 # Agio FastAPI Backend
 
-## Overview
+Agio 的控制平面 API，基于 FastAPI + SSE，前缀默认 `/agio`。启动时会通过 `ConfigSystem` 读取 `configs/` 下的组件并构建 Agent/Workflow，可直接被前端仪表盘使用。
 
-The Agio FastAPI backend provides a complete RESTful API with SSE streaming support for real-time agent interactions. Features include:
+## ✨ 能力概览
 
-- 🚀 **RESTful API** - Complete CRUD operations
-- 📡 **SSE Streaming** - Real-time chat with agents
-- ⏸️ **Execution Control** - Pause/Resume/Cancel runs
-- 💾 **Checkpoint Management** - Create, restore, and fork checkpoints
-- 📊 **Auto Documentation** - OpenAPI/Swagger UI
+- 🔌 **配置驱动**：热重载 `configs/`，拓扑排序构建组件
+- 💬 **聊天与流式事件**：SSE 方式返回 `StepEvent`，兼容非流式
+- 🧠 **多组件管理**：Agent / Workflow / Tool / Memory / Knowledge / Repository
+- 📈 **观测性**：LLM 调用日志与 Metrics 查询
+- 🩺 **健康检查**：就绪与存活探针
 
-## Quick Start
-
-### 1. Install Dependencies
+## ⚡ 快速开始
 
 ```bash
-pip install fastapi uvicorn sse-starlette
+python main.py               # 监听 0.0.0.0:8900
+# 或使用 uvicorn
+uvicorn agio.api.app:app --host 0.0.0.0 --port 8900 --reload
 ```
 
-### 2. Run the Server
+关键环境变量：
 
 ```bash
-# Development mode with auto-reload
-python main.py
-
-# Or with uvicorn directly
-uvicorn agio.api.app:app --reload
+AGIO_CONFIG_DIR=./configs
+AGIO_OPENAI_API_KEY=sk-...
+AGIO_ANTHROPIC_API_KEY=sk-...
+AGIO_DEEPSEEK_API_KEY=sk-...
+AGIO_MONGO_URI=mongodb://localhost:27017   # 如需持久化
 ```
 
-### 3. Access the API
+文档入口（默认前缀 `/agio`）：
 
-- **API Base**: http://localhost:8900
-- **Swagger UI**: http://localhost:8900/docs
-- **ReDoc**: http://localhost:8900/redoc
+- OpenAPI: `http://localhost:8900/agio/docs`
+- Redoc: `http://localhost:8900/agio/redoc`
 
-## API Endpoints
+## 🗺️ 路由速览（前缀 `/agio`）
 
-### Health Check
+- `GET /health` / `GET /health/ready`：健康与就绪
+- `GET /config`、`GET/PUT/DELETE /config/{type}/{name}`、`POST /config/reload`
+- `GET /agents`、`GET /agents/{name}`、`GET /agents/{name}/status`
+- `POST /chat/{agent_name}`：`stream=true` SSE，`stream=false` 普通响应
+- `GET /sessions`、`/sessions/summary`、`/sessions/{id}`、`POST /sessions/{id}/fork`、`GET /sessions/{id}/steps`、`POST /sessions/{id}/resume`
+- `GET /memory`、`GET /memory/{name}`、`POST /memory/{name}/search`
+- `GET /knowledge`、`GET /knowledge/{name}`、`POST /knowledge/{name}/search`
+- `GET /metrics/system`、`GET /metrics/agents/{agent_id}`
+- `GET /llm/logs`、`GET /llm/logs/{id}`、`GET /llm/logs/stream` (SSE) 、`GET /llm/stats`
+- `GET /runnables`、`GET /runnables/{id}`、`POST /runnables/{id}/run` (SSE)
+- `GET /workflows`、`GET /workflows/{id}`
 
-```http
-GET /api/health
-```
-
-Response:
-```json
-{
-  "status": "healthy",
-  "version": "0.1.0",
-  "timestamp": "2024-01-01T00:00:00"
-}
-```
-
-### Agents
-
-#### List Agents
-```http
-GET /api/agents?limit=20&offset=0&tag=production
-```
-
-#### Get Agent
-```http
-GET /api/agents/{agent_id}
-```
-
-#### Delete Agent
-```http
-DELETE /api/agents/{agent_id}
-```
-
-### Chat
-
-#### Stream Chat (SSE)
-```http
-POST /api/chat
-Content-Type: application/json
-
-{
-  "agent_id": "customer_support",
-  "message": "Hello!",
-  "stream": true
-}
-```
-
-Response (SSE):
-```
-event: run_started
-data: {"run_id": "run_123"}
-
-event: content_delta
-data: {"content": "Hello"}
-
-event: run_completed
-data: {"metrics": {...}}
-```
-
-#### Non-Streaming Chat
-```http
-POST /api/chat
-Content-Type: application/json
-
-{
-  "agent_id": "customer_support",
-  "message": "Hello!",
-  "stream": false
-}
-```
-
-### Runs
-
-#### Pause Run
-```http
-POST /api/runs/{run_id}/pause
-```
-
-#### Resume Run
-```http
-POST /api/runs/{run_id}/resume
-```
-
-#### Cancel Run
-```http
-POST /api/runs/{run_id}/cancel
-```
-
-### Checkpoints
-
-#### List Checkpoints
-```http
-GET /api/checkpoints/runs/{run_id}/checkpoints
-```
-
-#### Get Checkpoint
-```http
-GET /api/checkpoints/{checkpoint_id}
-```
-
-#### Restore from Checkpoint
-```http
-POST /api/checkpoints/{checkpoint_id}/restore
-Content-Type: application/json
-
-{
-  "create_new_run": true,
-  "modifications": {
-    "modified_query": "New query"
-  }
-}
-```
-
-#### Fork Checkpoint
-```http
-POST /api/checkpoints/{checkpoint_id}/fork
-Content-Type: application/json
-
-{
-  "modifications": {
-    "system_prompt": "New prompt"
-  }
-}
-```
-
-## Client Examples
-
-### Python Client
+## 💬 示例：SSE Chat
 
 ```python
-import httpx
-
-# List agents
-response = httpx.get("http://localhost:8900/api/agents")
-agents = response.json()
-
-# Chat (non-streaming)
-response = httpx.post(
-    "http://localhost:8900/api/chat",
-    json={
-        "agent_id": "assistant",
-        "message": "Hello!",
-        "stream": False
-    }
-)
-result = response.json()
-print(result["response"])
-```
-
-### SSE Streaming Client
-
-```python
-import httpx
+import httpx, json
 
 with httpx.stream(
     "POST",
-    "http://localhost:8900/api/chat",
-    json={
-        "agent_id": "assistant",
-        "message": "Tell me a story",
-        "stream": True
-    },
-    headers={"Accept": "text/event-stream"}
-) as response:
-    for line in response.iter_lines():
+    "http://localhost:8900/agio/chat/code_assistant",
+    json={"message": "Hello", "stream": True},
+    headers={"Accept": "text/event-stream"},
+) as resp:
+    for line in resp.iter_lines():
         if line.startswith("data:"):
-            data = line[5:].strip()
-            print(data)
+            print(json.loads(line[5:]))
 ```
 
-### JavaScript/TypeScript Client
-
-```typescript
-const eventSource = new EventSource('/api/chat', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  body: JSON.stringify({
-    agent_id: 'assistant',
-    message: 'Hello',
-    stream: true
-  })
-});
-
-eventSource.addEventListener('content_delta', (event) => {
-  const data = JSON.parse(event.data);
-  console.log(data.content);
-});
-
-eventSource.addEventListener('run_completed', (event) => {
-  console.log('Completed');
-  eventSource.close();
-});
-```
-
-## Testing
-
-Run the API tests:
+## 🧪 测试
 
 ```bash
-pytest tests/test_api.py -v
+pytest tests/workflow -q
+pytest tests/config -q
 ```
 
-## Deployment
-
-### Docker
-
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . .
-
-EXPOSE 8900
-CMD ["uvicorn", "agio.api.app:app", "--host", "0.0.0.0", "--port", "8900"]
-```
-
-### Production
+## 🚀 部署
 
 ```bash
-# With multiple workers
 uvicorn agio.api.app:app --host 0.0.0.0 --port 8900 --workers 4
 ```
 
-## Configuration
-
-The API uses environment variables for configuration. Set them in `.env` file or environment:
-
-```bash
-# .env
-AGIO_OPENAI_API_KEY=sk-...
-AGIO_LOG_LEVEL=INFO
-AGIO_MONGO_URI=mongodb://localhost:27017
-```
-
-## Next Steps
-
-- Check out `agio/api/DESIGN.md` for detailed design documentation
-- Explore the React frontend for a complete UI
-- Learn about authentication and authorization
+容器示例：参考根目录 `start.sh` / `stop.sh` 或自行编写 Dockerfile。

@@ -5,11 +5,13 @@ LLM Call Log data models.
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class LLMCallLog(BaseModel):
     """Complete LLM call log with full request/response details."""
+
+    model_config = ConfigDict(protected_namespaces=())
 
     # Identifiers
     id: str = Field(description="Unique log ID (UUID)")
@@ -67,9 +69,6 @@ class LLMCallLog(BaseModel):
     input_tokens: int | None = Field(default=None, description="Input token count")
     output_tokens: int | None = Field(default=None, description="Output token count")
     total_tokens: int | None = Field(default=None, description="Total token count")
-
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
 
 
 class LLMLogQuery(BaseModel):

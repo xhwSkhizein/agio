@@ -24,7 +24,7 @@ from agio.domain import (
 
 # Providers
 from agio.providers.llm import Model, OpenAIModel, AnthropicModel, DeepseekModel
-from agio.providers.storage import AgentRunRepository, InMemoryRepository, MongoRepository
+from agio.providers.storage import SessionStore, InMemorySessionStore, MongoSessionStore
 from agio.providers.tools import BaseTool, get_tool_registry
 
 # Config
@@ -53,9 +53,9 @@ __all__ = [
     "AnthropicModel",
     "DeepseekModel",
     # Providers - Storage
-    "AgentRunRepository",
-    "InMemoryRepository",
-    "MongoRepository",
+    "SessionStore",
+    "InMemorySessionStore",
+    "MongoSessionStore",
     # Providers - Tools
     "BaseTool",
     "get_tool_registry",

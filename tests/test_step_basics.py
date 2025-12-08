@@ -1,12 +1,12 @@
 """
-Basic tests for Step model and repository operations.
+Basic tests for Step model and session_store operations.
 """
 
 from datetime import datetime
 
 import pytest
 
-from agio.providers.storage import InMemoryRepository
+from agio.providers.storage import InMemorySessionStore
 from agio.domain import MessageRole, Step, StepAdapter, StepMetrics
 
 
@@ -99,9 +99,9 @@ async def test_tool_step():
 
 
 @pytest.mark.asyncio
-async def test_repository_save_and_get():
+async def test_session_store_save_and_get():
     """Test saving and retrieving steps"""
-    repo = InMemoryRepository()
+    store = InMemorySessionStore()
 
     step1 = Step(
         session_id="session_123",
@@ -119,20 +119,20 @@ async def test_repository_save_and_get():
         content="Hi there!",
     )
 
-    await repo.save_step(step1)
-    await repo.save_step(step2)
+    await store.save_step(step1)
+    await store.save_step(step2)
 
     # Get all steps
-    steps = await repo.get_steps("session_123")
+    steps = await store.get_steps("session_123")
     assert len(steps) == 2
     assert steps[0].sequence == 1
     assert steps[1].sequence == 2
 
 
 @pytest.mark.asyncio
-async def test_repository_get_steps_with_range():
+async def test_session_store_get_steps_with_range():
     """Test getting steps with sequence range"""
-    repo = InMemoryRepository()
+    store = InMemorySessionStore()
 
     # Create 5 steps
     for i in range(1, 6):
@@ -143,19 +143,19 @@ async def test_repository_get_steps_with_range():
             role=MessageRole.USER,
             content=f"Message {i}",
         )
-        await repo.save_step(step)
+        await store.save_step(step)
 
     # Get steps 2-4
-    steps = await repo.get_steps("session_123", start_seq=2, end_seq=4)
+    steps = await store.get_steps("session_123", start_seq=2, end_seq=4)
     assert len(steps) == 3
     assert steps[0].sequence == 2
     assert steps[2].sequence == 4
 
 
 @pytest.mark.asyncio
-async def test_repository_delete_steps():
+async def test_session_store_delete_steps():
     """Test deleting steps from a sequence"""
-    repo = InMemoryRepository()
+    store = InMemorySessionStore()
 
     # Create 5 steps
     for i in range(1, 6):
@@ -166,23 +166,23 @@ async def test_repository_delete_steps():
             role=MessageRole.USER,
             content=f"Message {i}",
         )
-        await repo.save_step(step)
+        await store.save_step(step)
 
     # Delete from sequence 3
-    deleted = await repo.delete_steps("session_123", start_seq=3)
+    deleted = await store.delete_steps("session_123", start_seq=3)
     assert deleted == 3  # Deleted steps 3, 4, 5
 
     # Verify remaining steps
-    steps = await repo.get_steps("session_123")
+    steps = await store.get_steps("session_123")
     assert len(steps) == 2
     assert steps[0].sequence == 1
     assert steps[1].sequence == 2
 
 
 @pytest.mark.asyncio
-async def test_repository_get_last_step():
+async def test_session_store_get_last_step():
     """Test getting the last step"""
-    repo = InMemoryRepository()
+    store = InMemorySessionStore()
 
     step1 = Step(
         session_id="session_123",
@@ -200,10 +200,10 @@ async def test_repository_get_last_step():
         content="Second",
     )
 
-    await repo.save_step(step1)
-    await repo.save_step(step2)
+    await store.save_step(step1)
+    await store.save_step(step2)
 
-    last = await repo.get_last_step("session_123")
+    last = await store.get_last_step("session_123")
     assert last is not None
     assert last.sequence == 2
     assert last.content == "Second"
@@ -241,7 +241,7 @@ async def test_context_building():
     """Test building context from steps"""
     from agio.runtime import build_context_from_steps
 
-    repo = InMemoryRepository()
+    store = InMemorySessionStore()
 
     # Create conversation
     steps = [
@@ -269,10 +269,10 @@ async def test_context_building():
     ]
 
     for step in steps:
-        await repo.save_step(step)
+        await store.save_step(step)
 
     # Build context
-    messages = await build_context_from_steps("session_123", repo)
+    messages = await build_context_from_steps("session_123", store)
 
     assert len(messages) == 3
     assert messages[0]["role"] == "user"
@@ -282,7 +282,7 @@ async def test_context_building():
 
     # With system prompt
     messages_with_system = await build_context_from_steps(
-        "session_123", repo, system_prompt="You are a helpful assistant"
+        "session_123", store, system_prompt="You are a helpful assistant"
     )
 
     assert len(messages_with_system) == 4

@@ -8,7 +8,7 @@ This module contains adapters for external services:
 """
 
 from .llm import Model, OpenAIModel, AnthropicModel, DeepseekModel
-from .storage import AgentRunRepository, InMemoryRepository, MongoRepository
+from .storage import SessionStore, InMemorySessionStore, MongoSessionStore
 from .tools import BaseTool, get_tool_registry
 
 __all__ = [
@@ -18,9 +18,9 @@ __all__ = [
     "AnthropicModel",
     "DeepseekModel",
     # Storage
-    "AgentRunRepository",
-    "InMemoryRepository",
-    "MongoRepository",
+    "SessionStore",
+    "InMemorySessionStore",
+    "MongoSessionStore",
     # Tools
     "BaseTool",
     "get_tool_registry",

@@ -20,7 +20,8 @@ tools:
   - glob
   - ls
   - bash
-repository: mongodb_repo
+session_store: mongodb_session_store
+trace_store: trace_store
 hooks:
   - logging_hook
 max_steps: 20

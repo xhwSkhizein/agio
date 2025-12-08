@@ -15,7 +15,7 @@ from agio.domain import Step, StepEvent, MessageRole
 from agio.utils.logging import get_logger
 
 if TYPE_CHECKING:
-    from agio.providers.storage import AgentRunRepository
+    from agio.providers.storage import SessionStore
     from agio.runtime.runner import StepRunner
 
 logger = get_logger(__name__)
@@ -85,7 +85,7 @@ class AbortSignal:
 async def retry_from_sequence(
     session_id: str,
     sequence: int,
-    repository: "AgentRunRepository",
+    session_store: "SessionStore",
     runner: "StepRunner",
 ) -> AsyncIterator[StepEvent]:
     """
@@ -97,7 +97,7 @@ async def retry_from_sequence(
     Args:
         session_id: Session ID to retry
         sequence: Sequence number to retry from (inclusive)
-        repository: Repository for step operations
+        session_store: SessionStore for step operations
         runner: Agent runner to resume execution
 
     Yields:
@@ -106,11 +106,11 @@ async def retry_from_sequence(
     logger.info("retry_started", session_id=session_id, sequence=sequence)
 
     # 1. Delete steps with sequence >= N
-    deleted_count = await repository.delete_steps(session_id, start_seq=sequence)
+    deleted_count = await session_store.delete_steps(session_id, start_seq=sequence)
     logger.info("retry_steps_deleted", session_id=session_id, deleted_count=deleted_count)
 
     # 2. Get the last remaining step
-    last_step = await repository.get_last_step(session_id)
+    last_step = await session_store.get_last_step(session_id)
 
     if not last_step:
         raise ValueError("No steps remaining after deletion. Cannot retry.")
@@ -137,9 +137,9 @@ async def retry_from_sequence(
                 yield event
         else:
             # Delete this assistant step too and retry from previous
-            await repository.delete_steps(session_id, start_seq=last_step.sequence)
+            await session_store.delete_steps(session_id, start_seq=last_step.sequence)
             async for event in retry_from_sequence(
-                session_id, last_step.sequence, repository, runner
+                session_id, last_step.sequence, session_store, runner
             ):
                 yield event
     else:
@@ -154,7 +154,7 @@ async def retry_from_sequence(
 async def fork_session(
     original_session_id: str,
     sequence: int,
-    repository: "AgentRunRepository",
+    session_store: "SessionStore",
     modified_content: Optional[str] = None,
     modified_tool_calls: Optional[List[dict]] = None,
     exclude_last: bool = False,
@@ -174,7 +174,7 @@ async def fork_session(
     Args:
         original_session_id: Original session ID to fork from
         sequence: Sequence number to fork at (inclusive)
-        repository: Repository for step operations
+        session_store: Repository for step operations
         modified_content: Optional new content for assistant step
         modified_tool_calls: Optional new tool_calls for assistant step
         exclude_last: If True, exclude the target step (for user step fork)
@@ -185,7 +185,7 @@ async def fork_session(
     logger.info("fork_started", original_session_id=original_session_id, sequence=sequence)
 
     # 1. Get steps up to sequence
-    steps = await repository.get_steps(original_session_id, end_seq=sequence)
+    steps = await session_store.get_steps(original_session_id, end_seq=sequence)
 
     if not steps:
         raise ValueError(
@@ -240,7 +240,7 @@ async def fork_session(
 
     # 5. Batch save to new session
     if new_steps:
-        await repository.save_steps_batch(new_steps)
+        await session_store.save_steps_batch(new_steps)
 
     last_sequence = new_steps[-1].sequence if new_steps else 0
 

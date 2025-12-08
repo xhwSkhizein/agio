@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { agentService, sessionService, runnableService } from '../services/api'
 import { parseSSEBuffer } from '../utils/sseParser'
 import { TimelineItem } from '../components/TimelineItem'
@@ -9,6 +9,7 @@ import { MessageContent } from '../components/MessageContent'
 import { AgentConfigModal } from '../components/AgentConfigModal'
 import { ChevronDown, Plus, Settings, MessageSquare, Play } from 'lucide-react'
 import { stepsToEvents } from '../utils/stepsToEvents'
+import { getToolDisplayName, getToolKey } from '../utils/toolHelpers'
 
 // Generate unique ID
 let idCounter = 0
@@ -48,6 +49,7 @@ export default function Chat() {
   const { sessionId: urlSessionId } = useParams<{ sessionId?: string }>()
   const navigate = useNavigate()
   const location = useLocation()
+  const queryClient = useQueryClient()
   
   // Get state from navigation (fork)
   const locationState = location.state as { pendingMessage?: string; agentId?: string } | null
@@ -128,6 +130,13 @@ export default function Chat() {
       setCurrentSessionId(urlSessionId)
     }
   }, [urlSessionId])
+  
+  // Update URL when session is created (to persist conversation on refresh)
+  useEffect(() => {
+    if (currentSessionId && !urlSessionId) {
+      navigate(`/chat/${currentSessionId}`, { replace: true })
+    }
+  }, [currentSessionId, urlSessionId, navigate])
 
   // Clear location state after using pending message (to prevent refill on refresh)
   useEffect(() => {
@@ -432,12 +441,10 @@ export default function Chat() {
                     console.log('Run started:', data.run_id, 'Session:', data.data?.session_id)
                     setCurrentRunId(data.run_id)
                     
-                    // Capture session_id from event and update URL for persistence
+                    // Capture session_id from event
                     const eventSessionId = data.data?.session_id
                     if (eventSessionId && !currentSessionId) {
                       setCurrentSessionId(eventSessionId)
-                      // Update URL to include sessionId so refresh preserves the conversation
-                      navigate(`/chat/${eventSessionId}`, { replace: true })
                     }
                     break
                   }
@@ -445,6 +452,8 @@ export default function Chat() {
                   case 'run_completed': {
                     console.log('Run completed:', data)
                     setCurrentRunId(null)
+                    // Invalidate session cache so Sessions page shows the new session
+                    queryClient.invalidateQueries({ queryKey: ['session-summaries'] })
                     // Mark any still-running tool calls as completed
                     newEvents.forEach((event, idx) => {
                       if (event.type === 'tool' && event.toolStatus === 'running') {
@@ -476,6 +485,8 @@ export default function Chat() {
                   case 'run_failed': {
                     console.log('Run failed:', data)
                     setCurrentRunId(null)
+                    // Invalidate session cache (failed runs are also persisted)
+                    queryClient.invalidateQueries({ queryKey: ['session-summaries'] })
                     newEvents.push({
                       id: generateId(),
                       type: 'error',
@@ -841,9 +852,9 @@ export default function Chat() {
             </p>
             {agent?.tools && agent.tools.length > 0 && (
               <div className="mt-4 flex flex-wrap gap-2 justify-center max-w-md">
-                {agent.tools.slice(0, 6).map((tool) => (
-                  <span key={tool} className="px-2 py-1 text-xs bg-surface border border-border rounded text-gray-400">
-                    {tool}
+                {agent.tools.slice(0, 6).map((tool, idx) => (
+                  <span key={getToolKey(tool, idx)} className="px-2 py-1 text-xs bg-surface border border-border rounded text-gray-400">
+                    {getToolDisplayName(tool)}
                   </span>
                 ))}
                 {agent.tools.length > 6 && (

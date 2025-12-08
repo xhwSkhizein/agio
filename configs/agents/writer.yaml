@@ -12,7 +12,8 @@ system_prompt: |
   - Main Content
   - Conclusion
 tools: []
-repository: mongodb_repo
+repository: mongodb_session_store
+trace_store: trace_store
 hooks:
   - logging_hook
 max_steps: 5

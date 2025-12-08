@@ -24,9 +24,8 @@ def setup_config_system():
 
         # Initialize config system
         config_sys = get_config_system()
-        asyncio.get_event_loop().run_until_complete(
-            config_sys.load_from_directory(tmpdir)
-        )
+        # Use asyncio.run instead of get_event_loop
+        asyncio.run(config_sys.load_from_directory(tmpdir))
         yield
 
 

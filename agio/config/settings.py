@@ -51,6 +51,13 @@ class AgioSettings(BaseSettings):
     # Anthropic
     anthropic_api_key: SecretStr | None = None
 
+    # Observability - OTLP Export
+    otlp_enabled: bool = False
+    otlp_endpoint: str | None = None  # e.g., "http://localhost:4317" for gRPC
+    otlp_protocol: Literal["grpc", "http"] = "grpc"
+    otlp_headers: dict[str, str] = Field(default_factory=dict)
+    otlp_sampling_rate: float = Field(default=1.0, ge=0.0, le=1.0)  # 1.0 = 100% sampling
+
 
 # Global settings instance (singleton)
 settings = AgioSettings()

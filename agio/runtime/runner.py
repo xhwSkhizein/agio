@@ -36,7 +36,7 @@ from agio.utils.logging import get_logger
 
 if TYPE_CHECKING:
     from agio.agent import Agent
-    from agio.providers.storage import AgentRunRepository
+    from agio.providers.storage import SessionStore
     from agio.config import ExecutionConfig
     from agio.workflow.protocol import RunContext
 
@@ -58,7 +58,7 @@ class StepRunner:
         self,
         agent: "Agent",
         config: "ExecutionConfig | None" = None,
-        repository: "AgentRunRepository | None" = None,
+        session_store: "SessionStore | None" = None,
     ):
         """
         Initialize Runner.
@@ -66,10 +66,10 @@ class StepRunner:
         Args:
             agent: Agent instance
             config: Run configuration
-            repository: Repository for saving steps
+            session_store: SessionStore for saving steps
         """
         self.agent = agent
-        self.repository = repository
+        self.session_store = session_store
         
         # Import here to avoid circular dependency
         from agio.config import ExecutionConfig
@@ -130,13 +130,13 @@ class StepRunner:
             content=query,
         )
 
-        if self.repository:
-            await self.repository.save_step(user_step)
+        if self.session_store:
+            await self.session_store.save_step(user_step)
 
         # 4. Build context
-        if self.repository:
+        if self.session_store:
             messages = await build_context_from_steps(
-                session.session_id, self.repository, system_prompt=self.agent.system_prompt
+                session.session_id, self.session_store, system_prompt=self.agent.system_prompt
             )
         else:
             messages = []
@@ -175,8 +175,8 @@ class StepRunner:
                 if event.type == StepEventType.STEP_COMPLETED and event.snapshot:
                     step = event.snapshot
 
-                    if self.repository:
-                        await self.repository.save_step(step)
+                    if self.session_store:
+                        await self.session_store.save_step(step)
 
                     if step.metrics:
                         if step.metrics.total_tokens:
@@ -234,8 +234,8 @@ class StepRunner:
                 max_steps=self.config.max_steps if termination_reason else None,
             )
 
-            if self.repository:
-                await self.repository.save_run(run)
+            if self.session_store:
+                await self.session_store.save_run(run)
                 logger.debug("run_saved", run_id=run.id)
 
         except asyncio.CancelledError:
@@ -245,8 +245,8 @@ class StepRunner:
             run.metrics.end_time = time.time()
             run.metrics.duration = run.metrics.end_time - run.metrics.start_time
             
-            if self.repository:
-                await self.repository.save_run(run)
+            if self.session_store:
+                await self.session_store.save_run(run)
 
             yield create_run_failed_event(run_id=run.id, error=f"Run was cancelled: {reason}")
 
@@ -256,8 +256,8 @@ class StepRunner:
             run.metrics.end_time = time.time()
             run.metrics.duration = run.metrics.end_time - run.metrics.start_time
             
-            if self.repository:
-                await self.repository.save_run(run)
+            if self.session_store:
+                await self.session_store.save_run(run)
 
             yield create_run_failed_event(run_id=run.id, error=str(e))
             raise e
@@ -267,10 +267,10 @@ class StepRunner:
 
     async def _get_next_sequence(self, session_id: str) -> int:
         """Get next sequence number."""
-        if not self.repository:
+        if not self.session_store:
             return 1
 
-        last_step = await self.repository.get_last_step(session_id)
+        last_step = await self.session_store.get_last_step(session_id)
         if last_step:
             return last_step.sequence + 1
         return 1
@@ -283,11 +283,11 @@ class StepRunner:
         """Resume from a user step (most common retry case)."""
         logger.info("resuming_from_user_step", session_id=session_id, step_id=last_step.id)
 
-        if not self.repository:
-            raise ValueError("Repository required for resume")
+        if not self.session_store:
+            raise ValueError("SessionStore required for resume")
 
         messages = await build_context_from_steps(
-            session_id, self.repository, system_prompt=self.agent.system_prompt
+            session_id, self.session_store, system_prompt=self.agent.system_prompt
         )
 
         run_id = str(uuid4())
@@ -301,7 +301,7 @@ class StepRunner:
             input_query="[resumed]",
             metrics=AgentRunMetrics(start_time=time.time()),
         )
-        await self.repository.save_run(run)
+        await self.session_store.save_run(run)
 
         executor = StepExecutor(
             model=self.agent.model,
@@ -316,7 +316,7 @@ class StepRunner:
                 session_id=session_id, run_id=run_id, messages=messages, start_sequence=start_sequence
             ):
                 if event.type == StepEventType.STEP_COMPLETED and event.snapshot:
-                    await self.repository.save_step(event.snapshot)
+                    await self.session_store.save_step(event.snapshot)
 
                 yield event
             
@@ -324,12 +324,12 @@ class StepRunner:
             run.status = RunStatus.COMPLETED
             run.metrics.end_time = time.time()
             run.metrics.duration = run.metrics.end_time - run.metrics.start_time
-            await self.repository.save_run(run)
+            await self.session_store.save_run(run)
         except Exception as e:
             run.status = RunStatus.FAILED
             run.metrics.end_time = time.time()
             run.metrics.duration = run.metrics.end_time - run.metrics.start_time
-            await self.repository.save_run(run)
+            await self.session_store.save_run(run)
             raise
 
     async def resume_from_tool_step(
@@ -351,12 +351,12 @@ class StepRunner:
             "resuming_from_assistant_with_tools", session_id=session_id, step_id=last_step.id
         )
 
-        if not self.repository:
-            raise ValueError("Repository required for resume")
+        if not self.session_store:
+            raise ValueError("SessionStore required for resume")
 
         # Build context (includes the assistant step with tool_calls)
         messages = await build_context_from_steps(
-            session_id, self.repository, system_prompt=self.agent.system_prompt
+            session_id, self.session_store, system_prompt=self.agent.system_prompt
         )
 
         run_id = str(uuid4())
@@ -371,7 +371,7 @@ class StepRunner:
             input_query="[resumed from tool_calls]",
             metrics=AgentRunMetrics(start_time=time.time()),
         )
-        await self.repository.save_run(run)
+        await self.session_store.save_run(run)
 
         executor = StepExecutor(
             model=self.agent.model,
@@ -389,7 +389,7 @@ class StepRunner:
                 pending_tool_calls=last_step.tool_calls,
             ):
                 if event.type == StepEventType.STEP_COMPLETED and event.snapshot:
-                    await self.repository.save_step(event.snapshot)
+                    await self.session_store.save_step(event.snapshot)
 
                 yield event
             
@@ -397,12 +397,12 @@ class StepRunner:
             run.status = RunStatus.COMPLETED
             run.metrics.end_time = time.time()
             run.metrics.duration = run.metrics.end_time - run.metrics.start_time
-            await self.repository.save_run(run)
+            await self.session_store.save_run(run)
         except Exception as e:
             run.status = RunStatus.FAILED
             run.metrics.end_time = time.time()
             run.metrics.duration = run.metrics.end_time - run.metrics.start_time
-            await self.repository.save_run(run)
+            await self.session_store.save_run(run)
             raise
 
 

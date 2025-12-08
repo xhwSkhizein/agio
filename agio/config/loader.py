@@ -1,6 +1,5 @@
 """Configuration loader for cold start from YAML files."""
 
-import logging
 from pathlib import Path
 from typing import Any
 
@@ -8,13 +7,14 @@ import yaml
 
 from agio.config.exceptions import ConfigError
 from agio.config.schema import ComponentType
+from agio.utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ConfigLoader:
     """从 YAML 文件加载配置并按依赖顺序初始化
-    
+
     职责：
     - 扫描配置目录
     - 解析 YAML 文件
@@ -24,7 +24,7 @@ class ConfigLoader:
 
     def __init__(self, config_dir: str | Path):
         """初始化配置加载器
-        
+
         Args:
             config_dir: 配置文件根目录
         """
@@ -34,7 +34,7 @@ class ConfigLoader:
 
     async def load_all_configs(self) -> dict[ComponentType, list[dict[str, Any]]]:
         """加载所有配置文件
-        
+
         Returns:
             按类型分组的配置字典: {ComponentType: [config_dict, ...]}
         """
@@ -43,8 +43,8 @@ class ConfigLoader:
             ComponentType.TOOL: [],
             ComponentType.MEMORY: [],
             ComponentType.KNOWLEDGE: [],
-            ComponentType.STORAGE: [],
-            ComponentType.REPOSITORY: [],
+            ComponentType.SESSION_STORE: [],
+            ComponentType.TRACE_STORE: [],
             ComponentType.AGENT: [],
             ComponentType.WORKFLOW: [],
         }
@@ -55,8 +55,8 @@ class ConfigLoader:
             "tools": ComponentType.TOOL,
             "memory": ComponentType.MEMORY,
             "knowledge": ComponentType.KNOWLEDGE,
-            "storages": ComponentType.STORAGE,
-            "repositories": ComponentType.REPOSITORY,
+            "storages": ComponentType.SESSION_STORE,
+            "observability": ComponentType.TRACE_STORE,
             "agents": ComponentType.AGENT,
             "workflows": ComponentType.WORKFLOW,
         }
@@ -71,9 +71,16 @@ class ConfigLoader:
             for yaml_file in type_dir.glob("*.yaml"):
                 try:
                     config_data = self._load_yaml_file(yaml_file)
-                    if config_data and config_data.get("enabled", True):
+                    if not config_data:
+                        continue
+                    if config_data.get("enabled", True):
                         configs_by_type[component_type].append(config_data)
                         logger.info(f"Loaded config: {yaml_file.name}")
+                    else:
+                        logger.info(
+                            f"Skipped disabled config: {yaml_file.name} "
+                            f"(type={component_type.value}, name={config_data.get('name')})"
+                        )
                 except Exception as e:
                     logger.error(f"Failed to load {yaml_file}: {e}")
 
@@ -81,32 +88,32 @@ class ConfigLoader:
 
     def _load_yaml_file(self, file_path: Path) -> dict[str, Any] | None:
         """加载单个 YAML 文件
-        
+
         Args:
             file_path: YAML 文件路径
-            
+
         Returns:
             配置字典或 None
         """
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f)
-                
+
             if not data:
                 logger.warning(f"Empty config file: {file_path}")
                 return None
-                
+
             # 验证必需字段
             if "type" not in data:
                 raise ConfigError(f"Missing 'type' field in {file_path}")
             if "name" not in data:
                 raise ConfigError(f"Missing 'name' field in {file_path}")
-            
+
             # 解析环境变量
             data = self._resolve_env_vars(data)
-                
+
             return data
-            
+
         except yaml.YAMLError as e:
             raise ConfigError(f"Invalid YAML in {file_path}: {e}")
         except ConfigError:
@@ -116,30 +123,30 @@ class ConfigLoader:
 
     def _resolve_env_vars(self, data: dict[str, Any]) -> dict[str, Any]:
         """递归解析配置中的环境变量
-        
+
         支持格式：
         - ${VAR_NAME}
         - ${VAR_NAME:default_value}
-        
+
         Args:
             data: 配置字典
-            
+
         Returns:
             解析后的配置字典
         """
         import os
         import re
-        
+
         def resolve_value(value: Any) -> Any:
             if isinstance(value, str):
                 # 匹配 ${VAR_NAME} 或 ${VAR_NAME:default}
-                pattern = r'\$\{([^}:]+)(?::([^}]*))?\}'
-                
+                pattern = r"\$\{([^}:]+)(?::([^}]*))?\}"
+
                 def replacer(match):
                     var_name = match.group(1)
                     default_value = match.group(2) if match.group(2) is not None else ""
                     return os.getenv(var_name, default_value)
-                
+
                 return re.sub(pattern, replacer, value)
             elif isinstance(value, dict):
                 return {k: resolve_value(v) for k, v in value.items()}
@@ -147,22 +154,23 @@ class ConfigLoader:
                 return [resolve_value(item) for item in value]
             else:
                 return value
-        
+
         return resolve_value(data)
 
     def get_load_order(
         self, configs_by_type: dict[ComponentType, list[dict[str, Any]]]
     ) -> list[tuple[ComponentType, dict[str, Any]]]:
         """计算配置加载顺序（按依赖关系拓扑排序）
-        
+
         Args:
             configs_by_type: 按类型分组的配置
-            
+
         Returns:
             排序后的配置列表: [(ComponentType, config_dict), ...]
         """
         # 收集所有配置
         all_configs: dict[str, tuple[ComponentType, dict]] = {}
+        missing_dependencies: dict[str, set[str]] = {}
 
         # 添加所有节点（使用临时的 BaseModel 对象）
         for component_type, configs in configs_by_type.items():
@@ -172,55 +180,94 @@ class ConfigLoader:
 
         # 构建依赖关系
         dependencies: dict[str, set[str]] = {}
-        
+
         for name, (component_type, config) in all_configs.items():
             deps = set()
-            
+
+            def _add_dep(dep_name: str) -> None:
+                if dep_name in all_configs:
+                    deps.add(dep_name)
+                else:
+                    missing_dependencies.setdefault(name, set()).add(dep_name)
+
             # Agent 依赖
             if component_type == ComponentType.AGENT:
                 if "model" in config:
-                    deps.add(config["model"])
+                    _add_dep(config["model"])
                 if "tools" in config:
-                    deps.update(config["tools"])
+                    for tool_ref in config["tools"]:
+                        # Parse tools using unified parser
+                        from agio.config.tool_reference import parse_tool_reference
+
+                        parsed = parse_tool_reference(tool_ref)
+
+                        # Add dependencies based on tool type
+                        if parsed.type == "function" and parsed.name:
+                            _add_dep(parsed.name)
+                        elif parsed.type == "agent_tool" and parsed.agent:
+                            _add_dep(parsed.agent)
+                        elif parsed.type == "workflow_tool" and parsed.workflow:
+                            _add_dep(parsed.workflow)
+                            # Unknown tool types are ignored for dependency ordering
                 if "memory" in config:
-                    deps.add(config["memory"])
+                    _add_dep(config["memory"])
                 if "knowledge" in config:
-                    deps.add(config["knowledge"])
+                    _add_dep(config["knowledge"])
                 if "repository" in config:
-                    deps.add(config["repository"])
-            
+                    _add_dep(config["repository"])
+
             # Tool 依赖
             elif component_type == ComponentType.TOOL:
                 if "dependencies" in config:
-                    deps.update(config["dependencies"].values())
-            
+                    for dep_name in config["dependencies"].values():
+                        _add_dep(dep_name)
+
             dependencies[name] = deps
 
         # 拓扑排序
         sorted_names = self._topological_sort(dependencies)
-        
+
         # 构建结果
         result = []
         for name in sorted_names:
             if name in all_configs:
                 result.append(all_configs[name])
-        
+
+        # 如果存在缺失依赖或未排序节点，输出警告并追加到结果末尾
+        unresolved = set(all_configs.keys()) - set(sorted_names)
+        if missing_dependencies:
+            for comp, deps in missing_dependencies.items():
+                logger.warning(
+                    "Missing dependencies detected",
+                    component=comp,
+                    missing_deps=", ".join(sorted(deps)),
+                )
+        if unresolved:
+            logger.warning(
+                "Unresolved components due to missing dependencies or cycles: %s",
+                ", ".join(sorted(unresolved)),
+            )
+            for name in unresolved:
+                result.append(all_configs[name])
+
         return result
 
     def _topological_sort(self, dependencies: dict[str, set[str]]) -> list[str]:
         """拓扑排序
-        
+
         Args:
             dependencies: 依赖关系字典 {name: {dep1, dep2, ...}}
-            
+
         Returns:
             排序后的名称列表（依赖项在前，被依赖项在后）
         """
         from collections import deque
 
         # 计算每个节点的依赖数（出度）
-        in_degree: dict[str, int] = {name: len(deps) for name, deps in dependencies.items()}
-        
+        in_degree: dict[str, int] = {
+            name: len(deps) for name, deps in dependencies.items()
+        }
+
         # 从没有依赖的节点开始（出度为 0）
         queue = deque([name for name, degree in in_degree.items() if degree == 0])
         result = []

@@ -5,7 +5,6 @@ Complete rewrite with improved content extraction, quality validation, and smart
 Supports multiple extraction strategies and content type detection.
 """
 
-import logging
 import time
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -32,6 +31,7 @@ from agio.providers.tools.builtin.common.web_fetch.llm_processors import (
 from agio.providers.tools.builtin.common.web_fetch.playwright_crawler import (
     PlaywrightCrawler,
 )
+from agio.utils.logging import get_logger
 from agio.domain import ToolResult
 
 if TYPE_CHECKING:
@@ -42,7 +42,7 @@ if TYPE_CHECKING:
     from agio.runtime.control import AbortSignal
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class WebFetchTool(BaseTool):

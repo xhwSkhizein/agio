@@ -12,9 +12,9 @@ from agio.config.schema import (
     KnowledgeConfig,
     MemoryConfig,
     ModelConfig,
-    RepositoryConfig,
-    StorageConfig,
+    SessionStoreConfig,
     ToolConfig,
+    TraceStoreConfig,
     WorkflowConfig,
 )
 
@@ -236,80 +236,42 @@ class KnowledgeBuilder(ComponentBuilder):
             raise ComponentBuildError(f"Failed to build knowledge {config.name}: {e}")
 
 
-class StorageBuilder(ComponentBuilder):
-    """Builder for storage components."""
-
-    async def build(self, config: StorageConfig, dependencies: dict[str, Any]) -> Any:
-        """Build storage instance."""
-        try:
-            if config.storage_type == "redis":
-                from agio.components.memory.storage.redis import RedisStorage
-
-                storage = RedisStorage(
-                    redis_url=config.redis_url, **config.redis_params
-                )
-
-                # Initialize connection
-                if hasattr(storage, "connect"):
-                    await storage.connect()
-
-                return storage
-
-            elif config.storage_type == "inmemory":
-                from agio.components.memory.storage.memory import InMemoryStorage
-
-                return InMemoryStorage()
-
-            else:
-                raise ComponentBuildError(
-                    f"Unknown storage type: {config.storage_type}"
-                )
-
-        except Exception as e:
-            raise ComponentBuildError(f"Failed to build storage {config.name}: {e}")
-
-    async def cleanup(self, instance: Any) -> None:
-        """Cleanup storage resources."""
-        if hasattr(instance, "disconnect"):
-            await instance.disconnect()
-
-
-class RepositoryBuilder(ComponentBuilder):
-    """Builder for repository components."""
+class SessionStoreBuilder(ComponentBuilder):
+    """Builder for session store components (stores AgentRun and Step data)."""
 
     async def build(
-        self, config: RepositoryConfig, dependencies: dict[str, Any]
+        self, config: SessionStoreConfig, dependencies: dict[str, Any]
     ) -> Any:
-        """Build repository instance."""
+        """Build session store instance."""
         try:
-            if config.repository_type == "mongodb":
-                from agio.providers.storage import MongoRepository
+            if config.store_type == "mongodb":
+                from agio.providers.storage import MongoSessionStore
 
-                repo = MongoRepository(
+                store = MongoSessionStore(
                     uri=config.mongo_uri, db_name=config.mongo_db_name
                 )
 
                 # Initialize connection
-                if hasattr(repo, "connect"):
-                    await repo.connect()
+                if hasattr(store, "connect"):
+                    await store.connect()
 
-                return repo
+                return store
 
-            elif config.repository_type == "inmemory":
-                from agio.providers.storage import InMemoryRepository
+            elif config.store_type == "inmemory":
+                from agio.providers.storage import InMemorySessionStore
 
-                return InMemoryRepository()
+                return InMemorySessionStore()
 
             else:
                 raise ComponentBuildError(
-                    f"Unknown repository type: {config.repository_type}"
+                    f"Unknown session store type: {config.store_type}"
                 )
 
         except Exception as e:
-            raise ComponentBuildError(f"Failed to build repository {config.name}: {e}")
+            raise ComponentBuildError(f"Failed to build session_store {config.name}: {e}")
 
     async def cleanup(self, instance: Any) -> None:
-        """Cleanup repository resources."""
+        """Cleanup session store resources."""
         if hasattr(instance, "disconnect"):
             await instance.disconnect()
 
@@ -338,8 +300,11 @@ class AgentBuilder(ComponentBuilder):
             if "knowledge" in dependencies:
                 kwargs["knowledge"] = dependencies["knowledge"]
 
-            if "repository" in dependencies:
-                kwargs["repository"] = dependencies["repository"]
+            if "session_store" in dependencies:
+                kwargs["session_store"] = dependencies["session_store"]
+
+            if "trace_store" in dependencies:
+                kwargs["trace_store"] = dependencies["trace_store"]
 
             return Agent(**kwargs)
 
@@ -422,3 +387,26 @@ class WorkflowBuilder(ComponentBuilder):
 
         except Exception as e:
             raise ComponentBuildError(f"Failed to build workflow {config.name}: {e}")
+
+
+class TraceStoreBuilder(ComponentBuilder):
+    """Builder for TraceStore components."""
+
+    async def build(self, config: TraceStoreConfig, dependencies: dict[str, Any]) -> Any:
+        """Build TraceStore instance."""
+        from agio.observability.trace_store import TraceStore
+
+        try:
+            store = TraceStore(
+                mongo_uri=config.mongo_uri,
+                db_name=config.mongo_db_name,
+                buffer_size=config.buffer_size,
+            )
+            
+            # Initialize MongoDB connection
+            await store.initialize()
+            
+            return store
+
+        except Exception as e:
+            raise ComponentBuildError(f"Failed to build trace_store {config.name}: {e}")

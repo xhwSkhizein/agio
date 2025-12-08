@@ -18,6 +18,13 @@ from agio.workflow.pipeline import PipelineWorkflow
 from agio.workflow.loop import LoopWorkflow
 from agio.workflow.parallel import ParallelWorkflow
 from agio.workflow.engine import WorkflowEngine
+from agio.workflow.runnable_tool import (
+    RunnableTool,
+    as_tool,
+    CircularReferenceError,
+    MaxDepthExceededError,
+    DEFAULT_MAX_DEPTH,
+)
 
 __all__ = [
     # Protocol
@@ -35,4 +42,10 @@ __all__ = [
     "ParallelWorkflow",
     # Engine
     "WorkflowEngine",
+    # Runnable as Tool
+    "RunnableTool",
+    "as_tool",
+    "CircularReferenceError",
+    "MaxDepthExceededError",
+    "DEFAULT_MAX_DEPTH",
 ]

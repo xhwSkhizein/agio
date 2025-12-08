@@ -8,10 +8,10 @@ from typing import List, Optional
 from agio.domain import AgentRun, Step
 
 
-class AgentRunRepository(ABC):
+class SessionStore(ABC):
     """
-    Agent Run repository interface.
-    Responsible for Run and Step persistence and queries.
+    Session store interface.
+    Responsible for AgentRun and Step persistence and queries.
     """
 
     # --- Run Operations ---
@@ -94,7 +94,7 @@ class AgentRunRepository(ABC):
         pass
 
 
-class InMemoryRepository(AgentRunRepository):
+class InMemorySessionStore(SessionStore):
     """
     In-memory implementation (for testing and development)
     """
@@ -186,4 +186,4 @@ class InMemoryRepository(AgentRunRepository):
         return len(self.steps.get(session_id, []))
 
 
-__all__ = ["AgentRunRepository", "InMemoryRepository"]
+__all__ = ["SessionStore", "InMemorySessionStore"]

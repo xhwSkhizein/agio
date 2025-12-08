@@ -9,8 +9,11 @@ from typing import Any
 
 from fastapi import Depends, HTTPException
 
-from agio.config import ConfigSystem, get_config_system, ComponentType
-from agio.providers.storage import AgentRunRepository
+from agio.config import ComponentType, ConfigSystem, get_config_system
+from agio.providers.storage import SessionStore
+from agio.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def get_config_sys() -> ConfigSystem:
@@ -18,45 +21,42 @@ def get_config_sys() -> ConfigSystem:
     return get_config_system()
 
 
-# Singleton InMemoryRepository for fallback
-_default_repository: AgentRunRepository | None = None
+# Singleton InMemorySessionStore for fallback
+_default_session_store: SessionStore | None = None
 
 
-def get_repository(
+def get_session_store(
     config_sys: ConfigSystem = Depends(get_config_sys),
-) -> AgentRunRepository:
+) -> SessionStore:
     """
-    Get Repository instance.
+    Get SessionStore instance.
 
     Priority:
     1. Get from ConfigSystem if already built
-    2. Fall back to singleton InMemoryRepository
+    2. Fall back to singleton InMemorySessionStore
     """
-    global _default_repository
+    global _default_session_store
     
-    # Try to get repository from config system
-    repos = config_sys.list_configs(ComponentType.REPOSITORY)
-    if repos:
-        # Prefer mongodb_repo if available
-        for repo_config in repos:
-            name = repo_config.get("name")
+    # Try to get session_store from config system
+    stores = config_sys.list_configs(ComponentType.SESSION_STORE)
+    if stores:
+        # Prefer mongodb_session_store if available
+        for store_config in stores:
+            name = store_config.get("name")
             if name:
                 try:
-                    repo = config_sys.get_or_none(name)
-                    if repo is not None:
-                        return repo
+                    store = config_sys.get_or_none(name)
+                    if store is not None:
+                        return store
                 except Exception as e:
-                    import logging
-                    logging.getLogger(__name__).warning(
-                        f"Failed to get repository '{name}': {e}"
-                    )
+                    logger.warning("get_session_store_failed", name=name, error=str(e))
 
-    # Fallback: create singleton InMemoryRepository
-    if _default_repository is None:
-        from agio.providers.storage import InMemoryRepository
-        _default_repository = InMemoryRepository()
+    # Fallback: create singleton InMemorySessionStore
+    if _default_session_store is None:
+        from agio.providers.storage import InMemorySessionStore
+        _default_session_store = InMemorySessionStore()
 
-    return _default_repository
+    return _default_session_store
 
 
 def get_agent(

@@ -140,17 +140,17 @@ async for chunk in model.arun_stream(messages, tools):
 #### `providers/storage/`
 
 ```python
-from agio.providers.storage import InMemoryRepository, MongoRepository
+from agio.providers.storage import InMemorySessionStore, MongoSessionStore
 
 # 内存存储（开发/测试）
-repo = InMemoryRepository()
+store = InMemorySessionStore()
 
 # MongoDB（生产）
-repo = MongoRepository(uri="mongodb://...", db_name="agio")
+store = MongoSessionStore(uri="mongodb://...", db_name="agio")
 
 # 统一接口
-await repo.save_step(step)
-steps = await repo.get_steps(session_id)
+await store.save_step(step)
+steps = await store.get_steps(session_id)
 ```
 
 #### `providers/tools/`
@@ -298,13 +298,13 @@ class MyTool(BaseTool):
 ### 添加新的存储后端
 
 1. 在 `providers/storage/` 创建新文件
-2. 继承 `AgentRunRepository`
+2. 继承 `SessionStore`
 3. 实现所有抽象方法
 
 ```python
-from agio.providers.storage.base import AgentRunRepository
+from agio.providers.storage.base import SessionStore
 
-class MyStorageRepository(AgentRunRepository):
+class MySessionStore(SessionStore):
     async def save_step(self, step): ...
     async def get_steps(self, session_id): ...
     # ... 其他方法

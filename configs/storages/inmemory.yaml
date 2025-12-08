@@ -1,0 +1,9 @@
+type: session_store
+name: inmemory_session_store
+description: "In-memory session store for testing and development"
+store_type: inmemory
+enabled: true
+tags:
+  - testing
+  - inmemory
+  - development

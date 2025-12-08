@@ -4,7 +4,8 @@ description: "Simple general-purpose assistant"
 model: gpt-4o-mini
 system_prompt: "You are a helpful assistant. Answer questions clearly and concisely."
 tools: []
-repository: inmemory_repo
+repository: mongodb_session_store
+trace_store: trace_store
 hooks:
   - logging_hook
 max_steps: 10

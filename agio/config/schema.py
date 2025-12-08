@@ -62,9 +62,9 @@ class ComponentType(str, Enum):
     MEMORY = "memory"
     KNOWLEDGE = "knowledge"
     AGENT = "agent"
-    STORAGE = "storage"
-    REPOSITORY = "repository"
+    SESSION_STORE = "session_store"
     WORKFLOW = "workflow"
+    TRACE_STORE = "trace_store"
 
 
 class ComponentConfig(BaseModel):
@@ -147,27 +147,11 @@ class KnowledgeConfig(ComponentConfig):
     params: dict = Field(default_factory=dict)
 
 
-class StorageConfig(ComponentConfig):
-    """Configuration for storage components"""
+class SessionStoreConfig(ComponentConfig):
+    """Configuration for session store components (stores AgentRun and Step data)"""
 
-    type: Literal["storage"] = "storage"
-    storage_type: str  # "redis", "inmemory", "mongodb"
-    params: dict = Field(default_factory=dict)
-
-    # Redis specific
-    redis_url: str | None = None
-    redis_params: dict = Field(default_factory=dict)
-
-    # MongoDB specific
-    mongo_uri: str | None = None
-    mongo_db_name: str | None = None
-
-
-class RepositoryConfig(ComponentConfig):
-    """Configuration for repository components"""
-
-    type: Literal["repository"] = "repository"
-    repository_type: str  # "mongodb", "inmemory", "postgres"
+    type: Literal["session_store"] = "session_store"
+    store_type: str  # "mongodb", "inmemory", "postgres"
     params: dict = Field(default_factory=dict)
 
     # MongoDB specific
@@ -178,15 +162,44 @@ class RepositoryConfig(ComponentConfig):
     postgres_url: str | None = None
 
 
+class TraceStoreConfig(ComponentConfig):
+    """Configuration for trace store components"""
+
+    type: Literal["trace_store"] = "trace_store"
+    
+    # MongoDB specific
+    mongo_uri: str | None = None
+    mongo_db_name: str | None = None
+    
+    # Buffer configuration
+    buffer_size: int = Field(default=1000, description="In-memory buffer size")
+    flush_interval: int = Field(default=60, description="Flush interval in seconds")
+
+
+class RunnableToolConfig(BaseModel):
+    """Configuration for Runnable (Agent/Workflow) as Tool."""
+
+    type: Literal["agent_tool", "workflow_tool"]
+    agent: str | None = None  # For agent_tool: reference to agent name
+    workflow: str | None = None  # For workflow_tool: reference to workflow name
+    description: str | None = None  # Tool description for LLM
+    name: str | None = None  # Optional custom tool name
+
+
+# Tool reference can be string (tool name) or dict (agent_tool/workflow_tool config)
+ToolReference = str | RunnableToolConfig | dict
+
+
 class AgentConfig(ComponentConfig):
     """Configuration for agent components"""
 
     type: Literal["agent"] = "agent"
     model: str  # Reference to model config name
-    tools: list[str] = Field(default_factory=list)
+    tools: list[ToolReference] = Field(default_factory=list)
     memory: str | None = None
     knowledge: str | None = None
-    repository: str | None = None
+    session_store: str | None = None
+    trace_store: str | None = None
 
     system_prompt: str | None = None
     max_steps: int = 10
@@ -229,10 +242,12 @@ __all__ = [
     "ComponentConfig",
     "ModelConfig",
     "ToolConfig",
+    "RunnableToolConfig",
+    "ToolReference",
     "MemoryConfig",
     "KnowledgeConfig",
-    "StorageConfig",
-    "RepositoryConfig",
+    "SessionStoreConfig",
+    "TraceStoreConfig",
     "AgentConfig",
     "StageConfig",
     "WorkflowConfig",

@@ -3,15 +3,15 @@
 使用 curl_cffi 进行高性能 HTTP 请求。
 """
 
-import logging
 from urllib.parse import urlparse
 
 from agio.providers.tools.builtin.common.web_fetch.html_extract import (
     HtmlContent,
     extract_content_from_html,
 )
+from agio.utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SimpleAsyncClient:

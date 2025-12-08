@@ -34,7 +34,7 @@ from agio.core import StepAdapter
 message = StepAdapter.to_llm_message(step)
 ```
 
-详见: [REFACTORING_DOMAIN_MODEL.md](REFACTORING_DOMAIN_MODEL.md)
+详见: `docs/ARCHITECTURE.md`
 
 ---
 
@@ -196,7 +196,7 @@ if event.type == EventType.TEXT_DELTA:
 
 ### Added
 - 统一事件流协议 (`AgentEvent`)
-- 事件持久化 (`AgentRunRepository`)
+- 事件持久化 (`SessionStore`)
 - 历史回放 API (`get_run_history`, `list_runs`)
 - Metrics 收集和快照
 - 错误分类和恢复机制
@@ -247,4 +247,4 @@ if event.type == EventType.TEXT_DELTA:
 - [GitHub Repository](https://github.com/yourusername/agio)
 - [Documentation](https://agio.dev/docs)
 - [Issue Tracker](https://github.com/yourusername/agio/issues)
-- [Code Review Report](CODE_REVIEW_REPORT.md)
+- [Architecture](docs/ARCHITECTURE.md)
