@@ -85,29 +85,6 @@ export const agentService = {
   },
 }
 
-export interface ChatRequest {
-  agent_id: string
-  message: string
-  user_id?: string
-  session_id?: string
-  stream: boolean
-}
-
-export interface ChatResponse {
-  run_id: string
-  response: string
-  metrics: Record<string, any>
-}
-
-export const chatService = {
-  async chat(agentName: string, request: Omit<ChatRequest, 'agent_id'>): Promise<ChatResponse> {
-    const response = await api.post(`/chat/${agentName}`, request)
-    return response.data
-  },
-
-  // SSE streaming handled separately with EventSource
-}
-
 export interface Config {
   type: string
   name: string

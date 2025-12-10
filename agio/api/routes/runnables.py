@@ -19,8 +19,10 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from agio.config import ConfigSystem, get_config_system
+from agio.domain import StepEventType
 from agio.runtime import Wire
 from agio.workflow import RunContext
+import json
 
 router = APIRouter(prefix="/runnables")
 
@@ -28,9 +30,11 @@ router = APIRouter(prefix="/runnables")
 class RunRequest(BaseModel):
     """Request body for running a Runnable."""
 
-    query: str
+    query: str | None = None
+    message: str | None = None  # Alias for query (backward compatibility)
     session_id: str | None = None
     user_id: str | None = None
+    stream: bool = True  # Support non-streaming mode
 
 
 class RunnableInfo(BaseModel):
@@ -119,12 +123,13 @@ async def run_runnable(
     """
     Execute a Runnable (Agent or Workflow).
 
-    Returns a Server-Sent Events stream of execution events.
-    
+    Returns a Server-Sent Events stream of execution events (if stream=True),
+    or a JSON response (if stream=False).
+
     Wire-based execution:
     1. Create Wire at API entry point
-    2. Start agent.run() in background task
-    3. Consume wire.read() for SSE response
+    2. Start runnable.run() in background task
+    3. Consume wire.read() for SSE response or collect events for JSON response
     """
     try:
         instance = config_system.get_instance(runnable_id)
@@ -138,10 +143,23 @@ async def run_runnable(
             detail=f"Component {runnable_id} does not implement Runnable protocol",
         )
 
+    # Get query from either query or message field
+    query = request.query or request.message
+    if not query:
+        raise HTTPException(
+            status_code=400,
+            detail="Either 'query' or 'message' field is required",
+        )
+
+    # Non-streaming mode
+    if not request.stream:
+        return await _run_non_streaming(instance, query, request.session_id, request.user_id)
+
+    # Streaming mode
     async def event_generator():
         # Create Wire at API entry point
         wire = Wire()
-        
+
         # Create context with wire
         context = RunContext(
             wire=wire,
@@ -152,7 +170,7 @@ async def run_runnable(
         # Start execution in background task
         async def _run():
             try:
-                await instance.run(request.query, context=context)
+                await instance.run(query, context=context)
             finally:
                 await wire.close()
 
@@ -186,3 +204,64 @@ async def run_runnable(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+async def _run_non_streaming(
+    instance: Any,
+    query: str,
+    session_id: str | None,
+    user_id: str | None,
+) -> dict[str, Any]:
+    """Non-streaming execution using Wire."""
+    wire = Wire()
+    context = RunContext(
+        wire=wire,
+        session_id=session_id or str(uuid4()),
+        user_id=user_id,
+    )
+
+    response_content = ""
+    run_id = None
+    session_id_final = session_id or str(uuid4())
+    metrics = {}
+
+    async def _run():
+        try:
+            return await instance.run(query, context=context)
+        finally:
+            await wire.close()
+
+    task = asyncio.create_task(_run())
+
+    try:
+        async for event in wire.read():
+            if event.type == StepEventType.RUN_STARTED:
+                run_id = event.run_id
+
+            elif event.type == StepEventType.STEP_DELTA:
+                if event.delta and event.delta.content:
+                    response_content += event.delta.content
+
+            elif event.type == StepEventType.RUN_COMPLETED:
+                if event.data and "metrics" in event.data:
+                    metrics = event.data["metrics"]
+
+        # Get final result
+        result = await task
+        if result.response and not response_content:
+            response_content = result.response
+
+    finally:
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+    return {
+        "run_id": run_id or "unknown",
+        "session_id": session_id_final,
+        "response": response_content,
+        "metrics": metrics,
+    }

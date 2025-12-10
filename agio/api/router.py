@@ -28,7 +28,6 @@ def create_router(prefix: str = "/agio") -> APIRouter:
     """
     from .routes import (
         agents,
-        chat,
         config,
         health,
         knowledge,
@@ -57,9 +56,6 @@ def create_router(prefix: str = "/agio") -> APIRouter:
 
     # Workflow management
     router.include_router(workflows.router, tags=["Workflows"])
-
-    # Chat testing
-    router.include_router(chat.router, tags=["Chat"])
 
     # Session management
     router.include_router(sessions.router, tags=["Sessions"])

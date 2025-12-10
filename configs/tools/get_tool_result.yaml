@@ -1,0 +1,10 @@
+type: tool
+name: get_tool_result
+description: ""
+tool_name: web_fetch
+params:
+  tool_name: str
+enabled: true
+session_store: session_store
+tags:
+  - tool

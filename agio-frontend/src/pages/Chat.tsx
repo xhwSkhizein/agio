@@ -195,14 +195,14 @@ export default function Chat() {
     abortControllerRef.current = new AbortController()
 
     try {
-      // Use runnable API for workflows, chat API for agents
-      const apiUrl = isWorkflow
-        ? `/agio/runnables/${selectedAgentId}/run`
-        : `/agio/chat/${selectedAgentId}`
+      // Use unified runnable API for both agents and workflows
+      const apiUrl = `/agio/runnables/${selectedAgentId}/run`
 
-      const requestBody = isWorkflow
-        ? { query: userMessage, session_id: currentSessionId }
-        : { message: userMessage, stream: true, session_id: currentSessionId }
+      const requestBody = {
+        query: userMessage,
+        session_id: currentSessionId,
+        stream: true,
+      }
 
       const response = await fetch(apiUrl, {
         method: 'POST',

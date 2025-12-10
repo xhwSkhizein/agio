@@ -1,0 +1,48 @@
+# Quality Improvement Loop Workflow
+# Context-First: 处理传入的内容，迭代改进直到达标
+
+type: workflow
+name: quality_loop
+description: "Iterative quality improvement loop - processes provided content"
+workflow_type: loop
+
+# Loop stages - all use processors without collection tools
+stages:
+  - id: review
+    runnable: summary_processor
+    input: |
+      Act as a quality reviewer. Review the following content:
+      
+      {query}
+      
+      Previous feedback (if any): {loop.last.improve}
+      
+      Provide:
+      - Quality score (1-10)
+      - Specific issues found
+      - Verdict: PASS or NEEDS_REVISION
+
+  - id: improve
+    runnable: doc_processor
+    input: |
+      Improve the following content based on review feedback:
+      
+      Original Content:
+      {query}
+      
+      Review Feedback:
+      {review}
+      
+      Make specific improvements to address the issues.
+    condition: "{review} contains 'NEEDS_REVISION'"
+
+# Continue looping while verdict is NEEDS_REVISION
+condition: "{review} contains 'NEEDS_REVISION'"
+max_iterations: 3
+
+
+enabled: true
+tags:
+  - loop
+  - quality
+  - iterative
