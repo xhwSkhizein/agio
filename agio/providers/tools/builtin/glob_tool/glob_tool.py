@@ -175,10 +175,16 @@ class GlobTool(BaseTool):
             matched_files = []
 
             # 处理不同的模式类型
-            if "**/*" in normalized_pattern:
-                # 递归搜索
-                glob_pattern = normalized_pattern.replace("**/*", "**")
-                for file_path in search_dir.glob(glob_pattern):
+            if normalized_pattern.startswith("**/"):
+                # 递归搜索：使用 rglob 处理 **/ 开头的模式
+                # rglob(pattern) 等价于 glob('**/' + pattern)，但能正确处理 ** 模式
+                sub_pattern = normalized_pattern[3:]  # 移除 "**/" 前缀
+                for file_path in search_dir.rglob(sub_pattern):
+                    if file_path.is_file():
+                        matched_files.append(file_path)
+            elif normalized_pattern.startswith("**"):
+                # 处理单独的 ** 模式（整个目录树）
+                for file_path in search_dir.rglob("*"):
                     if file_path.is_file():
                         matched_files.append(file_path)
             else:
@@ -286,11 +292,11 @@ class GlobTool(BaseTool):
 
             # 执行 glob 搜索
             files, truncated = await self._glob_search(pattern, search_path)
-            
+
             # 检查中断（在搜索后）
             if abort_signal and abort_signal.is_aborted():
                 return self._create_abort_result(parameters, start_time)
-            
+
             duration_ms = int((time.time() - start_time) * 1000)
 
             result_text = self._format_result_for_assistant(GlobOutput(

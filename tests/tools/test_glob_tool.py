@@ -42,6 +42,20 @@ class TestGlobTool:
         assert result.output["num_files"] >= 0
 
     @pytest.mark.asyncio
+    async def test_recursive_glob_json(self, tool):
+        """测试递归搜索 JSON 文件（修复 **/*.json 模式问题）"""
+        result = await tool.execute(
+            {
+                "tool_call_id": "test_recursive_json",
+                "pattern": "**/*.json",
+                "path": ".",
+            }
+        )
+
+        assert result.is_success
+        assert result.output["num_files"] >= 0
+
+    @pytest.mark.asyncio
     async def test_no_results(self, tool):
         """测试无结果"""
         result = await tool.execute({
