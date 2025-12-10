@@ -109,6 +109,13 @@ export default function Chat() {
   const parallelBatchesRef = useRef<Map<string, { batchId: string; executionIds: Set<string>; stepId: string }>>(new Map())
   // Track step_id for each nested execution: Key: nestedRunId, Value: stepId
   const nestedRunStepIdRef = useRef<Map<string, string>>(new Map())
+  // Track the parent step_id that triggered parallel RunnableTool calls: Key: parentRunId, Value: parentStepId
+  // This is used to group parallel calls from the same Assistant Step into one batch
+  const parentStepIdForBatchesRef = useRef<Map<string, string>>(new Map())
+  // Track tool_call mapping for nested executions: Key: `${nestedRunId}_${stepId}_${index}`, Value: { toolCallId, stepIndex, finalized }
+  // This maps temporary IDs (based on stepId + index) to real tool_call IDs
+  // finalized flag indicates if the tool_call args have been finalized from step_completed
+  const nestedToolCallTrackerRef = useRef<Map<string, { toolCallId: string; stepIndex: number; finalized?: boolean }>>(new Map())
 
   // Fetch all available agents
   const { data: agents } = useQuery({
@@ -197,10 +204,6 @@ export default function Chat() {
     return () => document.removeEventListener('click', handleClickOutside)
   }, [showAgentDropdown])
 
-  // Track if user has manually scrolled up
-  const isUserScrolledUpRef = useRef(false)
-  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
-
   const scrollToBottom = (force = false) => {
     if (!force && isUserScrolledUpRef.current) {
       // User has scrolled up, don't auto-scroll unless forced
@@ -279,6 +282,8 @@ export default function Chat() {
     nestedExecutionsRef.current = new Map()  // Reset nested executions tracker
     parallelBatchesRef.current = new Map()  // Reset parallel batches tracker
     nestedRunStepIdRef.current = new Map()  // Reset nested run step_id tracker
+    parentStepIdForBatchesRef.current = new Map()  // Reset parent step_id tracker
+    nestedToolCallTrackerRef.current = new Map()  // Reset nested tool_call tracker
 
     const userMessage = input
     abortControllerRef.current = new AbortController()
@@ -359,7 +364,6 @@ export default function Chat() {
                 
                 if (currentEvent === 'run_started' && nestedRunnableId) {
                   // Create new nested execution entry with steps array
-                  // Note: step_id is not available in run_started, will be set when step_delta/step_completed arrives
                   const newExec: NestedExecution = {
                     id: nestedRunId,
                     runnableId: nestedRunnableId,
@@ -369,8 +373,48 @@ export default function Chat() {
                   }
                   executionsMap.set(nestedRunId, newExec)
                   
-                  // Batch will be created/updated when step_delta or step_completed arrives with step_id
-                  // For now, just return without creating container (will be created in step_delta/step_completed)
+                  // Get parent step_id from the most recent Assistant Step with tool_calls
+                  // This groups all parallel calls from the same parent step into one batch
+                  const parentStepId = parentStepIdForBatchesRef.current.get(parentRunId) || 'unknown'
+                  const batchKey = `${parentRunId}_${parentStepId}`
+                  
+                  // Get or create batch
+                  let batch = parallelBatchesRef.current.get(batchKey)
+                  if (!batch) {
+                    const batchId = `parallel_nested_${batchKey}`
+                    batch = {
+                      batchId,
+                      executionIds: new Set([nestedRunId]),
+                      stepId: parentStepId,
+                    }
+                    parallelBatchesRef.current.set(batchKey, batch)
+                  } else {
+                    batch.executionIds.add(nestedRunId)
+                  }
+                  
+                  // Create or update container event for this batch
+                  const containerEventId = batch.batchId
+                  const containerIdx = newEvents.findIndex(e => e.id === containerEventId)
+                  
+                  const batchExecutions = Array.from(executionsMap.values()).filter(exec =>
+                    batch.executionIds.has(exec.id)
+                  )
+                  
+                  if (containerIdx !== -1) {
+                    newEvents[containerIdx] = {
+                      ...newEvents[containerIdx],
+                      nestedExecutions: batchExecutions,
+                    }
+                  } else {
+                    newEvents.push({
+                      id: containerEventId,
+                      type: 'parallel_nested',
+                      parentRunId,
+                      nestedExecutions: batchExecutions,
+                      timestamp: Date.now(),
+                    })
+                  }
+                  
                   return newEvents
                 }
                 
@@ -384,8 +428,9 @@ export default function Chat() {
                   }
                   
                   // Update container event for the batch containing this execution
-                  const stepId = nestedRunStepIdRef.current.get(nestedRunId) || 'unknown'
-                  const batchKey = `${parentRunId}_${stepId}`
+                  // Use parentStepId to find the correct batch
+                  const parentStepId = parentStepIdForBatchesRef.current.get(parentRunId) || 'unknown'
+                  const batchKey = `${parentRunId}_${parentStepId}`
                   const batch = parallelBatchesRef.current.get(batchKey)
                   if (batch) {
                     const containerEventId = batch.batchId
@@ -410,8 +455,9 @@ export default function Chat() {
                   exec.endTime = Date.now()
                   
                   // Update container event for the batch containing this execution
-                  const stepId = nestedRunStepIdRef.current.get(nestedRunId) || 'unknown'
-                  const batchKey = `${parentRunId}_${stepId}`
+                  // Use parentStepId to find the correct batch
+                  const parentStepId = parentStepIdForBatchesRef.current.get(parentRunId) || 'unknown'
+                  const batchKey = `${parentRunId}_${parentStepId}`
                   const batch = parallelBatchesRef.current.get(batchKey)
                   if (batch) {
                     const containerEventId = batch.batchId
@@ -438,8 +484,10 @@ export default function Chat() {
                   // Track step_id for this nested execution
                   nestedRunStepIdRef.current.set(nestedRunId, stepId)
                   
-                  // Get or create batch using parentRunId + stepId
-                  const batchKey = `${parentRunId}_${stepId}`
+                  // Get batch using parentRunId + parentStepId (not nested stepId)
+                  // All parallel calls from the same parent step should be in the same batch
+                  const parentStepId = parentStepIdForBatchesRef.current.get(parentRunId) || 'unknown'
+                  const batchKey = `${parentRunId}_${parentStepId}`
                   let batch = parallelBatchesRef.current.get(batchKey)
                   
                   if (!batch) {
@@ -478,10 +526,41 @@ export default function Chat() {
                   // Handle tool calls - properly parse JSON arguments
                   if (data.delta?.tool_calls) {
                     for (const tc of data.delta.tool_calls) {
-                      const toolCallId = tc.id || `${stepId}_tc_${tc.index ?? 0}`
-                      const existingStep = exec.steps.find(
-                        s => s.type === 'tool_call' && s.toolCallId === toolCallId
-                      ) as Extract<NestedStep, { type: 'tool_call' }> | undefined
+                      const tcIndex = tc.index ?? 0
+                      const trackerKey = `${nestedRunId}_${stepId}_${tcIndex}`
+                      const tracker = nestedToolCallTrackerRef.current
+                      
+                      // Check if we already have a tracker entry for this tool_call
+                      let toolCallId: string
+                      let existingStep: Extract<NestedStep, { type: 'tool_call' }> | undefined
+                      
+                      if (tracker.has(trackerKey)) {
+                        // Use the tracked tool_call_id to find existing step
+                        toolCallId = tracker.get(trackerKey)!.toolCallId
+                        existingStep = exec.steps.find(
+                          s => s.type === 'tool_call' && s.toolCallId === toolCallId
+                        ) as Extract<NestedStep, { type: 'tool_call' }> | undefined
+                        
+                        // Update tracker if we receive the real ID
+                        if (tc.id && tc.id !== toolCallId) {
+                          tracker.set(trackerKey, { toolCallId: tc.id, stepIndex: tracker.get(trackerKey)!.stepIndex })
+                          toolCallId = tc.id
+                          // Also update the step's toolCallId
+                          if (existingStep) {
+                            existingStep.toolCallId = tc.id
+                          }
+                        }
+                      } else {
+                        // First time seeing this tool_call
+                        toolCallId = tc.id || `${stepId}_tc_${tcIndex}`
+                        // Try to find by temporary ID first
+                        existingStep = exec.steps.find(
+                          s => s.type === 'tool_call' && s.toolCallId === toolCallId
+                        ) as Extract<NestedStep, { type: 'tool_call' }> | undefined
+                        
+                        // Create tracker entry (stepIndex will be set after push)
+                        tracker.set(trackerKey, { toolCallId, stepIndex: -1 })
+                      }
                       
                       if (existingStep) {
                         // Accumulate tool name and arguments (arguments are JSON strings)
@@ -489,26 +568,42 @@ export default function Chat() {
                           existingStep.toolName = tc.function.name  // Name is complete, not incremental
                         }
                         if (tc.function?.arguments) {
-                          // Arguments are streamed JSON strings - append directly
-                          // ToolCall component will parse and format for display
-                          existingStep.toolArgs = (existingStep.toolArgs || '') + tc.function.arguments
+                          // Check if this tool_call has been finalized (from step_completed)
+                          const trackerEntry = tracker.get(trackerKey)
+                          if (trackerEntry?.finalized) {
+                            // Already finalized, skip accumulation to avoid duplication
+                            // This can happen if step_delta arrives after step_completed
+                          } else {
+                            // Arguments are streamed JSON strings - append directly
+                            // ToolCall component will parse and format for display
+                            existingStep.toolArgs = (existingStep.toolArgs || '') + tc.function.arguments
+                          }
+                        }
+                        // Update toolCallId if we receive the real ID
+                        if (tc.id && tc.id !== existingStep.toolCallId) {
+                          existingStep.toolCallId = tc.id
+                          const trackerEntry = tracker.get(trackerKey)!
+                          tracker.set(trackerKey, { toolCallId: tc.id, stepIndex: trackerEntry.stepIndex, finalized: trackerEntry.finalized })
                         }
                       } else {
                         // Create new tool call step
-                        exec.steps.push({
+                        const newStep: Extract<NestedStep, { type: 'tool_call' }> = {
                           type: 'tool_call',
                           toolCallId,
                           toolName: tc.function?.name || 'Unknown',
                           toolArgs: tc.function?.arguments || '{}',
                           stepId,
-                        })
+                        }
+                        exec.steps.push(newStep)
+                        // Update tracker with correct step index
+                        const trackerEntry = tracker.get(trackerKey)!
+                        tracker.set(trackerKey, { toolCallId, stepIndex: exec.steps.length - 1, finalized: trackerEntry.finalized })
                       }
                     }
                   }
                   
                   // Update container event for the batch containing this execution
-                  const batchKey = `${parentRunId}_${stepId}`
-                  const batch = parallelBatchesRef.current.get(batchKey)
+                  // batchKey and batch are already defined above
                   if (batch) {
                     const containerEventId = batch.batchId
                     const containerIdx = newEvents.findIndex(e => e.id === containerEventId)
@@ -547,8 +642,10 @@ export default function Chat() {
                   // Track step_id for this nested execution
                   nestedRunStepIdRef.current.set(nestedRunId, stepId)
                   
-                  // Get or create batch using parentRunId + stepId
-                  const batchKey = `${parentRunId}_${stepId}`
+                  // Get batch using parentRunId + parentStepId (not nested stepId)
+                  // All parallel calls from the same parent step should be in the same batch
+                  const parentStepId = parentStepIdForBatchesRef.current.get(parentRunId) || 'unknown'
+                  const batchKey = `${parentRunId}_${parentStepId}`
                   let batch = parallelBatchesRef.current.get(batchKey)
                   
                   if (!batch) {
@@ -591,20 +688,49 @@ export default function Chat() {
                     if (snapshot.tool_calls && Array.isArray(snapshot.tool_calls)) {
                       for (const tc of snapshot.tool_calls) {
                         if (!tc.id) continue
-                        const existingStep = exec.steps.find(
+                        
+                        // Try to find by tool_call_id first
+                        let existingStep = exec.steps.find(
                           s => s.type === 'tool_call' && s.toolCallId === tc.id
                         ) as Extract<NestedStep, { type: 'tool_call' }> | undefined
                         
+                        // If not found, check tracker for temporary IDs
+                        if (!existingStep) {
+                          const tracker = nestedToolCallTrackerRef.current
+                          for (const [key, value] of tracker.entries()) {
+                            if (value.toolCallId === tc.id && key.startsWith(`${nestedRunId}_${stepId}_`)) {
+                              // Found in tracker, try to find step by temporary ID
+                              existingStep = exec.steps.find(
+                                s => s.type === 'tool_call' && s.toolCallId === value.toolCallId
+                              ) as Extract<NestedStep, { type: 'tool_call' }> | undefined
+                              break
+                            }
+                          }
+                        }
+                        
                         if (existingStep) {
                           // Update existing tool call with complete info from snapshot
+                          // Replace (don't append) to avoid duplication
                           if (tc.function?.name) {
                             existingStep.toolName = tc.function.name
                           }
                           if (tc.function?.arguments) {
                             existingStep.toolArgs = tc.function.arguments
                           }
+                          // Ensure toolCallId is set correctly
+                          if (tc.id !== existingStep.toolCallId) {
+                            existingStep.toolCallId = tc.id
+                          }
+                          // Mark as finalized to prevent further accumulation from step_delta
+                          const tcIndex = tc.index ?? 0
+                          const trackerKey = `${nestedRunId}_${stepId}_${tcIndex}`
+                          const trackerEntry = nestedToolCallTrackerRef.current.get(trackerKey)
+                          if (trackerEntry) {
+                            nestedToolCallTrackerRef.current.set(trackerKey, { ...trackerEntry, finalized: true })
+                          }
                         } else {
                           // Only add if step_delta didn't create it (shouldn't happen normally)
+                          // This might happen if step_completed arrives before step_delta
                           exec.steps.push({
                             type: 'tool_call',
                             toolCallId: tc.id,
@@ -612,6 +738,10 @@ export default function Chat() {
                             toolArgs: tc.function?.arguments || '{}',
                             stepId,
                           })
+                          // Also update tracker (mark as finalized since it came from step_completed)
+                          const tcIndex = tc.index ?? exec.steps.length - 1
+                          const trackerKey = `${nestedRunId}_${stepId}_${tcIndex}`
+                          nestedToolCallTrackerRef.current.set(trackerKey, { toolCallId: tc.id, stepIndex: exec.steps.length - 1, finalized: true })
                         }
                       }
                     }
@@ -637,8 +767,7 @@ export default function Chat() {
                   }
                   
                   // Update container event for the batch containing this execution
-                  const batchKey = `${parentRunId}_${stepId}`
-                  const batch = parallelBatchesRef.current.get(batchKey)
+                  // batchKey and batch are already defined above
                   if (batch) {
                     const containerEventId = batch.batchId
                     const containerIdx = newEvents.findIndex(e => e.id === containerEventId)
@@ -700,6 +829,9 @@ export default function Chat() {
                     // Handle tool calls in delta - use index to track, not id
                     // OpenAI streaming: id only appears in first chunk, subsequent chunks only have index
                     if (data.delta?.tool_calls) {
+                      // Track this step_id as the parent step that triggered parallel calls
+                      // This will be used to group parallel RunnableTool calls into batches
+                      parentStepIdForBatchesRef.current.set(data.run_id, stepId)
                       for (const toolCall of data.delta.tool_calls) {
                         const tcIndex = toolCall.index ?? 0
                         const trackerKey = `${stepId}_${tcIndex}`
@@ -762,6 +894,11 @@ export default function Chat() {
                               duration_ms: snapshot.metrics.duration_ms,
                             }
                           }
+                        }
+                        
+                        // Track this step_id as the parent step that triggered parallel calls
+                        if (snapshot.tool_calls && Array.isArray(snapshot.tool_calls) && snapshot.tool_calls.length > 0) {
+                          parentStepIdForBatchesRef.current.set(data.run_id, stepId)
                         }
                         
                         // Finalize tool calls from snapshot (in case delta was incomplete)
@@ -1132,6 +1269,7 @@ export default function Chat() {
     setIsStreaming(true)
     toolCallTrackerRef.current = {}
     streamingContentRef.current = {}
+    nestedToolCallTrackerRef.current = new Map()  // Reset nested tool_call tracker
     abortControllerRef.current = new AbortController()
 
     try {
