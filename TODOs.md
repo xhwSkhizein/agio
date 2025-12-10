@@ -12,16 +12,6 @@
 - [ ] config yaml 支持 Jinja2 模版，可以支持条件表达式/loop 等
 - [ ] 支持 deepseek thinking 模式 (https://api-docs.deepseek.com/zh-cn/guides/thinking_mode) ； 支持 reasoning_content 字段的处理
 
-- [x] BUG: web 页面处理问题（已修复）
-  1）ParallelNestedRunnables 中的工具信息未正确展示工具参数，而且 Assistant Step 的消息堆积在了最前面，并没有像正常聊天时那样展示（content / toolcalls / tool result）
-  2） 相同 key 的组件
-  
-  **修复方案**：
-  - 重新设计了数据结构，使用`steps`数组来保持步骤的正确执行顺序
-  - 修复了工具参数的流式JSON字符串累积逻辑
-  - 修复了React key冲突问题，每个步骤都有唯一的key
-  - 按照实际执行顺序展示：assistant content -> tool calls -> tool results
-
 - [ ] system prompt 中强调所有 path 相关参数使用绝对路径
 
 ## 🤔疑问
@@ -57,3 +47,13 @@ Traceback (most recent call last):
     raise ValueError("Invalid pattern: '**' can only be an entire path component")
 ValueError: Invalid pattern: '**' can only be an entire path component
 ```
+
+- [x] BUG: web 页面处理问题（已修复）
+  1）ParallelNestedRunnables 中的工具信息未正确展示工具参数，而且 Assistant Step 的消息堆积在了最前面，并没有像正常聊天时那样展示（content / toolcalls / tool result）
+  2） 相同 key 的组件
+  
+  **修复方案**：
+  - 重新设计了数据结构，使用`steps`数组来保持步骤的正确执行顺序
+  - 修复了工具参数的流式JSON字符串累积逻辑
+  - 修复了React key冲突问题，每个步骤都有唯一的key
+  - 按照实际执行顺序展示：assistant content -> tool calls -> tool results

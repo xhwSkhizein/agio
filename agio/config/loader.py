@@ -53,8 +53,8 @@ class ConfigLoader:
         type_dir_mapping = {
             "models": ComponentType.MODEL,
             "tools": ComponentType.TOOL,
-            "memory": ComponentType.MEMORY,
-            "knowledge": ComponentType.KNOWLEDGE,
+            # "memory": ComponentType.MEMORY,
+            # "knowledge": ComponentType.KNOWLEDGE,
             "storages": ComponentType.SESSION_STORE,
             "observability": ComponentType.TRACE_STORE,
             "agents": ComponentType.AGENT,

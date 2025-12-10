@@ -80,6 +80,7 @@ class MongoSessionStore(SessionStore):
                 [("session_id", 1), ("sequence", 1)], unique=True
             )
             await self.steps_collection.create_index("run_id")
+            await self.steps_collection.create_index("tool_call_id")  # For tool result queries
             await self.steps_collection.create_index("created_at")
 
             logger.info("mongodb_connected", uri=self.uri, db_name=self.db_name)
@@ -261,6 +262,26 @@ class MongoSessionStore(SessionStore):
             return await self.steps_collection.count_documents({"session_id": session_id})
         except Exception as e:
             logger.error("get_step_count_failed", error=str(e), session_id=session_id)
+            raise
+
+    async def get_step_by_tool_call_id(
+        self,
+        session_id: str,
+        tool_call_id: str,
+    ) -> Optional[Step]:
+        """Get a Tool Step by tool_call_id."""
+        await self._ensure_connection()
+
+        try:
+            doc = await self.steps_collection.find_one({
+                "session_id": session_id,
+                "tool_call_id": tool_call_id,
+            })
+            if doc:
+                return Step.model_validate(doc)
+            return None
+        except Exception as e:
+            logger.error("get_step_by_tool_call_id_failed", error=str(e), tool_call_id=tool_call_id)
             raise
 
 

@@ -10,6 +10,7 @@ httpx>=0.25.0
 openai==2.8.1
 motor>=3.3.0
 beautifulsoup4
+curl-cffi>=0.13.0
 
 # Testing
 pytest>=7.4.0

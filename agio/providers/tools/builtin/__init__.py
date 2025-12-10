@@ -2,6 +2,7 @@
 
 from agio.providers.tools.builtin.bash_tool import BashTool
 from agio.providers.tools.builtin.file_edit_tool import FileEditTool
+from agio.providers.tools.builtin.get_tool_result_tool import GetToolResultTool
 from agio.providers.tools.builtin.file_read_tool import FileReadTool
 from agio.providers.tools.builtin.file_write_tool import FileWriteTool
 from agio.providers.tools.builtin.glob_tool import GlobTool
@@ -21,6 +22,7 @@ ALL_BUILTIN_TOOL_CLASSES = [
     BashTool,
     WebSearchTool,
     WebFetchTool,
+    GetToolResultTool,
 ]
 
 
@@ -64,6 +66,7 @@ __all__ = [
     # Tool classes
     "BashTool",
     "FileEditTool",
+    "GetToolResultTool",
     "FileReadTool",
     "FileWriteTool",
     "GlobTool",

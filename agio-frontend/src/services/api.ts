@@ -390,7 +390,7 @@ export interface LLMCallLog {
   response_content: string | null
   response_tool_calls: Array<Record<string, any>> | null
   finish_reason: string | null
-  status: 'running' | 'completed' | 'error'
+  status: 'running' | 'completed' | 'error' | 'cancelled'
   error: string | null
   duration_ms: number | null
   first_token_ms: number | null
@@ -411,6 +411,7 @@ export interface LLMStats {
   completed_calls: number
   error_calls: number
   running_calls: number
+  cancelled_calls: number
   success_rate: number
   total_tokens: number
   total_input_tokens: number

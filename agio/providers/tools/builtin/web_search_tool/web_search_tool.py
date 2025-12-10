@@ -41,6 +41,9 @@ class WebSearchTool(BaseTool):
     - 支持通过索引在 web_fetch 中获取完整内容
     """
 
+    # Enable caching - search results are stable within a session
+    cacheable = True
+
     def __init__(
         self,
         *,

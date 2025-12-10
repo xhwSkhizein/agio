@@ -48,6 +48,16 @@ class ExecutionConfig(BaseModel):
     debug_mode: bool = Field(default=False, description="Debug mode")
     verbose_logging: bool = Field(default=False, description="Verbose logging")
 
+    # Termination summary configuration
+    enable_termination_summary: bool = Field(
+        default=False, 
+        description="Generate summary when execution reaches limits (max_steps, timeout, etc.)"
+    )
+    termination_summary_prompt: str | None = Field(
+        default=None,
+        description="Custom prompt for termination summary. If None, uses default template."
+    )
+
 
 # ============================================================================
 # Component Configuration (for dynamic loading)
@@ -232,6 +242,9 @@ class WorkflowConfig(ComponentConfig):
 
     # Parallel specific
     merge_template: str | None = None  # Template for merging branch outputs
+
+    # Observability
+    trace_store: str | None = None  # Reference to TraceStore for tracing
 
     tags: list[str] = Field(default_factory=list)
 

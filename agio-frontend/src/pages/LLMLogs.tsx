@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Radio,
   X,
+  StopCircle,
 } from 'lucide-react'
 
 export default function LLMLogs() {
@@ -202,6 +203,7 @@ export default function LLMLogs() {
               <option value="running">Running</option>
               <option value="completed">Completed</option>
               <option value="error">Error</option>
+              <option value="cancelled">Cancelled</option>
             </select>
           </div>
         </div>
@@ -324,6 +326,7 @@ function LogItemWithDetail({
     running: <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />,
     completed: <CheckCircle className="w-4 h-4 text-green-400" />,
     error: <AlertCircle className="w-4 h-4 text-red-400" />,
+    cancelled: <StopCircle className="w-4 h-4 text-yellow-400" />,
   }
 
   const timestamp = new Date(log.timestamp).toLocaleTimeString()
@@ -438,15 +441,50 @@ function LogDetailPanel({ log }: { log: LLMCallLog }) {
                         ? 'bg-green-900/30 text-green-400'
                         : msg.role === 'system'
                         ? 'bg-purple-900/30 text-purple-400'
+                        : msg.role === 'tool'
+                        ? 'bg-orange-900/30 text-orange-400'
                         : 'bg-gray-900/30 text-gray-400'
                     }`}
                   >
                     {msg.role}
                   </span>
+                  {msg.tool_call_id && (
+                    <span className="text-xs font-mono text-gray-500">
+                      {msg.tool_call_id}
+                    </span>
+                  )}
                 </div>
-                <pre className="text-sm text-gray-300 whitespace-pre-wrap break-words overflow-x-auto">
-                  {typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content, null, 2)}
-                </pre>
+                {/* Message content */}
+                {msg.content && (
+                  <pre className="text-sm text-gray-300 whitespace-pre-wrap break-words overflow-x-auto">
+                    {typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content, null, 2)}
+                  </pre>
+                )}
+                {/* Tool calls for assistant messages */}
+                {msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0 && (
+                  <div className="mt-2 space-y-2">
+                    <div className="text-xs font-medium text-gray-400">Tool Calls ({msg.tool_calls.length}):</div>
+                    {msg.tool_calls.map((tc: any, tcIdx: number) => (
+                      <div key={tcIdx} className="bg-surfaceHighlight rounded p-2 border border-border/30">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-medium text-orange-400">
+                            {tc.function?.name || tc.name || 'unknown'}
+                          </span>
+                          {tc.id && (
+                            <span className="text-xs font-mono text-gray-500">{tc.id}</span>
+                          )}
+                        </div>
+                        <pre className="text-xs text-gray-400 whitespace-pre-wrap break-words overflow-x-auto">
+                          {tc.function?.arguments 
+                            ? (typeof tc.function.arguments === 'string' 
+                                ? tc.function.arguments 
+                                : JSON.stringify(tc.function.arguments, null, 2))
+                            : JSON.stringify(tc, null, 2)}
+                        </pre>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -483,6 +521,11 @@ function LogDetailPanel({ log }: { log: LLMCallLog }) {
             <div className="flex items-center gap-2 text-gray-400 py-4">
               <Loader2 className="w-4 h-4 animate-spin" />
               <span className="text-sm">Waiting for response...</span>
+            </div>
+          ) : log.status === 'cancelled' ? (
+            <div className="flex items-center gap-2 text-yellow-400 py-4">
+              <StopCircle className="w-4 h-4" />
+              <span className="text-sm">Request cancelled</span>
             </div>
           ) : (
             <p className="text-sm text-gray-500 py-4">No response content</p>
@@ -551,11 +594,12 @@ function DetailSection({
   )
 }
 
-function StatusBadge({ status }: { status: 'running' | 'completed' | 'error' }) {
+function StatusBadge({ status }: { status: 'running' | 'completed' | 'error' | 'cancelled' }) {
   const styles = {
     running: 'bg-blue-900/30 text-blue-400 border-blue-900/50',
     completed: 'bg-green-900/30 text-green-400 border-green-900/50',
     error: 'bg-red-900/30 text-red-400 border-red-900/50',
+    cancelled: 'bg-yellow-900/30 text-yellow-400 border-yellow-900/50',
   }
 
   return (

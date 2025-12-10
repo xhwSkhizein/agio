@@ -1,35 +1,44 @@
+# Research Pipeline
+# Context-First: 处理已收集的研究数据，不重复收集
+#
+# 使用方式: Master Orchestrator 先收集信息，然后将上下文传入此 workflow
+
 type: workflow
 name: research_pipeline
-description: "A research pipeline that researches, analyzes, and writes reports"
+description: "Research pipeline - processes pre-collected research context"
 workflow_type: pipeline
 
 stages:
-  - id: research
-    runnable: researcher
-    input: "Please research the following topic thoroughly:\n\n{query}"
-  
   - id: analyze
-    runnable: analyst
+    runnable: code_analysis_processor
     input: |
-      Based on the following research, please provide your analysis:
+      Analyze the following collected research context:
       
-      Original Query: {query}
+      Topic: {query}
       
-      Research Findings:
-      {research}
+      Collected Context:
+      {context}
   
-  - id: write
-    runnable: writer
+  - id: synthesize
+    runnable: summary_processor
     input: |
-      Please write a polished report based on:
+      Synthesize the analysis results:
       
       Original Query: {query}
-      
-      Research:
-      {research}
       
       Analysis:
       {analyze}
+  
+  - id: write
+    runnable: doc_processor
+    input: |
+      Write a polished report based on:
+      
+      Original Query: {query}
+      
+      Synthesized Analysis:
+      {synthesize}
+
 
 enabled: true
 tags:

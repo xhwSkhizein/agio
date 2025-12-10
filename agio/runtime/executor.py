@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from agio.providers.llm import Model
     from agio.providers.tools import BaseTool
     from agio.runtime.control import AbortSignal
+    from agio.runtime.wire import Wire
     from agio.config import ExecutionConfig
 
 logger = get_logger(__name__)
@@ -125,6 +126,10 @@ class StepExecutor:
         start_sequence: int = 1,
         pending_tool_calls: list[dict] | None = None,
         abort_signal: "AbortSignal | None" = None,
+        wire: "Wire | None" = None,
+        depth: int = 0,
+        parent_run_id: str | None = None,
+        nested_runnable_id: str | None = None,
     ) -> AsyncIterator[StepEvent]:
         """
         Execute LLM Call Loop, yield StepEvent stream.
@@ -136,6 +141,10 @@ class StepExecutor:
             start_sequence: Starting sequence number
             pending_tool_calls: Tool calls to execute before starting LLM loop (for resume)
             abort_signal: Abort signal (optional)
+            wire: Wire for nested RunnableTool event streaming
+            depth: Nesting depth for nested execution
+            parent_run_id: Parent run ID for nested execution
+            nested_runnable_id: ID of the nested Runnable being executed
 
         Yields:
             StepEvent: Step event stream
@@ -153,7 +162,8 @@ class StepExecutor:
             )
             
             async for event, new_seq in self._execute_tool_calls(
-                pending_tool_calls, session_id, run_id, current_sequence, messages, abort_signal
+                pending_tool_calls, session_id, run_id, current_sequence, messages, abort_signal, wire,
+                depth=depth, parent_run_id=parent_run_id, nested_runnable_id=nested_runnable_id,
             ):
                 current_sequence = new_seq
                 yield event
@@ -205,6 +215,9 @@ class StepExecutor:
                         step_id=assistant_step.id,
                         run_id=run_id,
                         delta=StepDelta(content=chunk.content),
+                        depth=depth,
+                        parent_run_id=parent_run_id,
+                        nested_runnable_id=nested_runnable_id,
                     )
 
                 if chunk.tool_calls:
@@ -213,6 +226,9 @@ class StepExecutor:
                         step_id=assistant_step.id,
                         run_id=run_id,
                         delta=StepDelta(tool_calls=chunk.tool_calls),
+                        depth=depth,
+                        parent_run_id=parent_run_id,
+                        nested_runnable_id=nested_runnable_id,
                     )
 
                 if chunk.usage:
@@ -241,7 +257,12 @@ class StepExecutor:
                 assistant_step.metrics.provider = getattr(self.model, "provider", None)
 
             yield create_step_completed_event(
-                step_id=assistant_step.id, run_id=run_id, snapshot=assistant_step
+                step_id=assistant_step.id, 
+                run_id=run_id, 
+                snapshot=assistant_step,
+                depth=depth,
+                parent_run_id=parent_run_id,
+                nested_runnable_id=nested_runnable_id,
             )
 
             messages.append(StepAdapter.to_llm_message(assistant_step))
@@ -266,7 +287,8 @@ class StepExecutor:
             )
 
             async for event, new_seq in self._execute_tool_calls(
-                final_tool_calls, session_id, run_id, current_sequence, messages, abort_signal
+                final_tool_calls, session_id, run_id, current_sequence, messages, abort_signal, wire,
+                depth=depth, parent_run_id=parent_run_id, nested_runnable_id=nested_runnable_id,
             ):
                 current_sequence = new_seq
                 yield event
@@ -279,6 +301,10 @@ class StepExecutor:
         current_sequence: int,
         messages: list[dict],
         abort_signal: "AbortSignal | None" = None,
+        wire: "Wire | None" = None,
+        depth: int = 0,
+        parent_run_id: str | None = None,
+        nested_runnable_id: str | None = None,
     ) -> AsyncIterator[tuple[StepEvent, int]]:
         """
         Execute tool calls and yield (event, new_sequence) tuples.
@@ -290,11 +316,18 @@ class StepExecutor:
             current_sequence: Current sequence number
             messages: Messages list (modified in place)
             abort_signal: Abort signal
+            wire: Wire for nested RunnableTool event streaming
+            depth: Nesting depth for nested execution
+            parent_run_id: Parent run ID for nested execution
+            nested_runnable_id: ID of the nested Runnable being executed
             
         Yields:
             tuple[StepEvent, int]: (step_completed_event, updated_sequence)
         """
-        results = await self.tool_executor.execute_batch(tool_calls, abort_signal=abort_signal)
+        results = await self.tool_executor.execute_batch(
+            tool_calls, abort_signal=abort_signal, wire=wire, session_id=session_id,
+            parent_run_id=run_id,  # Pass current run_id as parent for nested RunnableTool
+        )
         
         for result in results:
             tool_step = Step(
@@ -316,7 +349,12 @@ class StepExecutor:
             current_sequence += 1
             
             yield create_step_completed_event(
-                step_id=tool_step.id, run_id=run_id, snapshot=tool_step
+                step_id=tool_step.id, 
+                run_id=run_id, 
+                snapshot=tool_step,
+                depth=depth,
+                parent_run_id=parent_run_id,
+                nested_runnable_id=nested_runnable_id,
             ), current_sequence
 
     def _get_tool_schemas(self) -> list[dict]:

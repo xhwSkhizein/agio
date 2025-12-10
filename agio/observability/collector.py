@@ -77,6 +77,14 @@ class TraceCollector:
 
         try:
             async for event in event_stream:
+                # Skip processing for nested events (they have their own trace collection)
+                # but still yield them for real-time streaming
+                if event.nested_runnable_id:
+                    # Nested events already have trace context from inner execution
+                    # Just pass them through without modification
+                    yield event
+                    continue
+                
                 # Process event and update trace
                 current_span = self._process_event(event, trace, span_stack, current_span)
 

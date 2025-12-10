@@ -9,15 +9,38 @@ Tests the complete flow:
 5. Retry works correctly
 """
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from agio.providers.storage import InMemorySessionStore
 from agio.domain import MessageRole, Step, StepEventType, AgentSession
-from agio.runtime import StepRunner, StepExecutor, retry_from_sequence
+from agio.runtime import StepRunner, StepExecutor, Wire
+from agio.workflow import RunContext
 from agio.providers.llm import StreamChunk
 from agio.config import ExecutionConfig
+
+
+async def run_with_wire(runner, session, query):
+    """Helper to run with Wire and collect events."""
+    wire = Wire()
+    context = RunContext(wire=wire, session_id=session.session_id)
+    events = []
+    
+    async def _run():
+        try:
+            await runner.run(session, query, wire, context=context)
+        finally:
+            await wire.close()
+    
+    task = asyncio.create_task(_run())
+    
+    async for event in wire.read():
+        events.append(event)
+    
+    await task
+    return events
 
 
 @pytest.fixture
@@ -103,9 +126,7 @@ async def test_step_runner_end_to_end(mock_agent, session_store, session):
         agent=mock_agent, config=ExecutionConfig(max_steps=5), session_store=session_store
     )
 
-    events = []
-    async for event in runner.run_stream(session, "Hello"):
-        events.append(event)
+    events = await run_with_wire(runner, session, "Hello")
 
     # Check event types
     run_started = [e for e in events if e.type == StepEventType.RUN_STARTED]
@@ -143,8 +164,7 @@ async def test_context_building_from_steps(mock_agent, session_store, session):
     runner = StepRunner(agent=mock_agent, session_store=session_store)
 
     # Run first conversation
-    async for event in runner.run_stream(session, "Hello"):
-        pass
+    await run_with_wire(runner, session, "Hello")
 
     # Build context
     messages = await build_context_from_steps(
@@ -167,8 +187,7 @@ async def test_retry_deletes_and_regenerates(mock_agent, session_store, session)
     runner = StepRunner(agent=mock_agent, session_store=session_store)
 
     # Run initial conversation
-    async for event in runner.run_stream(session, "Hello"):
-        pass
+    await run_with_wire(runner, session, "Hello")
 
     # Check we have steps
     steps_before = await session_store.get_steps("session_123")
@@ -183,12 +202,21 @@ async def test_retry_deletes_and_regenerates(mock_agent, session_store, session)
     assert len(steps_after_delete) == 1  # Only user step remains
     assert steps_after_delete[0].role == MessageRole.USER
 
-    # Resume from last step
+    # Resume from last step using Wire
     last_step = await session_store.get_last_step("session_123")
-
+    
+    wire = Wire()
+    async def _resume():
+        try:
+            await runner.resume_from_user_step("session_123", last_step, wire)
+        finally:
+            await wire.close()
+    
+    task = asyncio.create_task(_resume())
     events = []
-    async for event in runner.resume_from_user_step("session_123", last_step):
+    async for event in wire.read():
         events.append(event)
+    await task
 
     # Check new steps were created
     steps_after_retry = await session_store.get_steps("session_123")
@@ -260,8 +288,7 @@ async def test_step_metrics_tracking(mock_agent, session_store, session):
     """Test that metrics are properly tracked"""
     runner = StepRunner(agent=mock_agent, session_store=session_store)
 
-    async for event in runner.run_stream(session, "Hello"):
-        pass
+    await run_with_wire(runner, session, "Hello")
 
     # Get assistant step
     steps = await session_store.get_steps("session_123")

@@ -2,6 +2,7 @@
 Session management routes.
 """
 
+import asyncio
 import json
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,7 +15,7 @@ from agio.config import ConfigSystem
 from agio.domain import MessageRole
 from agio.domain.models import Step
 from agio.providers.storage import SessionStore
-from agio.runtime import fork_session
+from agio.runtime import Wire, fork_session
 
 router = APIRouter(prefix="/sessions")
 
@@ -418,20 +419,38 @@ async def resume_session_endpoint(
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found: {e}")
     
-    # 4. Resume execution via SSE stream
+    # 4. Resume execution via SSE stream with Wire
+    async def event_generator():
+        wire = Wire()
+        
+        async def _run():
+            try:
+                await agent.resume_from_step(session_id, last_step, wire)
+            finally:
+                await wire.close()
+        
+        task = asyncio.create_task(_run())
+        
+        try:
+            async for event in wire.read():
+                yield {
+                    "event": event.type.value,
+                    "data": event.model_dump_json(),
+                }
+        except Exception as e:
+            yield {"event": "error", "data": json.dumps({"error": str(e)})}
+        finally:
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+    
     return EventSourceResponse(
-        _stream_resume_events(agent, session_id, last_step),
-        sep="\n",
+        event_generator(),
+        headers={
+            "Connection": "close",
+            "X-Accel-Buffering": "no",
+        },
     )
-
-
-async def _stream_resume_events(agent: Agent, session_id: str, last_step: Step):
-    """Stream resume events as SSE."""
-    try:
-        async for event in agent.resume_from_step(session_id, last_step):
-            event_dict = event.model_dump(mode="json", exclude_none=True)
-            event_type = event_dict.pop("type", "message")
-            yield {"event": event_type, "data": json.dumps(event_dict)}
-    except Exception as e:
-        yield {"event": "error", "data": json.dumps({"error": str(e)})}
-        raise

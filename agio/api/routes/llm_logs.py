@@ -51,7 +51,7 @@ async def list_llm_logs(
     - `run_id`: Filter by run ID
     - `model_id`: Filter by model ID (e.g., openai/gpt-4o)
     - `provider`: Filter by provider (openai/anthropic/deepseek)
-    - `status`: Filter by status (running/completed/error)
+    - `status`: Filter by status (running/completed/error/cancelled)
     - `start_time`: Filter logs after this time
     - `end_time`: Filter logs before this time
     - `limit`: Maximum number of logs to return (default: 50)
@@ -153,7 +153,13 @@ async def stream_llm_logs(
         finally:
             store.unsubscribe(queue)
 
-    return EventSourceResponse(event_generator())
+    return EventSourceResponse(
+        event_generator(),
+        headers={
+            "Connection": "close",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/stats")
@@ -188,6 +194,7 @@ async def get_llm_stats(
     completed_calls = sum(1 for log in logs if log.status == "completed")
     error_calls = sum(1 for log in logs if log.status == "error")
     running_calls = sum(1 for log in logs if log.status == "running")
+    cancelled_calls = sum(1 for log in logs if log.status == "cancelled")
 
     total_tokens = sum(log.total_tokens or 0 for log in logs)
     total_input_tokens = sum(log.input_tokens or 0 for log in logs)
@@ -213,6 +220,7 @@ async def get_llm_stats(
         "completed_calls": completed_calls,
         "error_calls": error_calls,
         "running_calls": running_calls,
+        "cancelled_calls": cancelled_calls,
         "success_rate": completed_calls / total_calls if total_calls > 0 else 0,
         "total_tokens": total_tokens,
         "total_input_tokens": total_input_tokens,

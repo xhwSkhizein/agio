@@ -7,26 +7,41 @@
 ```
 configs/
 ├── agents/          # Agent 配置
-├── models/          # LLM 模型配置
-├── tools/           # 工具配置（含 builtin 参数化）
+│   ├── 基础 Agent (simple_assistant, deepseek_assistant)
+│   ├── 专业 Agent (tech_researcher, code_analyzer, doc_writer, ...)
+│   └── 编排 Agent (master_orchestrator, orchestra_example)
+├── models/          # LLM 模型配置 (当前仅启用 deepseek)
+├── tools/           # 工具配置（9 个内置工具）
 ├── memory/          # Memory 配置
 ├── knowledge/       # Knowledge 配置
-├── storages/        # SessionStore 配置（AgentRun/Step 持久化）
+├── storages/        # SessionStore 配置（MongoDB 持久化）
 ├── observability/   # TraceStore 配置（可观测性数据）
 ├── workflows/       # Workflow 编排配置
+│   ├── parallel_research.yaml     # 并行研究工作流
+│   ├── quality_loop.yaml          # 质量迭代工作流
+│   ├── conditional_pipeline.yaml  # 条件路由工作流
+│   ├── doc_generation_system.yaml # 完整文档生成系统
+│   └── research_pipeline.yaml     # 简单研究流水线
 └── hooks/           # 观测/回调配置
 ```
 
 ## 环境变量
 
-常用变量（在 `.env`）：
+必需变量（在 `.env`）：
 
 ```bash
-AGIO_OPENAI_API_KEY=sk-...
-AGIO_ANTHROPIC_API_KEY=sk-...
-AGIO_DEEPSEEK_API_KEY=sk-...
-AGIO_MONGO_URI=mongodb://localhost:27017  # 持久化可选
-AGIO_CONFIG_DIR=./configs                 # API 服务启动时加载
+# 模型配置 (当前仅使用 DeepSeek)
+DEEPSEEK_API_KEY=sk-...
+
+# 持久化存储 (MongoDB)
+AGIO_MONGO_URI=mongodb://localhost:27017
+AGIO_MONGO_DB=agio
+
+# 配置目录
+AGIO_CONFIG_DIR=./configs
+
+# 可选：Web 搜索 (Serper API)
+SERPER_API_KEY=...
 ```
 
 ## 加载与构建
@@ -44,57 +59,129 @@ store = config_sys.get("mongodb_session_store")  # 若存在
 
 服务启动时 `agio.api.app` 会自动读取 `AGIO_CONFIG_DIR` 并调用 `load_from_directory` + `build_all`。
 
+## 内置工具列表
+
+| 名称 | 描述 |
+|------|------|
+| `file_read` | 读取文件内容（支持文本和图片） |
+| `file_edit` | 编辑文件（结构化补丁） |
+| `file_write` | 写入文件 |
+| `grep` | 使用 ripgrep 搜索文件内容 |
+| `glob` | 按模式查找文件 |
+| `ls` | 列出目录内容 |
+| `bash` | 执行 shell 命令 |
+| `web_search` | Web 搜索（需要 SERPER_API_KEY） |
+| `web_fetch` | 获取网页内容并可选 LLM 处理 |
+
 ## 配置示例
 
-### Agent
+### Agent (带工具)
 ```yaml
-# configs/agents/code_assistant.yaml
 type: agent
 name: code_assistant
-model: gpt4_model
+model: deepseek  # 引用 models/deepseek.yaml
 tools:
-  - file_read
+  - file_read    # 引用内置工具
   - grep
   - bash
+session_store: mongodb_session_store
+
 system_prompt: |
   You are a helpful coding assistant.
-tags: [demo]
 ```
 
-### Model
+### Agent (带 Agent/Workflow 作为工具)
 ```yaml
-# configs/models/gpt4.yaml
-type: model
-name: gpt4_model
-provider: openai
-model_name: gpt-4o
-api_key: ${AGIO_OPENAI_API_KEY}
-temperature: 0.3
+type: agent
+name: orchestrator
+model: deepseek
+tools:
+  - web_search  # 普通工具
+  
+  # Agent 作为工具
+  - type: agent_tool
+    agent: tech_researcher
+    description: "Delegate research tasks"
+  
+  # Workflow 作为工具
+  - type: workflow_tool
+    workflow: parallel_research
+    description: "Run parallel research"
 ```
 
-### Tool（内置或自定义）
+### Workflow (Pipeline)
 ```yaml
-# configs/tools/web_search.yaml
-type: tool
-name: web_search
-module: agio.providers.tools.builtin.web_search_tool
-class_name: WebSearchTool
-params:
-  max_results: 5
+type: workflow
+name: research_pipeline
+workflow_type: pipeline
+stages:
+  - id: research
+    runnable: researcher
+    input: "Research: {query}"
+  - id: analyze
+    runnable: analyst
+    input: "Analyze: {research}"
+    condition: "{research} contains 'data'"  # 条件执行
 ```
 
-### Runnable Tool（Agent/Workflow 包装）
+### Workflow (Parallel)
 ```yaml
-# 作为工具调用其他 Agent
-type: tool
-name: helper_agent_tool
-module: agio.workflow.runnable_tool
-class_name: RunnableTool
-params:
-  type: agent_tool
-  agent: helper_agent   # 需已存在 agent 配置
-  name: helper_agent_tool
-  description: "Delegate to helper_agent"
+type: workflow
+name: parallel_research
+workflow_type: parallel
+stages:
+  - id: web_research
+    runnable: tech_researcher
+    input: "Web research: {query}"
+  - id: code_research
+    runnable: code_analyzer
+    input: "Code analysis: {query}"
+merge_template: |
+  Web: {web_research}
+  Code: {code_research}
+```
+
+### Workflow (Loop)
+```yaml
+type: workflow
+name: quality_loop
+workflow_type: loop
+stages:
+  - id: review
+    runnable: quality_reviewer
+    input: "Review: {query}"
+  - id: improve
+    runnable: doc_writer
+    input: "Improve based on: {review}"
+    condition: "{review} contains 'NEEDS_REVISION'"
+condition: "{review} contains 'NEEDS_REVISION'"
+max_iterations: 3
+```
+
+### 嵌套 Workflow (复杂场景)
+```yaml
+type: workflow
+name: complex_workflow
+workflow_type: pipeline
+stages:
+  - id: plan
+    runnable: task_planner
+    input: "{query}"
+  
+  - id: research
+    runnable:
+      # 内联嵌套的并行工作流
+      id: nested_parallel
+      workflow_type: parallel
+      stages:
+        - id: branch_a
+          runnable: agent_a
+          input: "{query}"
+        - id: branch_b
+          runnable: agent_b
+          input: "{query}"
+      merge_template: "A: {branch_a}\nB: {branch_b}"
+    input: "{plan}"
 ```
 
 ## 使用提示

@@ -3,20 +3,21 @@ ParallelWorkflow - concurrent execution of stages.
 
 Executes multiple stages in parallel, each with isolated state,
 then merges results.
+
+Wire-based Architecture:
+- Events are written to context.wire
+- Returns RunOutput with response and metrics
 """
 
 import asyncio
-from typing import TYPE_CHECKING, AsyncIterator
+import time
 from uuid import uuid4
 
 from agio.domain.events import StepEvent, StepEventType
 from agio.workflow.base import BaseWorkflow
 from agio.workflow.mapping import InputMapping
-from agio.workflow.protocol import RunContext
+from agio.workflow.protocol import RunContext, RunOutput, RunMetrics
 from agio.workflow.stage import Stage
-
-if TYPE_CHECKING:
-    pass
 
 
 class ParallelWorkflow(BaseWorkflow):
@@ -41,122 +42,155 @@ class ParallelWorkflow(BaseWorkflow):
         super().__init__(id, stages)
         self.merge_template = merge_template
 
-    async def run(
+    async def _execute(
         self,
         input: str,
         *,
-        context: RunContext | None = None,
-    ) -> AsyncIterator[StepEvent]:
+        context: RunContext,
+    ) -> RunOutput:
+        start_time = time.time()
         run_id = str(uuid4())
-        trace_id = context.trace_id if context else str(uuid4())
+        trace_id = context.trace_id or str(uuid4())
+        wire = context.wire
+        total_branches = len(self._stages)
+        branch_ids = [stage.id for stage in self._stages]
 
         # Initial output snapshot
         initial_outputs = {"query": input}
+        
+        # Common workflow context for all events
+        workflow_ctx = {
+            "workflow_type": "parallel",
+            "workflow_id": self._id,
+            "parent_run_id": context.metadata.get("parent_run_id"),
+            "total_stages": total_branches,
+            "depth": context.depth,
+        }
 
-        yield StepEvent(
+        await wire.write(StepEvent(
             type=StepEventType.RUN_STARTED,
             run_id=run_id,
             trace_id=trace_id,
-            data={"workflow_id": self._id, "type": "parallel"},
-        )
+            data={
+                "workflow_id": self._id, 
+                "type": "parallel", 
+                "total_branches": total_branches,
+                "branch_ids": branch_ids,
+            },
+            **workflow_ctx,
+        ))
 
-        async def run_branch(stage: Stage) -> tuple[str, str, list[StepEvent]]:
-            """Execute a single branch, collect events and output."""
-            # Each branch uses snapshot for isolation
+        async def run_branch(stage: Stage, branch_index: int) -> tuple[str, RunOutput]:
+            """Execute a single branch, return output."""
+            branch_ctx = {
+                **workflow_ctx,
+                "branch_id": stage.id,
+                "stage_id": stage.id,
+                "stage_name": stage.id,
+                "stage_index": branch_index,
+            }
+            
+            # Emit BRANCH_STARTED
+            await wire.write(StepEvent(
+                type=StepEventType.BRANCH_STARTED,
+                run_id=run_id,
+                trace_id=trace_id,
+                **branch_ctx,
+            ))
+            
             branch_input = stage.build_input(initial_outputs)
             runnable = self._resolve_runnable(stage.runnable)
             child_context = self._create_child_context(context, stage)
             child_context.trace_id = trace_id
+            child_context.metadata["parent_run_id"] = run_id
+            child_context.metadata["branch_id"] = stage.id
+            child_context.metadata["branch_index"] = branch_index
 
-            events: list[StepEvent] = []
-            output = ""
-
-            async for event in runnable.run(branch_input, context=child_context):
-                event.branch_id = stage.id
-                event.trace_id = trace_id
-                events.append(event)
-
-                if event.type == StepEventType.RUN_COMPLETED and event.data:
-                    output = event.data.get("response", "")
-
-            return stage.id, output, events
+            # Execute - events written to shared wire
+            result = await runnable.run(branch_input, context=child_context)
+            return stage.id, result, branch_ctx
 
         try:
             # Execute all branches in parallel
-            tasks = [run_branch(stage) for stage in self._stages]
+            tasks = [run_branch(stage, idx) for idx, stage in enumerate(self._stages)]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            # Process results and yield events
+            # Process results
             branch_outputs: dict[str, str] = {}
             errors: list[tuple[str, Exception]] = []
+            total_tokens = 0
 
             for result in results:
                 if isinstance(result, Exception):
-                    # Handle exception from a branch
                     errors.append(("unknown", result))
                     continue
 
-                branch_id, output, events = result
+                branch_id, run_output, branch_ctx = result
 
-                yield StepEvent(
-                    type=StepEventType.BRANCH_STARTED,
-                    run_id=run_id,
-                    branch_id=branch_id,
-                    trace_id=trace_id,
-                )
-
-                for event in events:
-                    yield event
-
-                branch_outputs[branch_id] = output
-
-                yield StepEvent(
+                await wire.write(StepEvent(
                     type=StepEventType.BRANCH_COMPLETED,
                     run_id=run_id,
-                    branch_id=branch_id,
                     trace_id=trace_id,
-                    data={"output_length": len(output)},
-                )
+                    data={"output_length": len(run_output.response or "")},
+                    **branch_ctx,
+                ))
+
+                branch_outputs[branch_id] = run_output.response or ""
+                total_tokens += run_output.metrics.total_tokens
 
             # Check for errors
             if errors:
                 error_msg = "; ".join(f"{bid}: {str(e)}" for bid, e in errors)
-                yield StepEvent(
+                await wire.write(StepEvent(
                     type=StepEventType.RUN_FAILED,
                     run_id=run_id,
                     trace_id=trace_id,
                     data={"error": f"Branch errors: {error_msg}"},
-                )
+                    **workflow_ctx,
+                ))
                 raise RuntimeError(f"Parallel execution failed: {error_msg}")
 
             # Merge outputs
             if self.merge_template:
                 merged = InputMapping(self.merge_template).build(branch_outputs)
             else:
-                # Default merge: concatenate by branch ID
                 merged = "\n\n".join(
                     f"[{branch_id}]:\n{output}"
                     for branch_id, output in branch_outputs.items()
                 )
 
-            self._last_output = merged
+            duration = time.time() - start_time
 
-            yield StepEvent(
+            await wire.write(StepEvent(
                 type=StepEventType.RUN_COMPLETED,
                 run_id=run_id,
                 trace_id=trace_id,
                 data={
                     "response": merged,
                     "branch_outputs": {k: len(v) for k, v in branch_outputs.items()},
+                    "branches_completed": len(branch_outputs),
                 },
+                **workflow_ctx,
+            ))
+
+            return RunOutput(
+                response=merged,
+                run_id=run_id,
+                workflow_id=self._id,
+                metrics=RunMetrics(
+                    duration=duration,
+                    total_tokens=total_tokens,
+                    stages_executed=len(branch_outputs),
+                ),
             )
 
         except Exception as e:
             if not isinstance(e, RuntimeError) or "Parallel execution failed" not in str(e):
-                yield StepEvent(
+                await wire.write(StepEvent(
                     type=StepEventType.RUN_FAILED,
                     run_id=run_id,
                     trace_id=trace_id,
                     data={"error": str(e)},
-                )
+                    **workflow_ctx,
+                ))
             raise

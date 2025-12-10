@@ -41,10 +41,15 @@ class ToolDefinition(BaseModel):
     risk_level: RiskLevel = RiskLevel.MEDIUM
     is_concurrency_safe: bool = True
     timeout_seconds: int = 30
+    cacheable: bool = False  # Whether tool results can be cached within a session
 
 
 class BaseTool(ABC):
     """Common interface that every concrete tool must implement."""
+    
+    # Override to enable caching for expensive operations
+    # Cached results are reused within the same session for identical arguments
+    cacheable: bool = False
 
     def __init__(self) -> None:
         self.name = self.get_name()
@@ -93,6 +98,7 @@ class BaseTool(ABC):
             risk_level=getattr(self, "risk_level", RiskLevel.MEDIUM),
             is_concurrency_safe=self.is_concurrency_safe(),
             timeout_seconds=getattr(self, "timeout_seconds", 30),
+            cacheable=self.cacheable,
         )
 
     def to_openai_schema(self) -> dict:

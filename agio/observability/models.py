@@ -56,7 +56,7 @@ class LLMCallLog(BaseModel):
     finish_reason: str | None = Field(default=None, description="LLM finish reason")
 
     # Status
-    status: Literal["running", "completed", "error"] = Field(
+    status: Literal["running", "completed", "error", "cancelled"] = Field(
         default="running", description="Call status"
     )
     error: str | None = Field(default=None, description="Error message if failed")
@@ -79,7 +79,7 @@ class LLMLogQuery(BaseModel):
     run_id: str | None = None
     model_id: str | None = None
     provider: str | None = None
-    status: Literal["running", "completed", "error"] | None = None
+    status: Literal["running", "completed", "error", "cancelled"] | None = None
     start_time: datetime | None = None
     end_time: datetime | None = None
     limit: int = Field(default=50, ge=1, le=500)

@@ -59,7 +59,8 @@ export REPO_PATH="./"
 
 # 启动后端 (使用 uv run)
 echo "🔧 Starting FastAPI backend on port 8900..."
-uv run uvicorn agio.api.app:app --host 0.0.0.0 --port 8900 > logs/backend.log 2>&1 &
+# Note: Using single worker for development. For production, use --workers N
+uv run uvicorn agio.api.app:app --host 0.0.0.0 --port 8900 --limit-concurrency 100 > logs/backend.log 2>&1 &
 BACKEND_PID=$!
 echo "   Backend PID: $BACKEND_PID"
 

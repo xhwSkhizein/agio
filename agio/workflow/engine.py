@@ -5,10 +5,14 @@ Provides:
 - Runnable registry management (Agent + Workflow)
 - YAML configuration loading
 - Unified execution entry point
+
+Wire-based Architecture:
+- run() requires context.wire
+- run() returns RunOutput
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, AsyncIterator
+from typing import Any
 
 import yaml
 
@@ -16,11 +20,8 @@ from agio.workflow.base import BaseWorkflow
 from agio.workflow.loop import LoopWorkflow
 from agio.workflow.parallel import ParallelWorkflow
 from agio.workflow.pipeline import PipelineWorkflow
-from agio.workflow.protocol import Runnable, RunContext
+from agio.workflow.protocol import Runnable, RunContext, RunOutput
 from agio.workflow.stage import Stage
-
-if TYPE_CHECKING:
-    from agio.domain.events import StepEvent
 
 
 class WorkflowEngine:
@@ -158,8 +159,8 @@ class WorkflowEngine:
         self,
         runnable_id: str,
         input: str,
-        context: RunContext | None = None,
-    ) -> AsyncIterator["StepEvent"]:
+        context: RunContext,
+    ) -> RunOutput:
         """
         Execute a Runnable (Agent or Workflow).
 
@@ -168,14 +169,13 @@ class WorkflowEngine:
         Args:
             runnable_id: ID of the Runnable to execute
             input: Input string
-            context: Optional execution context
+            context: Execution context with wire (required)
 
-        Yields:
-            StepEvent: Events during execution
+        Returns:
+            RunOutput with response and metrics
         """
         runnable = self.get(runnable_id)
-        async for event in runnable.run(input, context=context):
-            yield event
+        return await runnable.run(input, context=context)
 
     def describe(self, runnable_id: str) -> dict[str, Any]:
         """

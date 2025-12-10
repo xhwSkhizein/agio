@@ -8,7 +8,7 @@ This module provides:
 - ConditionEvaluator for conditional execution
 """
 
-from agio.workflow.protocol import Runnable, RunContext
+from agio.workflow.protocol import Runnable, RunContext, RunOutput, RunMetrics
 from agio.workflow.mapping import InputMapping
 from agio.workflow.store import OutputStore
 from agio.workflow.condition import ConditionEvaluator
@@ -30,6 +30,8 @@ __all__ = [
     # Protocol
     "Runnable",
     "RunContext",
+    "RunOutput",
+    "RunMetrics",
     # Core
     "InputMapping",
     "OutputStore",

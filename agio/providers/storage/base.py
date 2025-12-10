@@ -93,6 +93,20 @@ class SessionStore(ABC):
         """Get total Step count for session"""
         pass
 
+    # --- Tool Result Query (for cross-agent reference) ---
+
+    async def get_step_by_tool_call_id(
+        self,
+        session_id: str,
+        tool_call_id: str,
+    ) -> Optional[Step]:
+        """Get a Tool Step by tool_call_id"""
+        steps = await self.get_steps(session_id)
+        for step in steps:
+            if step.tool_call_id == tool_call_id:
+                return step
+        return None
+
 
 class InMemorySessionStore(SessionStore):
     """

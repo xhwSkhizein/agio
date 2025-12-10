@@ -13,7 +13,7 @@ frequency_penalty: 0.0
 presence_penalty: 0.0
 timeout: 60
 max_retries: 3
-enabled: true
+enabled: false  # Disabled: only using deepseek for testing
 tags:
   - production
   - openai

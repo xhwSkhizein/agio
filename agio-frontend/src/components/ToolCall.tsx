@@ -99,7 +99,7 @@ export function ToolCall({ toolName, args, result, status, duration }: ToolCallP
         <span className="font-mono text-xs text-purple-400">{toolName || 'tool'}</span>
         
         {!isOpen && argsSummary && (
-          <span className="text-[11px] text-gray-500 truncate max-w-[200px]">
+          <span className="text-[11px] text-gray-500 truncate max-w-[600px]">
             ({argsSummary})
           </span>
         )}

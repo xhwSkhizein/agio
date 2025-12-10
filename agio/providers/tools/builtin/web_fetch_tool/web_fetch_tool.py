@@ -55,6 +55,9 @@ class WebFetchTool(BaseTool):
     4. 支持 Citation 系统（可选）
     """
 
+    # Enable caching - web page content is stable within a session
+    cacheable = True
+
     def __init__(
         self,
         *,

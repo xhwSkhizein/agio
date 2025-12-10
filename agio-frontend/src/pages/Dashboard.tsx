@@ -123,7 +123,7 @@ interface AgentCardProps {
   agent: {
     name: string
     model: string
-    tools: string[]
+    tools: (string | { type?: string; name?: string | null; description?: string | null })[]
     system_prompt: string | null
   }
 }

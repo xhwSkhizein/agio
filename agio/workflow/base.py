@@ -5,17 +5,17 @@ Provides common functionality for workflow execution including:
 - Runnable protocol implementation
 - Child context creation
 - Runnable resolution from registry
+
+Wire-based Architecture:
+- run() writes events to context.wire
+- run() returns RunOutput (response + metrics)
 """
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, AsyncIterator
 from uuid import uuid4
 
-from agio.workflow.protocol import Runnable, RunContext
+from agio.workflow.protocol import Runnable, RunContext, RunOutput
 from agio.workflow.stage import Stage
-
-if TYPE_CHECKING:
-    from agio.domain.events import StepEvent
 
 
 class BaseWorkflow(ABC):
@@ -31,16 +31,11 @@ class BaseWorkflow(ABC):
     def __init__(self, id: str, stages: list[Stage]):
         self._id = id
         self._stages = stages
-        self._last_output: str | None = None
         self._registry: dict[str, Runnable] = {}
 
     @property
     def id(self) -> str:
         return self._id
-
-    @property
-    def last_output(self) -> str | None:
-        return self._last_output
 
     @property
     def stages(self) -> list[Stage]:
@@ -51,34 +46,57 @@ class BaseWorkflow(ABC):
         """Set the runnable registry for resolving references."""
         self._registry = registry
 
-    @abstractmethod
     async def run(
         self,
         input: str,
         *,
-        context: RunContext | None = None,
-    ) -> AsyncIterator["StepEvent"]:
-        """Execute the workflow and yield events."""
+        context: RunContext,
+    ) -> RunOutput:
+        """
+        Execute the workflow, writing events to context.wire.
+        
+        Args:
+            input: Input string
+            context: Execution context with wire (required)
+            
+        Returns:
+            RunOutput with response and metrics
+        """
+        if not context.wire:
+            raise ValueError("context.wire is required for workflow execution")
+        
+        return await self._execute(input, context=context)
+
+    @abstractmethod
+    async def _execute(
+        self,
+        input: str,
+        *,
+        context: RunContext,
+    ) -> RunOutput:
+        """Subclass implementation of workflow execution logic."""
         ...
 
     def _create_child_context(
         self,
-        context: RunContext | None,
+        context: RunContext,
         stage: Stage,
     ) -> RunContext:
         """
         Create execution context for child Runnable.
 
         Each Agent gets an independent session for isolation.
+        Wire is shared across all nested executions.
         """
         return RunContext(
+            wire=context.wire,  # Share wire for event streaming
             session_id=str(uuid4()),  # Independent session per Agent
-            user_id=context.user_id if context else None,
+            user_id=context.user_id,
             workflow_id=self._id,  # Pass workflow ID for session grouping
-            trace_id=context.trace_id if context else str(uuid4()),
-            parent_span_id=context.parent_span_id if context else None,
+            trace_id=context.trace_id or str(uuid4()),
+            parent_span_id=context.parent_span_id,
             parent_stage_id=stage.id,
-            depth=(context.depth if context else 0) + 1,
+            depth=context.depth + 1,
         )
 
     def _resolve_runnable(self, ref: Runnable | str) -> Runnable:

@@ -1,11 +1,11 @@
 type: agent
 name: simple_assistant
 description: "Simple general-purpose assistant"
-model: gpt-4o-mini
+model: deepseek
 system_prompt: "You are a helpful assistant. Answer questions clearly and concisely."
 tools: []
-repository: mongodb_session_store
-trace_store: trace_store
+session_store: mongodb_session_store
+
 hooks:
   - logging_hook
 max_steps: 10

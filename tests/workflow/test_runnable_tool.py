@@ -3,6 +3,7 @@
 import pytest
 
 from agio.domain import StepEvent, StepEventType
+from agio.workflow.protocol import RunOutput, RunMetrics
 from agio.workflow.runnable_tool import (
     RunnableTool,
     as_tool,
@@ -13,35 +14,38 @@ from agio.workflow.runnable_tool import (
 
 
 class MockRunnable:
-    """Mock Runnable for testing."""
+    """Mock Runnable for testing - Wire-based API, returns RunOutput."""
 
     def __init__(self, output: str = "test output", should_fail: bool = False):
         self._id = "mock_agent"
         self._output = output
         self._should_fail = should_fail
-        self._last_output: str | None = None
 
     @property
     def id(self) -> str:
         return self._id
 
-    @property
-    def last_output(self) -> str | None:
-        return self._last_output
-
-    async def run(self, input: str, *, context=None):
+    async def run(self, input: str, *, context) -> RunOutput:
+        """Execute and write events to context.wire, return RunOutput."""
         if self._should_fail:
             raise RuntimeError("Mock error")
         
-        self._last_output = self._output
-        yield StepEvent(
-            type=StepEventType.RUN_STARTED,
+        # Write events to wire if available
+        if context and context.wire:
+            await context.wire.write(StepEvent(
+                type=StepEventType.RUN_STARTED,
+                run_id="test_run",
+            ))
+            await context.wire.write(StepEvent(
+                type=StepEventType.RUN_COMPLETED,
+                run_id="test_run",
+                data={"response": self._output},
+            ))
+        
+        return RunOutput(
+            response=self._output,
             run_id="test_run",
-        )
-        yield StepEvent(
-            type=StepEventType.RUN_COMPLETED,
-            run_id="test_run",
-            data={"response": self._output},
+            metrics=RunMetrics(duration=0.1, total_tokens=10),
         )
 
 
@@ -92,38 +96,6 @@ class TestRunnableTool:
         tool = as_tool(mock_runnable)
 
         assert "mock_agent" in tool.get_description()
-
-    @pytest.mark.asyncio
-    async def test_event_callback(self):
-        """Test event callback is called for each event."""
-        mock_runnable = MockRunnable()
-        events_received = []
-
-        async def callback(event):
-            events_received.append(event)
-
-        tool = RunnableTool(mock_runnable, event_callback=callback)
-        await tool.execute({"task": "Test"})
-
-        assert len(events_received) == 2  # RUN_STARTED + RUN_COMPLETED
-        assert events_received[0].type == StepEventType.RUN_STARTED
-        assert events_received[1].type == StepEventType.RUN_COMPLETED
-
-    @pytest.mark.asyncio
-    async def test_event_callback_receives_depth(self):
-        """Test event callback receives correct depth."""
-        mock_runnable = MockRunnable()
-        events_received = []
-
-        async def callback(event):
-            events_received.append(event)
-
-        tool = RunnableTool(mock_runnable, event_callback=callback)
-        await tool.execute({"task": "Test", "_depth": 1})
-
-        # All events should have depth = 2 (parent depth + 1)
-        for event in events_received:
-            assert event.depth == 2
 
     @pytest.mark.asyncio
     async def test_task_with_context(self):
@@ -272,24 +244,6 @@ class TestSafetyFeatures:
         tool = as_tool(mock_runnable)
 
         assert tool.max_depth == DEFAULT_MAX_DEPTH
-
-    @pytest.mark.asyncio
-    async def test_depth_increments_correctly(self):
-        """Test that depth increments on each nested call."""
-        events_with_depth = []
-        
-        async def callback(event):
-            events_with_depth.append(event.depth)
-        
-        mock_runnable = MockRunnable()
-        tool = RunnableTool(mock_runnable, event_callback=callback)
-        
-        # Call at depth 0
-        await tool.execute({"task": "Test", "_depth": 0})
-        
-        # Events should have depth 1
-        for depth in events_with_depth:
-            assert depth == 1
 
     @pytest.mark.asyncio
     async def test_self_reference_in_call_stack(self):

@@ -67,7 +67,8 @@ class ConfigSystem:
     - 配置变更和热重载
     """
 
-    # 组件类型优先级（用于确定构建顺序）
+    # 组件类型默认优先级（仅作为拓扑排序的 fallback）
+    # 实际构建顺序由拓扑排序决定
     TYPE_PRIORITY = {
         ComponentType.MODEL: 0,
         ComponentType.SESSION_STORE: 0,
@@ -76,7 +77,7 @@ class ConfigSystem:
         ComponentType.KNOWLEDGE: 1,
         ComponentType.TOOL: 2,
         ComponentType.AGENT: 3,
-        ComponentType.WORKFLOW: 4,  # Workflows depend on agents
+        ComponentType.WORKFLOW: 3,  # Same level - actual order from topology
     }
 
     # 配置类型映射
@@ -269,22 +270,22 @@ class ConfigSystem:
 
     async def build_all(self) -> dict[str, int]:
         """
-        按依赖顺序构建所有组件
+        按依赖顺序构建所有组件（使用拓扑排序）
 
         Returns:
             构建统计 {"built": count, "failed": count}
         """
         logger.info("Building all components...")
 
-        # 按优先级排序配置
-        sorted_configs = sorted(
-            self._configs.items(),
-            key=lambda x: self.TYPE_PRIORITY.get(x[0][0], 99),
-        )
+        # 使用拓扑排序确定构建顺序
+        sorted_configs = self._get_topological_build_order()
 
         stats = {"built": 0, "failed": 0}
 
         for (component_type, name), config_data in sorted_configs:
+            # 跳过已构建的组件
+            if name in self._instances:
+                continue
             try:
                 await self._build_component(component_type, name)
                 stats["built"] += 1
@@ -625,6 +626,131 @@ class ConfigSystem:
             f"Available: configs={[n for (t, n) in self._configs.keys() if t == ComponentType.TOOL]}, "
             f"builtin={registry.list_builtin()}"
         )
+
+    def _extract_workflow_deps(self, stages: list[dict], deps: set[str]) -> None:
+        """
+        递归提取 workflow stages 中的依赖
+        
+        Args:
+            stages: workflow 的 stages 列表
+            deps: 依赖集合（会被修改）
+        """
+        for stage in stages:
+            runnable = stage.get("runnable")
+            if runnable is None:
+                continue
+            if isinstance(runnable, str):
+                # 字符串引用（agent 或其他组件）
+                deps.add(runnable)
+            elif isinstance(runnable, dict):
+                # 嵌套 workflow 定义，递归提取
+                nested_stages = runnable.get("stages", [])
+                self._extract_workflow_deps(nested_stages, deps)
+
+    def _get_topological_build_order(
+        self,
+    ) -> list[tuple[tuple[ComponentType, str], dict]]:
+        """
+        使用拓扑排序计算组件构建顺序
+        
+        复用 ConfigLoader 的依赖分析逻辑，确保被依赖的组件先构建。
+        这解决了 Agent 引用 Workflow（或反向）作为 tool 的加载顺序问题。
+        
+        Returns:
+            排序后的配置列表: [((ComponentType, name), config_dict), ...]
+        """
+        from collections import deque
+        from agio.config.tool_reference import parse_tool_reference
+        
+        # 先收集所有组件名称
+        all_names = {name for (_, name) in self._configs.keys()}
+        
+        # 构建依赖图
+        dependencies: dict[str, set[str]] = {}
+        
+        for (component_type, name), config in self._configs.items():
+            deps: set[str] = set()
+            
+            # Agent 依赖
+            if component_type == ComponentType.AGENT:
+                if "model" in config and config["model"] in all_names:
+                    deps.add(config["model"])
+                if "tools" in config:
+                    for tool_ref in config["tools"]:
+                        parsed = parse_tool_reference(tool_ref)
+                        if parsed.type == "function" and parsed.name:
+                            # 只添加存在于配置中的依赖
+                            pass  # function tools 可能是 built-in
+                        elif parsed.type == "agent_tool" and parsed.agent:
+                            deps.add(parsed.agent)
+                        elif parsed.type == "workflow_tool" and parsed.workflow:
+                            deps.add(parsed.workflow)
+                if "memory" in config:
+                    deps.add(config["memory"])
+                if "knowledge" in config:
+                    deps.add(config["knowledge"])
+                if "session_store" in config:
+                    deps.add(config["session_store"])
+                if "trace_store" in config:
+                    deps.add(config["trace_store"])
+            
+            # Workflow 依赖
+            elif component_type == ComponentType.WORKFLOW:
+                if "stages" in config:
+                    self._extract_workflow_deps(config["stages"], deps)
+            
+            # Tool 依赖
+            elif component_type == ComponentType.TOOL:
+                if "dependencies" in config:
+                    for dep_name in config["dependencies"].values():
+                        deps.add(dep_name)
+            
+            dependencies[name] = deps
+        
+        # 过滤掉不存在的依赖（built-in tools 等）
+        for name in dependencies:
+            dependencies[name] = dependencies[name] & all_names
+        
+        # 拓扑排序（Kahn's algorithm）
+        in_degree = {name: len(deps) for name, deps in dependencies.items()}
+        queue = deque([name for name, degree in in_degree.items() if degree == 0])
+        sorted_names: list[str] = []
+        
+        while queue:
+            name = queue.popleft()
+            sorted_names.append(name)
+            
+            for other_name, deps in dependencies.items():
+                if name in deps:
+                    in_degree[other_name] -= 1
+                    if in_degree[other_name] == 0:
+                        queue.append(other_name)
+        
+        # 检测循环依赖
+        if len(sorted_names) < len(all_names):
+            unresolved = all_names - set(sorted_names)
+            logger.warning(
+                f"Circular dependency detected, unresolved components: {unresolved}"
+            )
+            # 追加未解析的组件（按类型优先级）
+            for name in sorted(
+                unresolved,
+                key=lambda n: self.TYPE_PRIORITY.get(
+                    next((t for (t, nm) in self._configs.keys() if nm == n), None), 99
+                ),
+            ):
+                sorted_names.append(name)
+        
+        # 构建返回结果
+        result = []
+        name_to_key = {name: key for key in self._configs.keys() for _, name in [key]}
+        for name in sorted_names:
+            for key, config in self._configs.items():
+                if key[1] == name:
+                    result.append((key, config))
+                    break
+        
+        return result
 
     def _get_affected_components(self, name: str) -> list[str]:
         """

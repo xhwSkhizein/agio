@@ -4,14 +4,20 @@ StepRunner - Step-based Agent Runner
 Responsibilities:
 - Manage Run lifecycle
 - Use StepExecutor for execution
+- Write events to Wire (event streaming channel)
 - Save Steps to repository
 - Save Run metadata at run_end
 - Provide resume methods for retry
+
+Wire-based Architecture:
+- Wire is created at API entry point
+- All events are written to Wire
+- Nested executions share the same Wire
 """
 
 import asyncio
 import time
-from typing import TYPE_CHECKING, AsyncIterator
+from typing import TYPE_CHECKING, NamedTuple
 from uuid import uuid4
 
 from agio.domain import (
@@ -21,7 +27,6 @@ from agio.domain import (
     MessageRole,
     RunStatus,
     Step,
-    StepEvent,
     StepEventType,
     create_run_completed_event,
     create_run_failed_event,
@@ -32,15 +37,24 @@ from agio.observability.tracker import set_tracking_context, clear_tracking_cont
 from agio.runtime.control import AbortSignal
 from agio.runtime.context import build_context_from_steps
 from agio.runtime.executor import StepExecutor
+from agio.runtime.wire import Wire
 from agio.utils.logging import get_logger
 
 if TYPE_CHECKING:
     from agio.agent import Agent
     from agio.providers.storage import SessionStore
     from agio.config import ExecutionConfig
-    from agio.workflow.protocol import RunContext
+    from agio.workflow.protocol import RunContext, RunOutput, RunMetrics
 
 logger = get_logger(__name__)
+
+
+class TerminationSummaryResult(NamedTuple):
+    """Result from termination summary generation."""
+    summary: str
+    tokens_used: int
+    prompt_tokens_used: int
+    completion_tokens_used: int
 
 
 class StepRunner:
@@ -75,25 +89,31 @@ class StepRunner:
         from agio.config import ExecutionConfig
         self.config = config or ExecutionConfig()
 
-    async def run_stream(
+    async def run(
         self,
         session: AgentSession,
         query: str,
+        wire: Wire,
         abort_signal: AbortSignal | None = None,
         context: "RunContext | None" = None,
-    ) -> AsyncIterator[StepEvent]:
+    ) -> "RunOutput":
         """
-        Execute Agent, return StepEvent stream.
+        Execute Agent, writing all events to Wire.
+        
+        Wire is created at API entry point and passed here.
+        Events are written to wire, which is consumed by API layer.
 
         Args:
             session: Session
             query: User query
-            abort_signal: Abort signal (created and managed by caller)
-            context: Optional execution context with workflow info
-
-        Yields:
-            StepEvent: Step event stream
+            wire: Event streaming channel (created by API layer)
+            abort_signal: Abort signal
+            context: Execution context
+            
+        Returns:
+            RunOutput with response and metrics
         """
+        from agio.workflow.protocol import RunOutput, RunMetrics
         # 1. Create Run
         run = AgentRun(
             id=str(uuid4()),
@@ -113,12 +133,30 @@ class StepRunner:
             run_id=run.id,
         )
         
-        logger.info("run_started", run_id=run.id, session_id=session.session_id, query=query)
-
-        # 2. Send Run started event
-        yield create_run_started_event(
-            run_id=run.id, query=query, session_id=session.session_id
+        # Extract nested context from RunContext
+        depth = context.depth if context else 0
+        parent_run_id = context.parent_run_id if context else None
+        nested_runnable_id = context.nested_runnable_id if context else None
+        
+        logger.info(
+            "run_started", 
+            run_id=run.id, 
+            session_id=session.session_id, 
+            query=query,
+            depth=depth,
+            parent_run_id=parent_run_id,
+            nested_runnable_id=nested_runnable_id,
         )
+
+        # 2. Send Run started event with nested context
+        await wire.write(create_run_started_event(
+            run_id=run.id, 
+            query=query, 
+            session_id=session.session_id,
+            depth=depth,
+            parent_run_id=parent_run_id,
+            nested_runnable_id=nested_runnable_id,
+        ))
 
         # 3. Create User Step
         user_step = Step(
@@ -146,7 +184,7 @@ class StepRunner:
 
         run.status = RunStatus.RUNNING
 
-        # 5. Create StepExecutor
+        # 5. Create StepExecutor with Wire
         executor = StepExecutor(
             model=self.agent.model,
             tools=self.agent.tools or [],
@@ -160,9 +198,11 @@ class StepRunner:
         tool_calls_count = 0
         assistant_steps_count = 0
         last_assistant_had_tools = False
+        pending_tool_calls: list[dict] | None = None  # Track unprocessed tool calls
+        last_step_sequence = user_step.sequence  # Track last sequence for summary generation
 
         try:
-            # 6. Consume StepExecutor event stream
+            # 6. Execute with Wire - events written directly to wire
             start_sequence = user_step.sequence + 1
 
             async for event in executor.execute(
@@ -171,12 +211,19 @@ class StepRunner:
                 messages=messages,
                 start_sequence=start_sequence,
                 abort_signal=abort_signal,
+                wire=wire,  # Pass wire to executor for nested tool execution
+                depth=depth,
+                parent_run_id=parent_run_id,
+                nested_runnable_id=nested_runnable_id,
             ):
                 if event.type == StepEventType.STEP_COMPLETED and event.snapshot:
                     step = event.snapshot
 
                     if self.session_store:
                         await self.session_store.save_step(step)
+
+                    # Track last sequence
+                    last_step_sequence = step.sequence
 
                     if step.metrics:
                         if step.metrics.total_tokens:
@@ -191,18 +238,18 @@ class StepRunner:
                         last_assistant_had_tools = step.has_tool_calls()
                         if step.has_tool_calls():
                             tool_calls_count += len(step.tool_calls or [])
+                            # Track pending tool calls (will be cleared if tool results follow)
+                            pending_tool_calls = step.tool_calls
+                    elif step.role.value == "tool":
+                        # Tool result received, clear pending
+                        pending_tool_calls = None
 
-                yield event
+                # Write event to wire
+                await wire.write(event)
 
             # 7. Complete
             run.status = RunStatus.COMPLETED
-            run.metrics.end_time = time.time()
-            run.metrics.duration = run.metrics.end_time - run.metrics.start_time
-            run.metrics.total_tokens = total_tokens
-            run.metrics.prompt_tokens = prompt_tokens
-            run.metrics.completion_tokens = completion_tokens
-            run.metrics.tool_calls_count = tool_calls_count
-
+            
             if messages:
                 for msg in reversed(messages):
                     if msg.get("role") == "assistant" and msg.get("content"):
@@ -213,6 +260,31 @@ class StepRunner:
             if last_assistant_had_tools and assistant_steps_count >= self.config.max_steps:
                 termination_reason = "max_steps"
             
+            # Generate termination summary if configured and there's a termination reason
+            if termination_reason and self.config.enable_termination_summary:
+                summary_result = await self._generate_termination_summary(
+                    session=session,
+                    run=run,
+                    messages=messages,
+                    termination_reason=termination_reason,
+                    pending_tool_calls=pending_tool_calls,
+                    wire=wire,
+                    current_sequence=last_step_sequence,
+                )
+                run.response_content = summary_result.summary
+                # Update metrics from summary generation
+                total_tokens += summary_result.tokens_used
+                prompt_tokens += summary_result.prompt_tokens_used
+                completion_tokens += summary_result.completion_tokens_used
+            
+            # Update run metrics after summary generation
+            run.metrics.end_time = time.time()
+            run.metrics.duration = run.metrics.end_time - run.metrics.start_time
+            run.metrics.total_tokens = total_tokens
+            run.metrics.prompt_tokens = prompt_tokens
+            run.metrics.completion_tokens = completion_tokens
+            run.metrics.tool_calls_count = tool_calls_count
+            
             logger.info(
                 "run_completed",
                 run_id=run.id,
@@ -222,7 +294,7 @@ class StepRunner:
                 termination_reason=termination_reason,
             )
 
-            yield create_run_completed_event(
+            await wire.write(create_run_completed_event(
                 run_id=run.id,
                 response=run.response_content or "",
                 metrics={
@@ -232,11 +304,28 @@ class StepRunner:
                 },
                 termination_reason=termination_reason,
                 max_steps=self.config.max_steps if termination_reason else None,
-            )
+                depth=depth,
+                parent_run_id=parent_run_id,
+                nested_runnable_id=nested_runnable_id,
+            ))
 
             if self.session_store:
                 await self.session_store.save_run(run)
                 logger.debug("run_saved", run_id=run.id)
+            
+            return RunOutput(
+                response=run.response_content,
+                run_id=run.id,
+                session_id=session.session_id,
+                metrics=RunMetrics(
+                    duration=run.metrics.duration,
+                    total_tokens=total_tokens,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    tool_calls_count=tool_calls_count,
+                ),
+                termination_reason=termination_reason,
+            )
 
         except asyncio.CancelledError:
             reason = abort_signal.reason if abort_signal else "Unknown reason"
@@ -248,7 +337,18 @@ class StepRunner:
             if self.session_store:
                 await self.session_store.save_run(run)
 
-            yield create_run_failed_event(run_id=run.id, error=f"Run was cancelled: {reason}")
+            await wire.write(create_run_failed_event(
+                run_id=run.id, 
+                error=f"Run was cancelled: {reason}",
+                depth=depth,
+                parent_run_id=parent_run_id,
+                nested_runnable_id=nested_runnable_id,
+            ))
+            return RunOutput(
+                run_id=run.id,
+                session_id=session.session_id,
+                error=f"Run was cancelled: {reason}",
+            )
 
         except Exception as e:
             logger.error("run_failed", run_id=run.id, error=str(e), exc_info=True)
@@ -259,10 +359,15 @@ class StepRunner:
             if self.session_store:
                 await self.session_store.save_run(run)
 
-            yield create_run_failed_event(run_id=run.id, error=str(e))
+            await wire.write(create_run_failed_event(
+                run_id=run.id, 
+                error=str(e),
+                depth=depth,
+                parent_run_id=parent_run_id,
+                nested_runnable_id=nested_runnable_id,
+            ))
             raise e
         finally:
-            # Clear tracking context
             clear_tracking_context()
 
     async def _get_next_sequence(self, session_id: str) -> int:
@@ -275,12 +380,193 @@ class StepRunner:
             return last_step.sequence + 1
         return 1
 
-    # --- Resume methods for retry ---
+    async def _generate_termination_summary(
+        self,
+        session: AgentSession,
+        run: AgentRun,
+        messages: list[dict],
+        termination_reason: str,
+        pending_tool_calls: list[dict] | None,
+        wire: Wire,
+        current_sequence: int,
+    ) -> TerminationSummaryResult:
+        """
+        Generate summary when execution is terminated.
+        
+        This continues the conversation by appending appropriate messages,
+        saves the new steps, and sends wire events.
+        
+        Args:
+            session: Current session
+            run: Current run
+            messages: Conversation history
+            termination_reason: Reason for termination
+            pending_tool_calls: Unprocessed tool calls if any
+            wire: Wire for event streaming
+            current_sequence: Current sequence number
+            
+        Returns:
+            TerminationSummaryResult with summary and metrics
+        """
+        from agio.domain.models import Step, MessageRole, StepMetrics
+        from agio.domain.events import StepEvent, StepEventType
+        
+        next_sequence = current_sequence + 1
+        tokens_used = 0
+        prompt_tokens_used = 0
+        completion_tokens_used = 0
+        
+        # 1. Add placeholder tool results if needed
+        if pending_tool_calls:
+            for tool_call in pending_tool_calls:
+                call_id = tool_call.get("id", "unknown")
+                tool_name = tool_call.get("function", {}).get("name", "unknown")
+                
+                tool_step = Step(
+                    session_id=session.session_id,
+                    run_id=run.id,
+                    sequence=next_sequence,
+                    role=MessageRole.TOOL,
+                    tool_call_id=call_id,
+                    name=tool_name,
+                    content=f"[Execution interrupted: {termination_reason}. This tool call was not executed.]",
+                )
+                
+                if self.session_store:
+                    await self.session_store.save_step(tool_step)
+                
+                await wire.write(StepEvent(
+                    type=StepEventType.STEP_COMPLETED,
+                    run_id=run.id,
+                    snapshot=tool_step,
+                ))
+                
+                next_sequence += 1
+        
+        # 2. Add user message requesting summary
+        from agio.runtime.summarizer import DEFAULT_TERMINATION_USER_PROMPT, _format_termination_reason
+        
+        prompt_template = self.config.termination_summary_prompt or DEFAULT_TERMINATION_USER_PROMPT
+        user_prompt = prompt_template.format(
+            termination_reason=_format_termination_reason(termination_reason),
+        )
+        
+        user_step = Step(
+            session_id=session.session_id,
+            run_id=run.id,
+            sequence=next_sequence,
+            role=MessageRole.USER,
+            content=user_prompt,
+        )
+        
+        if self.session_store:
+            await self.session_store.save_step(user_step)
+        
+        await wire.write(StepEvent(
+            type=StepEventType.STEP_COMPLETED,
+            run_id=run.id,
+            snapshot=user_step,
+        ))
+        
+        next_sequence += 1
+        
+        # 3. Generate summary via LLM
+        summary_messages = list(messages)
+        
+        # Add placeholder tool results to messages
+        if pending_tool_calls:
+            for tool_call in pending_tool_calls:
+                call_id = tool_call.get("id", "unknown")
+                tool_name = tool_call.get("function", {}).get("name", "unknown")
+                summary_messages.append({
+                    "role": "tool",
+                    "tool_call_id": call_id,
+                    "name": tool_name,
+                    "content": f"[Execution interrupted: {termination_reason}. This tool call was not executed.]",
+                })
+        
+        # Add user summary request
+        summary_messages.append({
+            "role": "user",
+            "content": user_prompt,
+        })
+        
+        logger.debug(
+            "generating_termination_summary",
+            termination_reason=termination_reason,
+            message_count=len(summary_messages),
+            has_pending_tool_calls=bool(pending_tool_calls),
+        )
+        
+        try:
+            # Call LLM with same tools to preserve cache
+            response = await self.agent.model.arun(summary_messages, tools=self.agent.tools)
+            summary = response.content if response.content else ""
+            
+            # Track token usage
+            if hasattr(response, 'usage') and response.usage:
+                tokens_used = getattr(response.usage, 'total_tokens', 0)
+                prompt_tokens_used = getattr(response.usage, 'prompt_tokens', 0)
+                completion_tokens_used = getattr(response.usage, 'completion_tokens', 0)
+            
+            logger.info(
+                "termination_summary_generated",
+                termination_reason=termination_reason,
+                summary_length=len(summary),
+                tokens_used=tokens_used,
+            )
+            
+        except Exception as e:
+            logger.error(
+                "termination_summary_failed",
+                error=str(e),
+                exc_info=True,
+            )
+            # Fallback summary
+            summary = (
+                f"**Execution Interrupted**\n\n"
+                f"Terminated due to: {_format_termination_reason(termination_reason)}\n\n"
+                f"Note: Unable to generate detailed summary due to: {str(e)}"
+            )
+        
+        # 4. Save assistant response step
+        assistant_step = Step(
+            session_id=session.session_id,
+            run_id=run.id,
+            sequence=next_sequence,
+            role=MessageRole.ASSISTANT,
+            content=summary,
+            metrics=StepMetrics(
+                total_tokens=tokens_used,
+                input_tokens=prompt_tokens_used,
+                output_tokens=completion_tokens_used,
+            ) if tokens_used > 0 else None,
+        )
+        
+        if self.session_store:
+            await self.session_store.save_step(assistant_step)
+        
+        await wire.write(StepEvent(
+            type=StepEventType.STEP_COMPLETED,
+            run_id=run.id,
+            snapshot=assistant_step,
+        ))
+        
+        return TerminationSummaryResult(
+            summary=summary,
+            tokens_used=tokens_used,
+            prompt_tokens_used=prompt_tokens_used,
+            completion_tokens_used=completion_tokens_used,
+        )
+
+    # --- Resume methods ---
 
     async def resume_from_user_step(
-        self, session_id: str, last_step: Step
-    ) -> AsyncIterator[StepEvent]:
-        """Resume from a user step (most common retry case)."""
+        self, session_id: str, last_step: Step, wire: Wire
+    ) -> "RunOutput":
+        """Resume from a user step."""
+        from agio.workflow.protocol import RunOutput, RunMetrics
+        
         logger.info("resuming_from_user_step", session_id=session_id, step_id=last_step.id)
 
         if not self.session_store:
@@ -291,11 +577,9 @@ class StepRunner:
         )
 
         run_id = str(uuid4())
-        
-        # Create Run record so session appears in session list
         run = AgentRun(
             id=run_id,
-            agent_id=self.agent.id,  # Use id instead of name to ensure it's a string
+            agent_id=self.agent.id,
             session_id=session_id,
             status=RunStatus.RUNNING,
             input_query="[resumed]",
@@ -310,43 +594,61 @@ class StepRunner:
         )
 
         start_sequence = last_step.sequence + 1
+        response_content = None
 
         try:
             async for event in executor.execute(
-                session_id=session_id, run_id=run_id, messages=messages, start_sequence=start_sequence
+                session_id=session_id, run_id=run_id, messages=messages, 
+                start_sequence=start_sequence, wire=wire
             ):
                 if event.type == StepEventType.STEP_COMPLETED and event.snapshot:
                     await self.session_store.save_step(event.snapshot)
-
-                yield event
+                await wire.write(event)
             
-            # Update run status on completion
+            # Get response from messages
+            for msg in reversed(messages):
+                if msg.get("role") == "assistant" and msg.get("content"):
+                    response_content = msg["content"]
+                    break
+            
             run.status = RunStatus.COMPLETED
+            run.response_content = response_content
             run.metrics.end_time = time.time()
             run.metrics.duration = run.metrics.end_time - run.metrics.start_time
             await self.session_store.save_run(run)
+            
+            await wire.write(create_run_completed_event(
+                run_id=run.id, 
+                response=response_content or "",
+                metrics={"duration": run.metrics.duration}
+            ))
+            return RunOutput(
+                response=response_content,
+                run_id=run_id,
+                session_id=session_id,
+                metrics=RunMetrics(duration=run.metrics.duration),
+            )
+            
         except Exception as e:
             run.status = RunStatus.FAILED
             run.metrics.end_time = time.time()
             run.metrics.duration = run.metrics.end_time - run.metrics.start_time
             await self.session_store.save_run(run)
+            await wire.write(create_run_failed_event(run_id=run.id, error=str(e)))
             raise
 
     async def resume_from_tool_step(
-        self, session_id: str, last_step: Step
-    ) -> AsyncIterator[StepEvent]:
+        self, session_id: str, last_step: Step, wire: Wire
+    ) -> "RunOutput":
         """Resume from a tool step."""
-        async for event in self.resume_from_user_step(session_id, last_step):
-            yield event
+        return await self.resume_from_user_step(session_id, last_step, wire)
 
     async def resume_from_assistant_with_tools(
-        self, session_id: str, last_step: Step
-    ) -> AsyncIterator[StepEvent]:
-        """
-        Resume from an assistant step that has tool calls.
+        self, session_id: str, last_step: Step, wire: Wire
+    ) -> "RunOutput":
+        """Resume from an assistant step that has tool calls."""
+        from agio.workflow.protocol import RunOutput, RunMetrics
         
-        Delegates to StepExecutor with pending_tool_calls parameter.
-        """
         logger.info(
             "resuming_from_assistant_with_tools", session_id=session_id, step_id=last_step.id
         )
@@ -354,7 +656,6 @@ class StepRunner:
         if not self.session_store:
             raise ValueError("SessionStore required for resume")
 
-        # Build context (includes the assistant step with tool_calls)
         messages = await build_context_from_steps(
             session_id, self.session_store, system_prompt=self.agent.system_prompt
         )
@@ -362,10 +663,9 @@ class StepRunner:
         run_id = str(uuid4())
         start_sequence = last_step.sequence + 1
         
-        # Create Run record so session appears in session list
         run = AgentRun(
             id=run_id,
-            agent_id=self.agent.id,  # Use id instead of name to ensure it's a string
+            agent_id=self.agent.id,
             session_id=session_id,
             status=RunStatus.RUNNING,
             input_query="[resumed from tool_calls]",
@@ -379,30 +679,51 @@ class StepRunner:
             config=self.config,
         )
 
+        response_content = None
+
         try:
-            # Pass pending tool_calls to executor
             async for event in executor.execute(
                 session_id=session_id, 
                 run_id=run_id, 
                 messages=messages, 
                 start_sequence=start_sequence,
                 pending_tool_calls=last_step.tool_calls,
+                wire=wire,
             ):
                 if event.type == StepEventType.STEP_COMPLETED and event.snapshot:
                     await self.session_store.save_step(event.snapshot)
-
-                yield event
+                await wire.write(event)
             
-            # Update run status on completion
+            # Get response from messages
+            for msg in reversed(messages):
+                if msg.get("role") == "assistant" and msg.get("content"):
+                    response_content = msg["content"]
+                    break
+            
             run.status = RunStatus.COMPLETED
+            run.response_content = response_content
             run.metrics.end_time = time.time()
             run.metrics.duration = run.metrics.end_time - run.metrics.start_time
             await self.session_store.save_run(run)
+            
+            await wire.write(create_run_completed_event(
+                run_id=run.id, 
+                response=response_content or "",
+                metrics={"duration": run.metrics.duration}
+            ))
+            return RunOutput(
+                response=response_content,
+                run_id=run_id,
+                session_id=session_id,
+                metrics=RunMetrics(duration=run.metrics.duration),
+            )
+            
         except Exception as e:
             run.status = RunStatus.FAILED
             run.metrics.end_time = time.time()
             run.metrics.duration = run.metrics.end_time - run.metrics.start_time
             await self.session_store.save_run(run)
+            await wire.write(create_run_failed_event(run_id=run.id, error=str(e)))
             raise
 
 

@@ -4,7 +4,7 @@ provider: custom
 model_name: text-embedding-ada-002
 custom_class: agio.knowledge.embeddings.openai.OpenAIEmbedding
 custom_params: {}
-enabled: false  # Disabled: custom provider not supported yet
+enabled: false  # Disabled: only using deepseek for testing
 tags:
   - embedding
   - openai

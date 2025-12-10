@@ -2,6 +2,7 @@
 LLM Call Tracker - Wraps Model.arun_stream to track all LLM calls.
 """
 
+import asyncio
 import contextvars
 import time
 from typing import TYPE_CHECKING, Any, AsyncIterator
@@ -200,6 +201,19 @@ class LLMCallTracker:
                 log.input_tokens = usage_data.get("prompt_tokens")
                 log.output_tokens = usage_data.get("completion_tokens")
                 log.total_tokens = usage_data.get("total_tokens")
+
+        except asyncio.CancelledError:
+            # Handle cancellation - update log status to cancelled
+            end_time = time.time()
+            log.status = "cancelled"
+            log.response_content = "".join(content_parts) if content_parts else None
+            tool_calls = [tool_calls_map[i] for i in sorted(tool_calls_map.keys())] if tool_calls_map else None
+            log.response_tool_calls = tool_calls
+            log.duration_ms = (end_time - start_time) * 1000
+            if first_token_time:
+                log.first_token_ms = (first_token_time - start_time) * 1000
+            await self._store.update(log)
+            raise
 
         except Exception as e:
             # Update log on error

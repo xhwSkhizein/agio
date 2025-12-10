@@ -5,13 +5,18 @@ This module provides:
 - RunnableTool: Adapter class that wraps a Runnable as a Tool
 - as_tool: Factory function for convenient creation
 
+Wire-based Architecture:
+- Wire is passed via parameters from ToolExecutor
+- Nested execution context includes wire for unified event streaming
+- All events from nested Runnables go to the same Wire
+
 Safety features:
 - Maximum depth limit to prevent infinite nesting
 - Call stack tracking to detect circular references at runtime
 """
 
 import time
-from typing import TYPE_CHECKING, Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from agio.domain import StepEvent, StepEventType, ToolResult
@@ -20,6 +25,7 @@ from agio.workflow.protocol import Runnable, RunContext
 
 if TYPE_CHECKING:
     from agio.runtime.control import AbortSignal
+    from agio.runtime.wire import Wire
 
 
 # Default maximum nesting depth for Runnable as Tool
@@ -61,7 +67,6 @@ class RunnableTool(BaseTool):
         runnable: Runnable,
         description: str | None = None,
         name: str | None = None,
-        event_callback: Callable[[StepEvent], Awaitable[None]] | None = None,
         max_depth: int = DEFAULT_MAX_DEPTH,
     ):
         """
@@ -71,13 +76,11 @@ class RunnableTool(BaseTool):
             runnable: The Runnable instance to wrap (Agent or Workflow)
             description: Tool description for LLM
             name: Tool name, defaults to call_{runnable.id}
-            event_callback: Optional callback for streaming nested events
             max_depth: Maximum nesting depth allowed (default: 5)
         """
         self.runnable = runnable
         self._description = description or f"Delegate task to {runnable.id}"
         self._name = name or f"call_{runnable.id}"
-        self.event_callback = event_callback
         self.max_depth = max_depth
         super().__init__()
 
@@ -162,33 +165,33 @@ class RunnableTool(BaseTool):
         if extra_context:
             input_text = f"{task}\n\nContext: {extra_context}"
 
-        # Build execution context
+        # Get wire and parent_run_id from parameters (passed by ToolExecutor)
+        wire: "Wire | None" = parameters.get("_wire")
+        parent_run_id: str | None = parameters.get("_parent_run_id")
+        
+        # Build execution context with wire for unified event streaming
         context = RunContext(
+            wire=wire,  # Pass wire to nested execution
             session_id=str(uuid4()),  # Independent session
             trace_id=parameters.get("_trace_id"),
             parent_span_id=parameters.get("_parent_span_id"),
+            parent_run_id=parent_run_id,  # Parent run ID for grouping nested events
+            nested_runnable_id=self.runnable.id,  # Identify which Runnable is executing
             depth=current_depth,
             metadata={
                 "_call_stack": call_stack,  # Pass call stack for nested detection
             },
         )
 
-        # Execute and collect output
+        # Execute nested Runnable
+        # Events are written directly to wire by the nested execution
         output = ""
         error = None
 
         try:
-            async for event in self.runnable.run(input_text, context=context):
-                # Forward events if callback is set
-                if self.event_callback:
-                    # Mark as nested event
-                    event.parent_span_id = parameters.get("_parent_span_id")
-                    event.depth = context.depth
-                    await self.event_callback(event)
-
-                # Collect output from final event
-                if event.type == StepEventType.RUN_COMPLETED and event.data:
-                    output = event.data.get("response", "")
+            # run() writes events to wire and returns RunOutput
+            result = await self.runnable.run(input_text, context=context)
+            output = result.response or ""
 
         except CircularReferenceError as e:
             error = str(e)

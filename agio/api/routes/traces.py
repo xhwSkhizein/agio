@@ -191,7 +191,13 @@ async def stream_traces():
         finally:
             store.unsubscribe(queue)
 
-    return EventSourceResponse(event_generator())
+    return EventSourceResponse(
+        event_generator(),
+        headers={
+            "Connection": "close",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 # === Helper Functions ===
