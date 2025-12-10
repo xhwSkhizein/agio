@@ -89,7 +89,10 @@ export default function Chat() {
   const [showConfigModal, setShowConfigModal] = useState(false)
   const [currentRunId, setCurrentRunId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  // Track if user has manually scrolled up (to prevent auto-scroll)
+  const isUserScrolledUpRef = useRef(false)
   const toolCallTrackerRef = useRef<ToolCallTracker>({})
   // Use ref to accumulate streaming content to avoid React StrictMode double-execution issues
   const streamingContentRef = useRef<{ [stepId: string]: string }>({})
@@ -194,12 +197,51 @@ export default function Chat() {
     return () => document.removeEventListener('click', handleClickOutside)
   }, [showAgentDropdown])
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  // Track if user has manually scrolled up
+  const isUserScrolledUpRef = useRef(false)
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+
+  const scrollToBottom = (force = false) => {
+    if (!force && isUserScrolledUpRef.current) {
+      // User has scrolled up, don't auto-scroll unless forced
+      return
+    }
+    // Use requestAnimationFrame to ensure DOM is updated
+    requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: force ? 'auto' : 'smooth' })
+    })
   }
 
+  // Check if user is near bottom of scroll container
+  const isNearBottom = (element: HTMLElement): boolean => {
+    const threshold = 150 // pixels from bottom - consider "near bottom" if within 150px
+    const distanceFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight
+    return distanceFromBottom < threshold
+  }
+
+  // Handle scroll events to detect user scrolling up
   useEffect(() => {
-    scrollToBottom()
+    const scrollContainer = scrollContainerRef.current
+    if (!scrollContainer) return
+
+    const handleScroll = () => {
+      isUserScrolledUpRef.current = !isNearBottom(scrollContainer)
+    }
+
+    scrollContainer.addEventListener('scroll', handleScroll, { passive: true })
+    return () => scrollContainer.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  // Auto-scroll only if user is near bottom
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current
+    if (!scrollContainer) return
+
+    // Only auto-scroll if user is near bottom (hasn't scrolled up)
+    if (isNearBottom(scrollContainer)) {
+      scrollToBottom()
+      isUserScrolledUpRef.current = false
+    }
   }, [events])
 
   const handleCancel = () => {
@@ -229,6 +271,9 @@ export default function Chat() {
     setEvents((prev) => [...prev, userEvent])
     setInput('')
     setIsStreaming(true)
+    // Force scroll to bottom when user sends a message
+    isUserScrolledUpRef.current = false
+    setTimeout(() => scrollToBottom(true), 100)
     toolCallTrackerRef.current = {}  // Reset tracker for new request
     streamingContentRef.current = {}  // Reset streaming content tracker
     nestedExecutionsRef.current = new Map()  // Reset nested executions tracker
@@ -1372,7 +1417,10 @@ export default function Chat() {
       </div>
 
       {/* Timeline */}
-      <div className="flex-1 overflow-y-auto pr-4 -mr-4 mb-4">
+      <div 
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto pr-4 -mr-4 mb-4"
+      >
         {/* Empty state - welcome message */}
         {events.length === 0 && !isStreaming && (
           <div className="flex flex-col items-center justify-center h-full text-center py-20">
