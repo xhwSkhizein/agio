@@ -101,6 +101,11 @@ export default function Chat() {
   // Nested execution tracking for parallel RunnableTool calls
   // Key: parent_run_id, Value: Map of run_id -> NestedExecution
   const nestedExecutionsRef = useRef<Map<string, Map<string, NestedExecution>>>(new Map())
+  // Track parallel call batches: Key: parentRunId_stepId, Value: batch info
+  // Batch is identified by parentRunId + stepId (the Assistant Step that triggered the parallel calls)
+  const parallelBatchesRef = useRef<Map<string, { batchId: string; executionIds: Set<string>; stepId: string }>>(new Map())
+  // Track step_id for each nested execution: Key: nestedRunId, Value: stepId
+  const nestedRunStepIdRef = useRef<Map<string, string>>(new Map())
 
   // Fetch all available agents
   const { data: agents } = useQuery({
@@ -227,6 +232,8 @@ export default function Chat() {
     toolCallTrackerRef.current = {}  // Reset tracker for new request
     streamingContentRef.current = {}  // Reset streaming content tracker
     nestedExecutionsRef.current = new Map()  // Reset nested executions tracker
+    parallelBatchesRef.current = new Map()  // Reset parallel batches tracker
+    nestedRunStepIdRef.current = new Map()  // Reset nested run step_id tracker
 
     const userMessage = input
     abortControllerRef.current = new AbortController()
@@ -307,6 +314,7 @@ export default function Chat() {
                 
                 if (currentEvent === 'run_started' && nestedRunnableId) {
                   // Create new nested execution entry with steps array
+                  // Note: step_id is not available in run_started, will be set when step_delta/step_completed arrives
                   const newExec: NestedExecution = {
                     id: nestedRunId,
                     runnableId: nestedRunnableId,
@@ -316,26 +324,8 @@ export default function Chat() {
                   }
                   executionsMap.set(nestedRunId, newExec)
                   
-                  // Find or create parallel_nested container event
-                  const containerEventId = `parallel_nested_${parentRunId}`
-                  const containerIdx = newEvents.findIndex(e => e.id === containerEventId)
-                  
-                  if (containerIdx !== -1) {
-                    // Update existing container with new execution
-                    newEvents[containerIdx] = {
-                      ...newEvents[containerIdx],
-                      nestedExecutions: Array.from(executionsMap.values()),
-                    }
-                  } else {
-                    // Create new container event
-                    newEvents.push({
-                      id: containerEventId,
-                      type: 'parallel_nested',
-                      parentRunId,
-                      nestedExecutions: Array.from(executionsMap.values()),
-                      timestamp: Date.now(),
-                    })
-                  }
+                  // Batch will be created/updated when step_delta or step_completed arrives with step_id
+                  // For now, just return without creating container (will be created in step_delta/step_completed)
                   return newEvents
                 }
                 
@@ -348,13 +338,22 @@ export default function Chat() {
                     exec.metrics = data.data.metrics
                   }
                   
-                  // Update container event
-                  const containerEventId = `parallel_nested_${parentRunId}`
-                  const containerIdx = newEvents.findIndex(e => e.id === containerEventId)
-                  if (containerIdx !== -1) {
-                    newEvents[containerIdx] = {
-                      ...newEvents[containerIdx],
-                      nestedExecutions: Array.from(executionsMap.values()),
+                  // Update container event for the batch containing this execution
+                  const stepId = nestedRunStepIdRef.current.get(nestedRunId) || 'unknown'
+                  const batchKey = `${parentRunId}_${stepId}`
+                  const batch = parallelBatchesRef.current.get(batchKey)
+                  if (batch) {
+                    const containerEventId = batch.batchId
+                    const containerIdx = newEvents.findIndex(e => e.id === containerEventId)
+                    if (containerIdx !== -1) {
+                      // Get executions for this batch only
+                      const batchExecutions = Array.from(executionsMap.values()).filter(exec =>
+                        batch.executionIds.has(exec.id)
+                      )
+                      newEvents[containerIdx] = {
+                        ...newEvents[containerIdx],
+                        nestedExecutions: batchExecutions,
+                      }
                     }
                   }
                   return newEvents
@@ -365,12 +364,22 @@ export default function Chat() {
                   exec.status = 'failed'
                   exec.endTime = Date.now()
                   
-                  const containerEventId = `parallel_nested_${parentRunId}`
-                  const containerIdx = newEvents.findIndex(e => e.id === containerEventId)
-                  if (containerIdx !== -1) {
-                    newEvents[containerIdx] = {
-                      ...newEvents[containerIdx],
-                      nestedExecutions: Array.from(executionsMap.values()),
+                  // Update container event for the batch containing this execution
+                  const stepId = nestedRunStepIdRef.current.get(nestedRunId) || 'unknown'
+                  const batchKey = `${parentRunId}_${stepId}`
+                  const batch = parallelBatchesRef.current.get(batchKey)
+                  if (batch) {
+                    const containerEventId = batch.batchId
+                    const containerIdx = newEvents.findIndex(e => e.id === containerEventId)
+                    if (containerIdx !== -1) {
+                      // Get executions for this batch only
+                      const batchExecutions = Array.from(executionsMap.values()).filter(exec =>
+                        batch.executionIds.has(exec.id)
+                      )
+                      newEvents[containerIdx] = {
+                        ...newEvents[containerIdx],
+                        nestedExecutions: batchExecutions,
+                      }
                     }
                   }
                   return newEvents
@@ -380,6 +389,27 @@ export default function Chat() {
                 if (currentEvent === 'step_delta' && executionsMap.has(nestedRunId)) {
                   const exec = executionsMap.get(nestedRunId)!
                   const stepId = data.step_id || 'unknown'
+                  
+                  // Track step_id for this nested execution
+                  nestedRunStepIdRef.current.set(nestedRunId, stepId)
+                  
+                  // Get or create batch using parentRunId + stepId
+                  const batchKey = `${parentRunId}_${stepId}`
+                  let batch = parallelBatchesRef.current.get(batchKey)
+                  
+                  if (!batch) {
+                    // Create new batch for this step
+                    const batchId = `parallel_nested_${batchKey}`
+                    batch = {
+                      batchId,
+                      executionIds: new Set([nestedRunId]),
+                      stepId,
+                    }
+                    parallelBatchesRef.current.set(batchKey, batch)
+                  } else {
+                    // Add to existing batch
+                    batch.executionIds.add(nestedRunId)
+                  }
                   
                   // Handle assistant content - accumulate by step_id
                   if (data.delta?.content) {
@@ -431,13 +461,33 @@ export default function Chat() {
                     }
                   }
                   
-                  // Update container event
-                  const containerEventId = `parallel_nested_${parentRunId}`
-                  const containerIdx = newEvents.findIndex(e => e.id === containerEventId)
-                  if (containerIdx !== -1) {
-                    newEvents[containerIdx] = {
-                      ...newEvents[containerIdx],
-                      nestedExecutions: Array.from(executionsMap.values()),
+                  // Update container event for the batch containing this execution
+                  const batchKey = `${parentRunId}_${stepId}`
+                  const batch = parallelBatchesRef.current.get(batchKey)
+                  if (batch) {
+                    const containerEventId = batch.batchId
+                    const containerIdx = newEvents.findIndex(e => e.id === containerEventId)
+                    
+                    // Get executions for this batch only
+                    const batchExecutions = Array.from(executionsMap.values()).filter(exec =>
+                      batch.executionIds.has(exec.id)
+                    )
+                    
+                    if (containerIdx !== -1) {
+                      // Update existing container
+                      newEvents[containerIdx] = {
+                        ...newEvents[containerIdx],
+                        nestedExecutions: batchExecutions,
+                      }
+                    } else {
+                      // Create new container event for this batch
+                      newEvents.push({
+                        id: containerEventId,
+                        type: 'parallel_nested',
+                        parentRunId,
+                        nestedExecutions: batchExecutions,
+                        timestamp: Date.now(),
+                      })
                     }
                   }
                   return newEvents
@@ -449,14 +499,41 @@ export default function Chat() {
                   const snapshot = data.snapshot
                   const stepId = data.step_id || 'unknown'
                   
+                  // Track step_id for this nested execution
+                  nestedRunStepIdRef.current.set(nestedRunId, stepId)
+                  
+                  // Get or create batch using parentRunId + stepId
+                  const batchKey = `${parentRunId}_${stepId}`
+                  let batch = parallelBatchesRef.current.get(batchKey)
+                  
+                  if (!batch) {
+                    // Create new batch for this step
+                    const batchId = `parallel_nested_${batchKey}`
+                    batch = {
+                      batchId,
+                      executionIds: new Set([nestedRunId]),
+                      stepId,
+                    }
+                    parallelBatchesRef.current.set(batchKey, batch)
+                  } else {
+                    // Add to existing batch
+                    batch.executionIds.add(nestedRunId)
+                  }
+                  
                   // Handle assistant step completion - finalize content
                   if (snapshot?.role === 'assistant') {
-                    const existingStep = exec.steps.find(
+                    // Update existing assistant content step if exists (from step_delta)
+                    const existingContentStep = exec.steps.find(
                       s => s.type === 'assistant_content' && s.stepId === stepId
                     ) as Extract<NestedStep, { type: 'assistant_content' }> | undefined
                     
-                    if (!existingStep && snapshot.content) {
-                      // Create assistant content step if not exists
+                    if (existingContentStep) {
+                      // Update with final content from snapshot (may be more complete than delta)
+                      if (snapshot.content && snapshot.content !== existingContentStep.content) {
+                        existingContentStep.content = snapshot.content
+                      }
+                    } else if (snapshot.content) {
+                      // Only create if step_delta didn't create it (shouldn't happen normally)
                       exec.steps.push({
                         type: 'assistant_content',
                         stepId,
@@ -464,7 +541,8 @@ export default function Chat() {
                       })
                     }
                     
-                    // Handle tool calls from snapshot (in case delta was incomplete)
+                    // Handle tool calls from snapshot - only update existing ones, don't add new ones
+                    // (step_delta should have already created them)
                     if (snapshot.tool_calls && Array.isArray(snapshot.tool_calls)) {
                       for (const tc of snapshot.tool_calls) {
                         if (!tc.id) continue
@@ -472,7 +550,16 @@ export default function Chat() {
                           s => s.type === 'tool_call' && s.toolCallId === tc.id
                         ) as Extract<NestedStep, { type: 'tool_call' }> | undefined
                         
-                        if (!existingStep) {
+                        if (existingStep) {
+                          // Update existing tool call with complete info from snapshot
+                          if (tc.function?.name) {
+                            existingStep.toolName = tc.function.name
+                          }
+                          if (tc.function?.arguments) {
+                            existingStep.toolArgs = tc.function.arguments
+                          }
+                        } else {
+                          // Only add if step_delta didn't create it (shouldn't happen normally)
                           exec.steps.push({
                             type: 'tool_call',
                             toolCallId: tc.id,
@@ -480,10 +567,6 @@ export default function Chat() {
                             toolArgs: tc.function?.arguments || '{}',
                             stepId,
                           })
-                        } else {
-                          // Update existing tool call with complete info
-                          existingStep.toolName = tc.function?.name || existingStep.toolName
-                          existingStep.toolArgs = tc.function?.arguments || existingStep.toolArgs
                         }
                       }
                     }
@@ -508,13 +591,33 @@ export default function Chat() {
                     }
                   }
                   
-                  // Update container event
-                  const containerEventId = `parallel_nested_${parentRunId}`
-                  const containerIdx = newEvents.findIndex(e => e.id === containerEventId)
-                  if (containerIdx !== -1) {
-                    newEvents[containerIdx] = {
-                      ...newEvents[containerIdx],
-                      nestedExecutions: Array.from(executionsMap.values()),
+                  // Update container event for the batch containing this execution
+                  const batchKey = `${parentRunId}_${stepId}`
+                  const batch = parallelBatchesRef.current.get(batchKey)
+                  if (batch) {
+                    const containerEventId = batch.batchId
+                    const containerIdx = newEvents.findIndex(e => e.id === containerEventId)
+                    
+                    // Get executions for this batch only
+                    const batchExecutions = Array.from(executionsMap.values()).filter(exec =>
+                      batch.executionIds.has(exec.id)
+                    )
+                    
+                    if (containerIdx !== -1) {
+                      // Update existing container
+                      newEvents[containerIdx] = {
+                        ...newEvents[containerIdx],
+                        nestedExecutions: batchExecutions,
+                      }
+                    } else {
+                      // Create new container event for this batch
+                      newEvents.push({
+                        id: containerEventId,
+                        type: 'parallel_nested',
+                        parentRunId,
+                        nestedExecutions: batchExecutions,
+                        timestamp: Date.now(),
+                      })
                     }
                   }
                   return newEvents
