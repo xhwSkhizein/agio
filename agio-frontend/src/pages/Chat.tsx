@@ -7,9 +7,12 @@ import { TimelineItem } from '../components/TimelineItem'
 import { ToolCall } from '../components/ToolCall'
 import { MessageContent } from '../components/MessageContent'
 import { AgentConfigModal } from '../components/AgentConfigModal'
+import { WorkflowContainer } from '../components/WorkflowContainer'
+import { ParallelNestedRunnables, type NestedExecution, type NestedStep } from '../components/ParallelNestedRunnables'
 import { ChevronDown, Plus, Settings, MessageSquare, Play } from 'lucide-react'
 import { stepsToEvents } from '../utils/stepsToEvents'
 import { getToolDisplayName, getToolKey } from '../utils/toolHelpers'
+import type { WorkflowNode } from '../types/workflow'
 
 // Generate unique ID
 let idCounter = 0
@@ -17,7 +20,7 @@ const generateId = () => `event_${Date.now()}_${++idCounter}`
 
 interface TimelineEvent {
   id: string
-  type: 'user' | 'assistant' | 'tool' | 'error'
+  type: 'user' | 'assistant' | 'tool' | 'error' | 'nested' | 'workflow' | 'parallel_nested'
   content?: string
   toolName?: string
   toolArgs?: string
@@ -32,6 +35,24 @@ interface TimelineEvent {
     total_tokens?: number
     duration_ms?: number
   }
+  // For nested executions (RunnableTool)
+  nestedRunnableId?: string
+  nestedDepth?: number
+  nestedEvents?: TimelineEvent[]  // Collapsed nested events
+  nestedExecutions?: NestedExecution[]  // For parallel_nested type
+  
+  // Workflow hierarchy fields
+  workflowType?: 'pipeline' | 'parallel' | 'loop'
+  workflowId?: string
+  parentRunId?: string
+  runId?: string
+  stageId?: string
+  stageName?: string
+  stageIndex?: number
+  totalStages?: number
+  branchId?: string
+  branchIds?: string[]
+  status?: 'running' | 'completed' | 'failed' | 'skipped'
 }
 
 // Track tool calls by step_id + index (OpenAI streaming uses index, not id)
@@ -43,7 +64,7 @@ interface ToolCallTracker {
 }
 
 // Default agent to use when none is specified
-const DEFAULT_AGENT = 'code_assistant'
+const DEFAULT_AGENT = 'master_orchestrator'
 
 export default function Chat() {
   const { sessionId: urlSessionId } = useParams<{ sessionId?: string }>()
@@ -72,6 +93,14 @@ export default function Chat() {
   const toolCallTrackerRef = useRef<ToolCallTracker>({})
   // Use ref to accumulate streaming content to avoid React StrictMode double-execution issues
   const streamingContentRef = useRef<{ [stepId: string]: string }>({})
+  
+  // Workflow state management
+  const [workflowNodes, setWorkflowNodes] = useState<Map<string, WorkflowNode>>(new Map())
+  const workflowNodesRef = useRef<Map<string, WorkflowNode>>(new Map())
+  
+  // Nested execution tracking for parallel RunnableTool calls
+  // Key: parent_run_id, Value: Map of run_id -> NestedExecution
+  const nestedExecutionsRef = useRef<Map<string, Map<string, NestedExecution>>>(new Map())
 
   // Fetch all available agents
   const { data: agents } = useQuery({
@@ -197,6 +226,7 @@ export default function Chat() {
     setIsStreaming(true)
     toolCallTrackerRef.current = {}  // Reset tracker for new request
     streamingContentRef.current = {}  // Reset streaming content tracker
+    nestedExecutionsRef.current = new Map()  // Reset nested executions tracker
 
     const userMessage = input
     abortControllerRef.current = new AbortController()
@@ -260,6 +290,239 @@ export default function Chat() {
             
             setEvents((prev) => {
               const newEvents = [...prev]
+              
+              // Check if this is a nested event (from RunnableTool execution)
+              const nestedRunnableId = data.nested_runnable_id
+              const nestedDepth = data.depth || 0
+              const parentRunId = data.parent_run_id
+              const nestedRunId = data.run_id
+              
+              // Handle nested events - group by parent_run_id for parallel display
+              if (nestedDepth > 0 && parentRunId) {
+                // Get or create the executions map for this parent
+                if (!nestedExecutionsRef.current.has(parentRunId)) {
+                  nestedExecutionsRef.current.set(parentRunId, new Map())
+                }
+                const executionsMap = nestedExecutionsRef.current.get(parentRunId)!
+                
+                if (currentEvent === 'run_started' && nestedRunnableId) {
+                  // Create new nested execution entry with steps array
+                  const newExec: NestedExecution = {
+                    id: nestedRunId,
+                    runnableId: nestedRunnableId,
+                    status: 'running',
+                    steps: [],
+                    startTime: Date.now(),
+                  }
+                  executionsMap.set(nestedRunId, newExec)
+                  
+                  // Find or create parallel_nested container event
+                  const containerEventId = `parallel_nested_${parentRunId}`
+                  const containerIdx = newEvents.findIndex(e => e.id === containerEventId)
+                  
+                  if (containerIdx !== -1) {
+                    // Update existing container with new execution
+                    newEvents[containerIdx] = {
+                      ...newEvents[containerIdx],
+                      nestedExecutions: Array.from(executionsMap.values()),
+                    }
+                  } else {
+                    // Create new container event
+                    newEvents.push({
+                      id: containerEventId,
+                      type: 'parallel_nested',
+                      parentRunId,
+                      nestedExecutions: Array.from(executionsMap.values()),
+                      timestamp: Date.now(),
+                    })
+                  }
+                  return newEvents
+                }
+                
+                if (currentEvent === 'run_completed' && executionsMap.has(nestedRunId)) {
+                  // Update execution status
+                  const exec = executionsMap.get(nestedRunId)!
+                  exec.status = 'completed'
+                  exec.endTime = Date.now()
+                  if (data.data?.metrics) {
+                    exec.metrics = data.data.metrics
+                  }
+                  
+                  // Update container event
+                  const containerEventId = `parallel_nested_${parentRunId}`
+                  const containerIdx = newEvents.findIndex(e => e.id === containerEventId)
+                  if (containerIdx !== -1) {
+                    newEvents[containerIdx] = {
+                      ...newEvents[containerIdx],
+                      nestedExecutions: Array.from(executionsMap.values()),
+                    }
+                  }
+                  return newEvents
+                }
+                
+                if (currentEvent === 'run_failed' && executionsMap.has(nestedRunId)) {
+                  const exec = executionsMap.get(nestedRunId)!
+                  exec.status = 'failed'
+                  exec.endTime = Date.now()
+                  
+                  const containerEventId = `parallel_nested_${parentRunId}`
+                  const containerIdx = newEvents.findIndex(e => e.id === containerEventId)
+                  if (containerIdx !== -1) {
+                    newEvents[containerIdx] = {
+                      ...newEvents[containerIdx],
+                      nestedExecutions: Array.from(executionsMap.values()),
+                    }
+                  }
+                  return newEvents
+                }
+                
+                // Handle step_delta for nested execution - maintain step order
+                if (currentEvent === 'step_delta' && executionsMap.has(nestedRunId)) {
+                  const exec = executionsMap.get(nestedRunId)!
+                  const stepId = data.step_id || 'unknown'
+                  
+                  // Handle assistant content - accumulate by step_id
+                  if (data.delta?.content) {
+                    const existingStep = exec.steps.find(
+                      s => s.type === 'assistant_content' && s.stepId === stepId
+                    ) as Extract<NestedStep, { type: 'assistant_content' }> | undefined
+                    
+                    if (existingStep) {
+                      // Accumulate content
+                      existingStep.content += data.delta.content
+                    } else {
+                      // Create new assistant content step
+                      exec.steps.push({
+                        type: 'assistant_content',
+                        stepId,
+                        content: data.delta.content,
+                      })
+                    }
+                  }
+                  
+                  // Handle tool calls - properly parse JSON arguments
+                  if (data.delta?.tool_calls) {
+                    for (const tc of data.delta.tool_calls) {
+                      const toolCallId = tc.id || `${stepId}_tc_${tc.index ?? 0}`
+                      const existingStep = exec.steps.find(
+                        s => s.type === 'tool_call' && s.toolCallId === toolCallId
+                      ) as Extract<NestedStep, { type: 'tool_call' }> | undefined
+                      
+                      if (existingStep) {
+                        // Accumulate tool name and arguments (arguments are JSON strings)
+                        if (tc.function?.name) {
+                          existingStep.toolName = tc.function.name  // Name is complete, not incremental
+                        }
+                        if (tc.function?.arguments) {
+                          // Arguments are streamed JSON strings - append directly
+                          // ToolCall component will parse and format for display
+                          existingStep.toolArgs = (existingStep.toolArgs || '') + tc.function.arguments
+                        }
+                      } else {
+                        // Create new tool call step
+                        exec.steps.push({
+                          type: 'tool_call',
+                          toolCallId,
+                          toolName: tc.function?.name || 'Unknown',
+                          toolArgs: tc.function?.arguments || '{}',
+                          stepId,
+                        })
+                      }
+                    }
+                  }
+                  
+                  // Update container event
+                  const containerEventId = `parallel_nested_${parentRunId}`
+                  const containerIdx = newEvents.findIndex(e => e.id === containerEventId)
+                  if (containerIdx !== -1) {
+                    newEvents[containerIdx] = {
+                      ...newEvents[containerIdx],
+                      nestedExecutions: Array.from(executionsMap.values()),
+                    }
+                  }
+                  return newEvents
+                }
+                
+                // Handle step_completed for nested execution
+                if (currentEvent === 'step_completed' && executionsMap.has(nestedRunId)) {
+                  const exec = executionsMap.get(nestedRunId)!
+                  const snapshot = data.snapshot
+                  const stepId = data.step_id || 'unknown'
+                  
+                  // Handle assistant step completion - finalize content
+                  if (snapshot?.role === 'assistant') {
+                    const existingStep = exec.steps.find(
+                      s => s.type === 'assistant_content' && s.stepId === stepId
+                    ) as Extract<NestedStep, { type: 'assistant_content' }> | undefined
+                    
+                    if (!existingStep && snapshot.content) {
+                      // Create assistant content step if not exists
+                      exec.steps.push({
+                        type: 'assistant_content',
+                        stepId,
+                        content: snapshot.content,
+                      })
+                    }
+                    
+                    // Handle tool calls from snapshot (in case delta was incomplete)
+                    if (snapshot.tool_calls && Array.isArray(snapshot.tool_calls)) {
+                      for (const tc of snapshot.tool_calls) {
+                        if (!tc.id) continue
+                        const existingStep = exec.steps.find(
+                          s => s.type === 'tool_call' && s.toolCallId === tc.id
+                        ) as Extract<NestedStep, { type: 'tool_call' }> | undefined
+                        
+                        if (!existingStep) {
+                          exec.steps.push({
+                            type: 'tool_call',
+                            toolCallId: tc.id,
+                            toolName: tc.function?.name || 'Unknown',
+                            toolArgs: tc.function?.arguments || '{}',
+                            stepId,
+                          })
+                        } else {
+                          // Update existing tool call with complete info
+                          existingStep.toolName = tc.function?.name || existingStep.toolName
+                          existingStep.toolArgs = tc.function?.arguments || existingStep.toolArgs
+                        }
+                      }
+                    }
+                  }
+                  
+                  // Handle tool result step
+                  if (snapshot?.role === 'tool' && snapshot.tool_call_id) {
+                    // Check if tool_result step already exists
+                    const existingResult = exec.steps.find(
+                      s => s.type === 'tool_result' && s.toolCallId === snapshot.tool_call_id
+                    )
+                    
+                    if (!existingResult) {
+                      // Add tool result step (will be rendered with corresponding tool_call)
+                      exec.steps.push({
+                        type: 'tool_result',
+                        toolCallId: snapshot.tool_call_id,
+                        result: snapshot.content || '',
+                        status: snapshot.is_error ? 'failed' : 'completed',
+                        duration: snapshot.metrics?.duration_ms,
+                      })
+                    }
+                  }
+                  
+                  // Update container event
+                  const containerEventId = `parallel_nested_${parentRunId}`
+                  const containerIdx = newEvents.findIndex(e => e.id === containerEventId)
+                  if (containerIdx !== -1) {
+                    newEvents[containerIdx] = {
+                      ...newEvents[containerIdx],
+                      nestedExecutions: Array.from(executionsMap.values()),
+                    }
+                  }
+                  return newEvents
+                }
+                
+                // Skip other unhandled nested events
+                return newEvents
+              }
               
               // Handle different event types based on StepEvent format
               switch (currentEvent) {
@@ -438,13 +701,57 @@ export default function Chat() {
                   }
                   
                   case 'run_started': {
-                    console.log('Run started:', data.run_id, 'Session:', data.data?.session_id)
+                    console.log('Run started:', data.run_id, 'Session:', data.data?.session_id, 'Workflow:', data.workflow_type)
                     setCurrentRunId(data.run_id)
                     
                     // Capture session_id from event
                     const eventSessionId = data.data?.session_id
                     if (eventSessionId && !currentSessionId) {
                       setCurrentSessionId(eventSessionId)
+                    }
+                    
+                    // Handle workflow run_started
+                    if (data.workflow_type && ['pipeline', 'parallel', 'loop'].includes(data.workflow_type)) {
+                      const workflowNode: WorkflowNode = {
+                        id: data.run_id,
+                        type: data.workflow_type,
+                        workflowId: data.workflow_id || data.data?.workflow_id,
+                        status: 'running',
+                        parentRunId: data.parent_run_id,
+                        depth: data.depth || 0,
+                        totalStages: data.total_stages || data.data?.total_stages || data.data?.total_branches,
+                        completedStages: 0,
+                        startTime: Date.now(),
+                        stages: data.workflow_type === 'pipeline' ? [] : undefined,
+                        branches: data.workflow_type === 'parallel' 
+                          ? (data.data?.branch_ids || []).map((id: string, idx: number) => ({
+                              id,
+                              name: id,
+                              index: idx,
+                              status: 'pending' as const,
+                              events: [],
+                            }))
+                          : undefined,
+                      }
+                      
+                      // Update workflow nodes ref (for immediate access in subsequent events)
+                      workflowNodesRef.current = new Map(workflowNodesRef.current).set(data.run_id, workflowNode)
+                      setWorkflowNodes(new Map(workflowNodesRef.current))
+                      
+                      // Add workflow event to timeline (only for top-level workflows)
+                      if (!data.parent_run_id || data.depth === 0) {
+                        newEvents.push({
+                          id: data.run_id,
+                          type: 'workflow',
+                          workflowType: data.workflow_type,
+                          workflowId: data.workflow_id || data.data?.workflow_id,
+                          runId: data.run_id,
+                          totalStages: workflowNode.totalStages,
+                          branchIds: data.data?.branch_ids,
+                          status: 'running',
+                          timestamp: Date.now(),
+                        })
+                      }
                     }
                     break
                   }
@@ -460,6 +767,25 @@ export default function Chat() {
                         newEvents[idx] = { ...event, toolStatus: 'completed' }
                       }
                     })
+                    
+                    // Update workflow status if this is a workflow run
+                    if (data.workflow_type && workflowNodesRef.current.has(data.run_id)) {
+                      const workflow = workflowNodesRef.current.get(data.run_id)!
+                      workflow.status = 'completed'
+                      workflow.endTime = Date.now()
+                      workflowNodesRef.current = new Map(workflowNodesRef.current).set(data.run_id, workflow)
+                      setWorkflowNodes(new Map(workflowNodesRef.current))
+                      
+                      // Update workflow event in timeline
+                      const workflowEventIdx = newEvents.findIndex(e => e.type === 'workflow' && e.runId === data.run_id)
+                      if (workflowEventIdx !== -1) {
+                        newEvents[workflowEventIdx] = {
+                          ...newEvents[workflowEventIdx],
+                          status: 'completed',
+                        }
+                      }
+                    }
+                    
                     // Check for termination reason
                     if (data.data?.termination_reason) {
                       const reason = data.data.termination_reason
@@ -506,12 +832,119 @@ export default function Chat() {
                     break
                   }
                   
-                  // Workflow-specific events (ignore for now, just log)
-                  case 'stage_started':
-                  case 'stage_completed':
+                  // Workflow stage events (Pipeline)
+                  case 'stage_started': {
+                    console.log('Stage started:', data.stage_id, 'in workflow:', data.parent_run_id || data.run_id)
+                    const parentRunId = data.parent_run_id || (data.workflow_type && data.run_id)
+                    if (parentRunId && workflowNodesRef.current.has(parentRunId)) {
+                      const workflow = workflowNodesRef.current.get(parentRunId)!
+                      if (workflow.type === 'pipeline' && workflow.stages) {
+                        // Find or create stage
+                        let stage = workflow.stages.find(s => s.id === data.stage_id)
+                        if (!stage) {
+                          stage = {
+                            id: data.stage_id,
+                            name: data.stage_name || data.stage_id,
+                            index: data.stage_index ?? workflow.stages.length,
+                            status: 'running',
+                            events: [],
+                          }
+                          workflow.stages.push(stage)
+                        } else {
+                          stage.status = 'running'
+                        }
+                        workflow.currentStageIndex = stage.index
+                        workflowNodesRef.current = new Map(workflowNodesRef.current).set(parentRunId, workflow)
+                        setWorkflowNodes(new Map(workflowNodesRef.current))
+                      }
+                    }
+                    break
+                  }
+                  
+                  case 'stage_completed': {
+                    console.log('Stage completed:', data.stage_id, 'in workflow:', data.parent_run_id || data.run_id)
+                    const parentRunId = data.parent_run_id || (data.workflow_type && data.run_id)
+                    if (parentRunId && workflowNodesRef.current.has(parentRunId)) {
+                      const workflow = workflowNodesRef.current.get(parentRunId)!
+                      if (workflow.type === 'pipeline' && workflow.stages) {
+                        const stage = workflow.stages.find(s => s.id === data.stage_id)
+                        if (stage) {
+                          stage.status = 'completed'
+                          workflow.completedStages = (workflow.completedStages || 0) + 1
+                          workflowNodesRef.current = new Map(workflowNodesRef.current).set(parentRunId, workflow)
+                          setWorkflowNodes(new Map(workflowNodesRef.current))
+                        }
+                      }
+                    }
+                    break
+                  }
+                  
+                  case 'stage_skipped': {
+                    console.log('Stage skipped:', data.stage_id)
+                    const parentRunId = data.parent_run_id || (data.workflow_type && data.run_id)
+                    if (parentRunId && workflowNodesRef.current.has(parentRunId)) {
+                      const workflow = workflowNodesRef.current.get(parentRunId)!
+                      if (workflow.type === 'pipeline' && workflow.stages) {
+                        let stage = workflow.stages.find(s => s.id === data.stage_id)
+                        if (!stage) {
+                          stage = {
+                            id: data.stage_id,
+                            name: data.stage_name || data.stage_id,
+                            index: data.stage_index ?? workflow.stages.length,
+                            status: 'skipped',
+                            events: [],
+                          }
+                          workflow.stages.push(stage)
+                        } else {
+                          stage.status = 'skipped'
+                        }
+                        workflowNodesRef.current = new Map(workflowNodesRef.current).set(parentRunId, workflow)
+                        setWorkflowNodes(new Map(workflowNodesRef.current))
+                      }
+                    }
+                    break
+                  }
+                  
+                  // Workflow branch events (Parallel)
+                  case 'branch_started': {
+                    console.log('Branch started:', data.branch_id, 'in workflow:', data.parent_run_id || data.run_id)
+                    const parentRunId = data.parent_run_id || (data.workflow_type && data.run_id)
+                    if (parentRunId && workflowNodesRef.current.has(parentRunId)) {
+                      const workflow = workflowNodesRef.current.get(parentRunId)!
+                      if (workflow.type === 'parallel' && workflow.branches) {
+                        const branch = workflow.branches.find(b => b.id === data.branch_id)
+                        if (branch) {
+                          branch.status = 'running'
+                          workflowNodesRef.current = new Map(workflowNodesRef.current).set(parentRunId, workflow)
+                          setWorkflowNodes(new Map(workflowNodesRef.current))
+                        }
+                      }
+                    }
+                    break
+                  }
+                  
+                  case 'branch_completed': {
+                    console.log('Branch completed:', data.branch_id, 'in workflow:', data.parent_run_id || data.run_id)
+                    const parentRunId = data.parent_run_id || (data.workflow_type && data.run_id)
+                    if (parentRunId && workflowNodesRef.current.has(parentRunId)) {
+                      const workflow = workflowNodesRef.current.get(parentRunId)!
+                      if (workflow.type === 'parallel' && workflow.branches) {
+                        const branch = workflow.branches.find(b => b.id === data.branch_id)
+                        if (branch) {
+                          branch.status = 'completed'
+                          workflow.completedStages = (workflow.completedStages || 0) + 1
+                          workflowNodesRef.current = new Map(workflowNodesRef.current).set(parentRunId, workflow)
+                          setWorkflowNodes(new Map(workflowNodesRef.current))
+                        }
+                      }
+                    }
+                    break
+                  }
+                  
+                  // Loop iteration events
                   case 'iteration_started':
                   case 'iteration_completed':
-                    console.log(`Workflow event: ${currentEvent}`, data.stage_id || data.iteration)
+                    console.log(`Loop event: ${currentEvent}`, data.iteration)
                     break
                     
                   default:
@@ -871,8 +1304,21 @@ export default function Chat() {
               key={event.id} 
               type={event.type}
               isLast={index === events.length - 1}
+              depth={event.nestedDepth || 0}
             >
-              {event.type === 'tool' ? (
+              {event.type === 'workflow' && event.runId && workflowNodes.get(event.runId) ? (
+                /* Workflow container */
+                <WorkflowContainer
+                  workflow={workflowNodes.get(event.runId)!}
+                  renderEvent={(nestedEvent) => (
+                    <div className={`text-xs leading-relaxed ${
+                      nestedEvent.type === 'error' ? 'text-red-400' : 'text-gray-300'
+                    }`}>
+                      <MessageContent content={nestedEvent.content || ''} />
+                    </div>
+                  )}
+                />
+              ) : event.type === 'tool' ? (
                 <ToolCall
                   toolName={event.toolName || 'Unknown Tool'}
                   args={event.toolArgs || '{}'}
@@ -880,6 +1326,26 @@ export default function Chat() {
                   status={event.toolStatus || 'running'}
                   duration={event.toolDuration}
                 />
+              ) : event.type === 'parallel_nested' && event.nestedExecutions ? (
+                /* Parallel nested RunnableTool executions */
+                <ParallelNestedRunnables
+                  executions={event.nestedExecutions}
+                />
+              ) : event.type === 'nested' ? (
+                /* Legacy nested execution indicator */
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-amber-400 text-xs">⚙️</span>
+                    <span className="text-xs text-amber-300 font-medium">
+                      {event.content}
+                    </span>
+                  </div>
+                  {event.toolResult && (
+                    <div className="mt-2 text-xs text-gray-400 bg-background/50 rounded p-2 max-h-32 overflow-y-auto">
+                      <pre className="whitespace-pre-wrap break-words">{event.toolResult}</pre>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <div>
                   <div className={`text-xs leading-relaxed ${

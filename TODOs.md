@@ -12,6 +12,29 @@
 - [ ] config yaml 支持 Jinja2 模版，可以支持条件表达式/loop 等
 - [ ] 支持 deepseek thinking 模式 (https://api-docs.deepseek.com/zh-cn/guides/thinking_mode) ； 支持 reasoning_content 字段的处理
 
+- [x] BUG: web 页面处理问题（已修复）
+  1）ParallelNestedRunnables 中的工具信息未正确展示工具参数，而且 Assistant Step 的消息堆积在了最前面，并没有像正常聊天时那样展示（content / toolcalls / tool result）
+  2） 相同 key 的组件
+  
+  **修复方案**：
+  - 重新设计了数据结构，使用`steps`数组来保持步骤的正确执行顺序
+  - 修复了工具参数的流式JSON字符串累积逻辑
+  - 修复了React key冲突问题，每个步骤都有唯一的key
+  - 按照实际执行顺序展示：assistant content -> tool calls -> tool results
+
+- [ ] system prompt 中强调所有 path 相关参数使用绝对路径
+
+## 🤔疑问
+
+- [ ] web 端直接与 Workflow 对话，使用的那个 api
+- [ ] 在配置文件配置了 tool 后，Agent 实际调用时，传递给 LLM 的 Tools 信息是如何构建的？
+
+
+
+
+
+## archived
+
 - [x] BUG: Glob tool 无法处理 **/*.json 这样的模式 (已修复：使用 rglob() 方法处理 **/ 开头的模式)
 ```
 2025-12-09T10:53:15.791819Z [error    ] Glob search failed             [agio.providers.tools.builtin.glob_tool.glob_tool] extra={'pattern': '**/*.json', 'path': '/Users/hongv/workspace/agio'}
@@ -34,27 +57,3 @@ Traceback (most recent call last):
     raise ValueError("Invalid pattern: '**' can only be an entire path component")
 ValueError: Invalid pattern: '**' can only be an entire path component
 ```
-
-- [ ] BUG: web 页面处理问题
-  1）ParallelNestedRunnables 中的工具信息未正确展示工具参数，而且 Assistant Step 的消息堆积在了最前面，并没有像正常聊天时那样展示（content / toolcalls / tool result）
-  2） 相同 key 的组件
-```
-Warning: Encountered two children with the same key, `call_00_z8PU45BCwuQOPzeExZC4QPYM`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
-    at div
-    at div
-    at ParallelNestedRunnables (http://localhost:3000/src/components/ParallelNestedRunnables.tsx:92:43)
-    at div
-    at div
-    at TimelineItem (http://localhost:3000/src/components/TimelineItem.tsx:17:32)
-    at div
-    at div
-    at div
-    at Chat (http://localhost:3000/src/pages/Chat.tsx:37:39)
-```
-
-- [ ] system prompt 中强调所有 path 相关参数使用绝对路径
-
-## 🤔疑问
-
-- [ ] web 端直接与 Workflow 对话，使用的那个 api
-- [ ] 在配置文件配置了 tool 后，Agent 实际调用时，传递给 LLM 的 Tools 信息是如何构建的？
