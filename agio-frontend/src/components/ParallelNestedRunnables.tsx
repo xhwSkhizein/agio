@@ -13,7 +13,7 @@ import { MessageContent } from './MessageContent'
 
 // Step types in nested execution - maintains correct order
 export type NestedStep = 
-  | { type: 'assistant_content'; stepId: string; content: string }
+  | { type: 'assistant_content'; stepId: string; content: string; reasoning_content?: string }
   | { type: 'tool_call'; toolCallId: string; toolName: string; toolArgs: string; stepId: string }
   | { type: 'tool_result'; toolCallId: string; result: string; status: 'completed' | 'failed'; duration?: number }
 
@@ -255,8 +255,25 @@ export function ParallelNestedRunnables({ executions, onExecutionSelect }: Paral
               activeExecution.steps.map((step, idx) => {
                 if (step.type === 'assistant_content') {
                   return (
-                    <div key={`${step.stepId}_content`} className="text-xs text-gray-300 leading-relaxed">
-                      <MessageContent content={step.content} />
+                    <div key={`${step.stepId}_content`} className="space-y-2">
+                      {/* Reasoning content (thinking mode) */}
+                      {step.reasoning_content && (
+                        <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-2">
+                          <details className="group">
+                            <summary className="cursor-pointer text-[10px] text-blue-400 font-medium flex items-center gap-1.5 hover:text-blue-300">
+                              <span className="transition-transform group-open:rotate-90">▶</span>
+                              <span>思考过程 (Thinking)</span>
+                            </summary>
+                            <div className="mt-2 text-[10px] text-blue-300/80 leading-relaxed">
+                              <MessageContent content={step.reasoning_content} />
+                            </div>
+                          </details>
+                        </div>
+                      )}
+                      {/* Main content */}
+                      <div className="text-xs text-gray-300 leading-relaxed">
+                        <MessageContent content={step.content} />
+                      </div>
                     </div>
                   )
                 } else if (step.type === 'tool_call') {

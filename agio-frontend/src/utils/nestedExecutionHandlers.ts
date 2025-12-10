@@ -14,6 +14,7 @@ interface SSEEventData {
   step_id?: string
   delta?: {
     content?: string
+    reasoning_content?: string
     tool_calls?: Array<{
       id?: string
       index?: number
@@ -26,6 +27,7 @@ interface SSEEventData {
   snapshot?: {
     role?: string
     content?: string
+    reasoning_content?: string
     tool_calls?: Array<{
       id?: string
       index?: number
@@ -242,6 +244,29 @@ export function handleNestedStepDelta(
     }
   }
 
+  // Handle reasoning_content - accumulate by step_id
+  if (data.delta?.reasoning_content) {
+    const existingStep = exec.steps.find(
+      s => s.type === 'assistant_content' && s.stepId === stepId
+    ) as Extract<NestedStep, { type: 'assistant_content' }> | undefined
+
+    if (existingStep) {
+      // Accumulate reasoning_content
+      if (!existingStep.reasoning_content) {
+        existingStep.reasoning_content = ''
+      }
+      existingStep.reasoning_content += data.delta.reasoning_content
+    } else {
+      // Create new assistant content step with reasoning_content
+      exec.steps.push({
+        type: 'assistant_content',
+        stepId,
+        content: '',
+        reasoning_content: data.delta.reasoning_content,
+      })
+    }
+  }
+
   // Handle tool calls - properly parse JSON arguments
   if (data.delta?.tool_calls) {
     for (const tc of data.delta.tool_calls) {
@@ -410,12 +435,17 @@ export function handleNestedStepCompleted(
       if (snapshot.content && snapshot.content !== existingContentStep.content) {
         existingContentStep.content = snapshot.content
       }
-    } else if (snapshot.content) {
+      // Update reasoning_content if present
+      if (snapshot.reasoning_content !== undefined) {
+        existingContentStep.reasoning_content = snapshot.reasoning_content
+      }
+    } else if (snapshot.content || snapshot.reasoning_content) {
       // Only create if step_delta didn't create it (shouldn't happen normally)
       exec.steps.push({
         type: 'assistant_content',
         stepId,
-        content: snapshot.content,
+        content: snapshot.content || '',
+        reasoning_content: snapshot.reasoning_content,
       })
     }
 

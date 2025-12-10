@@ -13,6 +13,7 @@ export interface TimelineEvent {
   id: string
   type: 'user' | 'assistant' | 'tool' | 'error' | 'nested' | 'workflow' | 'parallel_nested'
   content?: string
+  reasoning_content?: string  // Reasoning content (e.g., DeepSeek thinking mode)
   toolName?: string
   toolArgs?: string
   toolResult?: string

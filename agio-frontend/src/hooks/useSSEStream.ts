@@ -3,7 +3,6 @@
  */
 
 import { useRef, type MutableRefObject } from 'react'
-import { parseSSEBuffer } from '../utils/sseParser'
 import type { TimelineEvent, ToolCallTracker, NestedExecutionMap } from '../types/chat'
 import type { WorkflowNode } from '../types/workflow'
 import {
@@ -22,7 +21,7 @@ import {
 } from '../utils/nestedExecutionHandlers'
 
 interface UseSSEStreamOptions {
-  onEvent: (events: TimelineEvent[]) => void
+  onEvent: (eventsOrUpdater: TimelineEvent[] | ((prev: TimelineEvent[]) => TimelineEvent[])) => void
   onSessionId?: (sessionId: string) => void
   onRunId?: (runId: string | null) => void
   onRunCompleted?: () => void
@@ -40,6 +39,11 @@ export function useSSEStream({
 }: UseSSEStreamOptions) {
   const toolCallTrackerRef = useRef<ToolCallTracker>({})
   const streamingContentRef = useRef<{ [stepId: string]: string }>({})
+  const streamingReasoningContentRef = useRef<{ [stepId: string]: string }>({})
+  // Track processed delta content to prevent duplicate accumulation
+  // Key: `${stepId}_${deltaContent}`, Value: true
+  const processedDeltaRef = useRef<Set<string>>(new Set())
+  const processedReasoningDeltaRef = useRef<Set<string>>(new Set())
   const nestedTrackingRef = useRef<NestedExecutionMap>({
     executions: new Map(),
     parallelBatches: new Map(),
@@ -47,10 +51,17 @@ export function useSSEStream({
     parentStepIdForBatches: new Map(),
     nestedToolCallTracker: new Map(),
   })
+  // Track processed delta content for nested executions to prevent duplicate accumulation
+  // Key: `${nestedRunId}_${stepId}_${currentLength}_${deltaContent}`, Value: true
+  const nestedProcessedDeltaRef = useRef<Set<string>>(new Set())
 
   const resetTracking = () => {
     toolCallTrackerRef.current = {}
     streamingContentRef.current = {}
+    streamingReasoningContentRef.current = {}
+    processedDeltaRef.current = new Set()
+    processedReasoningDeltaRef.current = new Set()
+    nestedProcessedDeltaRef.current = new Set()
     nestedTrackingRef.current = {
       executions: new Map(),
       parallelBatches: new Map(),
@@ -66,13 +77,122 @@ export function useSSEStream({
     const nestedDepth = data.depth || 0
     const parentRunId = data.parent_run_id
 
-    // Accumulate content OUTSIDE setEvents to avoid double-execution in StrictMode
-    if (eventType === 'step_delta' && data.delta?.content) {
+    // For main step_delta events with content, we need to prevent duplicate accumulation
+    // This can happen due to React StrictMode double-renders or other React batching behaviors
+    // Key includes current length BEFORE accumulation to distinguish consecutive identical deltas
+    // e.g., two "a" deltas would have keys: "step_run_0_a" and "step_run_1_a"
+    let contentDeltaKey: string | null = null
+    if (eventType === 'step_delta' && data.delta?.content && nestedDepth === 0) {
+      const currentLength = streamingContentRef.current[stepId]?.length || 0
+      contentDeltaKey = `${stepId}_${data.run_id || ''}_${currentLength}_${data.delta.content}`
+    }
+
+    // Similar handling for reasoning_content
+    let reasoningDeltaKey: string | null = null
+    if (eventType === 'step_delta' && data.delta?.reasoning_content && nestedDepth === 0) {
+      const currentLength = streamingReasoningContentRef.current[stepId]?.length || 0
+      reasoningDeltaKey = `${stepId}_reasoning_${data.run_id || ''}_${currentLength}_${data.delta.reasoning_content}`
+    }
+
+    // Check if this content delta has been processed before
+    if (contentDeltaKey && processedDeltaRef.current.has(contentDeltaKey)) {
+      // Already processed - just update the display without re-accumulating
+      onEvent((prev: TimelineEvent[]) => {
+        const newEvents = [...prev]
+        if (eventType === 'step_delta') {
+          return handleStepDelta(
+            data,
+            newEvents,
+            toolCallTrackerRef.current,
+            streamingContentRef.current,
+            nestedTrackingRef.current.parentStepIdForBatches,
+            streamingReasoningContentRef.current
+          )
+        }
+        return newEvents
+      })
+      return
+    }
+
+    // Check if reasoning_content delta has been processed before
+    if (reasoningDeltaKey && processedReasoningDeltaRef.current.has(reasoningDeltaKey)) {
+      onEvent((prev: TimelineEvent[]) => {
+        const newEvents = [...prev]
+        if (eventType === 'step_delta') {
+          return handleStepDelta(
+            data,
+            newEvents,
+            toolCallTrackerRef.current,
+            streamingContentRef.current,
+            nestedTrackingRef.current.parentStepIdForBatches,
+            streamingReasoningContentRef.current
+          )
+        }
+        return newEvents
+      })
+      return
+    }
+
+    // Accumulate content OUTSIDE onEvent callback to ensure it only happens once per event
+    // ONLY for main events (depth === 0) - nested events have their own content tracking
+    if (eventType === 'step_delta' && data.delta?.content && nestedDepth === 0) {
       const contentRef = streamingContentRef.current
       if (!contentRef[stepId]) {
         contentRef[stepId] = ''
       }
       contentRef[stepId] += data.delta.content
+      
+      // Mark as processed AFTER accumulating - the key was computed with length BEFORE accumulation
+      if (contentDeltaKey) {
+        processedDeltaRef.current.add(contentDeltaKey)
+      }
+    }
+
+    // Accumulate reasoning_content OUTSIDE onEvent callback
+    if (eventType === 'step_delta' && data.delta?.reasoning_content && nestedDepth === 0) {
+      const reasoningRef = streamingReasoningContentRef.current
+      if (!reasoningRef[stepId]) {
+        reasoningRef[stepId] = ''
+      }
+      reasoningRef[stepId] += data.delta.reasoning_content
+      
+      if (reasoningDeltaKey) {
+        processedReasoningDeltaRef.current.add(reasoningDeltaKey)
+      }
+    }
+
+    // For nested step_delta events with content, compute dedupe key BEFORE onEvent
+    // This prevents duplicate accumulation when React calls updater multiple times
+    let nestedContentDeltaKey: string | null = null
+    let nestedContentAlreadyProcessed = false
+    if (eventType === 'step_delta' && data.delta?.content && nestedDepth > 0 && parentRunId) {
+      const nestedRunId = data.run_id || ''
+      const tracking = nestedTrackingRef.current
+      const executionsMap = tracking.executions.get(parentRunId)
+      const exec = executionsMap?.get(nestedRunId)
+      
+      // Get current content length for the step in this nested execution
+      let currentLength = 0
+      if (exec) {
+        const existingStep = exec.steps.find(
+          s => s.type === 'assistant_content' && s.stepId === stepId
+        )
+        if (existingStep && 'content' in existingStep) {
+          currentLength = (existingStep as { content?: string }).content?.length || 0
+        }
+      }
+      
+      // Create dedupe key using nestedRunId + stepId + currentLength + delta content
+      nestedContentDeltaKey = `${nestedRunId}_${stepId}_${currentLength}_${data.delta.content}`
+      
+      // Check if already processed
+      nestedContentAlreadyProcessed = nestedProcessedDeltaRef.current.has(nestedContentDeltaKey)
+      
+      // Mark as processed IMMEDIATELY (outside callback) to prevent duplicates
+      // We mark BEFORE onEvent so all React updater calls will see the same state
+      if (!nestedContentAlreadyProcessed) {
+        nestedProcessedDeltaRef.current.add(nestedContentDeltaKey)
+      }
     }
 
     onEvent((prev) => {
@@ -93,6 +213,18 @@ export function useSSEStream({
         }
 
         if (eventType === 'step_delta') {
+          // Use pre-computed deduplication for nested content deltas
+          if (data.delta?.content && nestedContentAlreadyProcessed) {
+            // Already processed, skip to prevent duplicate accumulation
+            // Still update the container event to refresh the display
+            return handleNestedStepDelta(
+              { ...data, delta: { ...data.delta, content: undefined } },
+              nestedTrackingRef.current,
+              newEvents
+            )
+          }
+          
+          // Marking was done outside the callback, just process the event
           return handleNestedStepDelta(data, nestedTrackingRef.current, newEvents)
         }
 
@@ -112,7 +244,8 @@ export function useSSEStream({
             newEvents,
             toolCallTrackerRef.current,
             streamingContentRef.current,
-            nestedTrackingRef.current.parentStepIdForBatches
+            nestedTrackingRef.current.parentStepIdForBatches,
+            streamingReasoningContentRef.current
           )
         }
 

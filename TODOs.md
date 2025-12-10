@@ -3,14 +3,15 @@
 - [x] 已经 cancel 的请求，LLMLog 中还一直是running，需要更新状态, 并优化相关 web 状态展示; LLM Logs web 展示时并未显示历史 Assistant Step 中的 toolcall 详细信息，只单独展示了最新的 Assistant Step 的 toolcall 信息
 - [x] agent 执行达到限制后(Timeout/max steps/limit toolcall), 需要可以针对当前已做工作进行总结和汇总并生成一个最终相应，而不是直接停止。（生成总结汇总这个逻辑要可以通过配置系统进行配置，这应该是一个公共功能）
 - [ ] 当 Agent 并行调用工具时，Chat 页面展示信息时会出现混乱，参考 Workflow的 Parallel 方式进行优化，使用多个并行的流来展示并行的工具调用和后续结果（请创建单独的组件进行实现）
+  - [ ] 展示在聊天界面的消息在流式实时拼接时有重复的问题，最终会被 snapshot 替换为正常文本，展示在 ParallelNestedRunnables 中的也有同样的问题，而且ParallelNestedRunnables 中最后一个文本消息还会在外层进行渲染，同样是大量重复文本但不会变回正常
 
 ## issues
 
 
 - [ ] Traces 目前完全不可用，没有实际实现 Trace 功能，需要重新设计&实现
-- [ ] 没有 HITL(Human-in-the-loop) ， 而且工具执行没有用户授权鉴权的逻辑，Agent 执行过程中也不能主动询问用户或阻塞等待用户相应
+- [ ] 没有 HITL(Human-in-the-loop) ， 而且工具执行没有用户授权鉴权的逻辑，Agent 执行过程中也不能主动询问用户或阻塞等待用户相应， 期望 HITL 是可以持久化的状态，即是否授权 or 用户 feedback 之前状态是暂停的，用户操作后状态恢复继续执行，不会因页面刷新或网络中断等问题重置或丢失
 - [ ] config yaml 支持 Jinja2 模版，可以支持条件表达式/loop 等
-- [ ] 支持 deepseek thinking 模式 (https://api-docs.deepseek.com/zh-cn/guides/thinking_mode) ； 支持 reasoning_content 字段的处理
+- [x] 支持 deepseek thinking 模式 (https://api-docs.deepseek.com/zh-cn/guides/thinking_mode) ； 支持 reasoning_content 字段的处理
 
 - [ ] system prompt 中强调所有 path 相关参数使用绝对路径
 

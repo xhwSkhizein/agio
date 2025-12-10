@@ -53,7 +53,7 @@ class OpenAIModel(Model):
     def model_post_init(self, __context) -> None:
         """Initialize AsyncOpenAI client after model creation."""
         from agio.config import settings
-        
+
         # Resolve API Key: argument > config > env
         resolved_api_key = None
         if self.api_key:
@@ -130,6 +130,10 @@ class OpenAIModel(Model):
                 if delta.content:
                     stream_chunk.content = delta.content
 
+                # Handle reasoning_content (DeepSeek thinking mode)
+                if hasattr(delta, "reasoning_content") and delta.reasoning_content:
+                    stream_chunk.reasoning_content = delta.reasoning_content
+
                 if delta.tool_calls:
                     stream_chunk.tool_calls = [tc.model_dump() for tc in delta.tool_calls]
 
@@ -138,6 +142,7 @@ class OpenAIModel(Model):
 
             if (
                 stream_chunk.content is not None
+                or stream_chunk.reasoning_content is not None
                 or stream_chunk.tool_calls is not None
                 or stream_chunk.usage is not None
             ):

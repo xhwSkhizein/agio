@@ -46,6 +46,9 @@ class StepDelta(BaseModel):
     """
 
     content: str | None = None  # Text to append
+    reasoning_content: str | None = (
+        None  # Reasoning content to append (e.g., DeepSeek thinking mode)
+    )
     tool_calls: list[dict] | None = None  # Tool calls to append/update
 
 

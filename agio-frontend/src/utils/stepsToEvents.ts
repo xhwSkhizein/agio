@@ -12,6 +12,7 @@ export interface TimelineEvent {
   id: string
   type: 'user' | 'assistant' | 'tool' | 'error'
   content?: string
+  reasoning_content?: string
   toolName?: string
   toolArgs?: string
   toolResult?: string
@@ -40,6 +41,7 @@ export interface BackendStep {
   sequence: number
   role: 'user' | 'assistant' | 'tool'
   content: string | null
+  reasoning_content?: string | null
   // Assistant step: list of tool calls to execute
   tool_calls?: Array<{
     id: string
@@ -110,11 +112,12 @@ export function stepsToEvents(steps: BackendStep[]): TimelineEvent[] {
       })
     } else if (step.role === 'assistant') {
       // Add assistant text content if present
-      if (step.content) {
+      if (step.content || step.reasoning_content) {
         events.push({
           id: step.id,
           type: 'assistant',
-          content: step.content,
+          content: step.content || undefined,
+          reasoning_content: step.reasoning_content || undefined,
           timestamp: new Date(step.created_at).getTime(),
         })
       }

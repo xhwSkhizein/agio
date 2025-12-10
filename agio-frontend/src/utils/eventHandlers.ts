@@ -45,6 +45,7 @@ interface SSEEventData {
   }
   delta?: {
     content?: string
+    reasoning_content?: string
     tool_calls?: Array<{
       id?: string
       index?: number
@@ -57,6 +58,7 @@ interface SSEEventData {
   snapshot?: {
     role?: string
     content?: string
+    reasoning_content?: string
     tool_calls?: Array<{
       id?: string
       index?: number
@@ -86,7 +88,8 @@ export function handleStepDelta(
   newEvents: TimelineEvent[],
   toolCallTracker: ToolCallTracker,
   streamingContentRef: { [stepId: string]: string },
-  parentStepIdForBatches: Map<string, string>
+  parentStepIdForBatches: Map<string, string>,
+  streamingReasoningContentRef?: { [stepId: string]: string }
 ): TimelineEvent[] {
   const stepId = data.step_id || 'unknown'
 
@@ -112,6 +115,28 @@ export function handleStepDelta(
     }
   }
 
+  // Handle reasoning_content
+  if (data.delta?.reasoning_content && streamingReasoningContentRef) {
+    const accumulatedReasoning = streamingReasoningContentRef[stepId] || ''
+
+    const existingIdx = newEvents.findIndex(e => e.type === 'assistant' && e.id === stepId)
+    if (existingIdx !== -1) {
+      // Update existing assistant event with accumulated reasoning content
+      newEvents[existingIdx] = {
+        ...newEvents[existingIdx],
+        reasoning_content: accumulatedReasoning,
+      }
+    } else {
+      // Create new assistant event with reasoning content
+      newEvents.push({
+        id: stepId,
+        type: 'assistant',
+        reasoning_content: accumulatedReasoning,
+        timestamp: Date.now(),
+      })
+    }
+  }
+
   // Handle tool calls in delta - use index to track, not id
   // OpenAI streaming: id only appears in first chunk, subsequent chunks only have index
   if (data.delta?.tool_calls) {
@@ -132,9 +157,9 @@ export function handleStepDelta(
           const deltaName = toolCall.function?.name || ''
           newEvents[eventIdx] = {
             ...existing,
-            toolName: deltaName
-              ? (existing.toolName ? existing.toolName + deltaName : deltaName)
-              : existing.toolName,
+            // toolName should be replaced, not accumulated (name comes complete in first chunk)
+            toolName: deltaName || existing.toolName,
+            // toolArgs are streamed JSON strings - accumulate them
             toolArgs: (existing.toolArgs || '') + deltaArgs,
           }
           // Update tool_call_id if we receive it
@@ -181,19 +206,49 @@ export function handleStepCompleted(
     return newEvents
   }
 
-  // Handle assistant step completion - update metrics and finalize tool calls
+  // Handle assistant step completion - update metrics, content, and finalize tool calls
   if (snapshot.role === 'assistant') {
     const assistantIdx = newEvents.findIndex(e => e.id === stepId)
-    if (assistantIdx !== -1 && snapshot.metrics) {
-      newEvents[assistantIdx] = {
-        ...newEvents[assistantIdx],
-        metrics: {
+    if (assistantIdx !== -1) {
+      // Update metrics if available
+      const updates: Partial<TimelineEvent> = {}
+      if (snapshot.metrics) {
+        updates.metrics = {
           input_tokens: snapshot.metrics.input_tokens,
           output_tokens: snapshot.metrics.output_tokens,
           total_tokens: snapshot.metrics.total_tokens,
           duration_ms: snapshot.metrics.duration_ms,
         }
       }
+      // Update content with snapshot (snapshot is the final complete version)
+      // Only update if snapshot has content and it's different from current
+      if (snapshot.content !== undefined && snapshot.content !== newEvents[assistantIdx].content) {
+        updates.content = snapshot.content
+      }
+      // Update reasoning_content if present
+      if (snapshot.reasoning_content !== undefined) {
+        updates.reasoning_content = snapshot.reasoning_content
+      }
+      newEvents[assistantIdx] = {
+        ...newEvents[assistantIdx],
+        ...updates,
+      }
+    } else if (snapshot.content || snapshot.reasoning_content) {
+      // Assistant event doesn't exist but snapshot has content - create it
+      // This shouldn't happen normally (step_delta should create it first)
+      newEvents.push({
+        id: stepId,
+        type: 'assistant',
+        content: snapshot.content,
+        reasoning_content: snapshot.reasoning_content,
+        timestamp: Date.now(),
+        metrics: snapshot.metrics ? {
+          input_tokens: snapshot.metrics.input_tokens,
+          output_tokens: snapshot.metrics.output_tokens,
+          total_tokens: snapshot.metrics.total_tokens,
+          duration_ms: snapshot.metrics.duration_ms,
+        } : undefined,
+      })
     }
 
     // Track this step_id as the parent step that triggered parallel calls
@@ -221,11 +276,13 @@ export function handleStepCompleted(
         }
 
         if (toolIdx !== -1) {
-          // Update existing
+          // Update existing tool call with snapshot data (snapshot is final complete version)
+          // Replace args instead of accumulating to avoid duplication
           newEvents[toolIdx] = {
             ...newEvents[toolIdx],
             id: tc.id,
             toolName: tc.function?.name || newEvents[toolIdx].toolName,
+            // Use snapshot args (complete) instead of accumulating
             toolArgs: tc.function?.arguments || newEvents[toolIdx].toolArgs,
           }
         } else {

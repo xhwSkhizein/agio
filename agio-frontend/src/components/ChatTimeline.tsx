@@ -83,6 +83,20 @@ export function ChatTimeline({
               </div>
             ) : (
               <div>
+                {/* Reasoning content (thinking mode) - shown before main content */}
+                {event.type === 'assistant' && event.reasoning_content && (
+                  <div className="mb-2 rounded-lg border border-blue-500/30 bg-blue-500/10 p-2">
+                    <details className="group">
+                      <summary className="cursor-pointer text-[10px] text-blue-400 font-medium flex items-center gap-1.5 hover:text-blue-300">
+                        <span className="transition-transform group-open:rotate-90">▶</span>
+                        <span>思考过程 (Thinking)</span>
+                      </summary>
+                      <div className="mt-2 text-[10px] text-blue-300/80 leading-relaxed">
+                        <MessageContent content={event.reasoning_content} />
+                      </div>
+                    </details>
+                  </div>
+                )}
                 <div className={`text-xs leading-relaxed ${
                   event.type === 'error' ? 'text-red-400' :
                   event.type === 'user' ? 'text-white font-medium' : 'text-gray-300'

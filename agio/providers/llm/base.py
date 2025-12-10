@@ -29,6 +29,9 @@ class StreamChunk(BaseModel):
     model_config = ConfigDict(frozen=False)
 
     content: str | None = Field(default=None, description="Text content delta")
+    reasoning_content: str | None = Field(
+        default=None, description="Reasoning content delta (e.g., DeepSeek thinking mode)"
+    )
     tool_calls: list[dict] | None = Field(default=None, description="Tool calls delta (OpenAI format)")
     usage: dict[str, int] | None = Field(
         default=None,

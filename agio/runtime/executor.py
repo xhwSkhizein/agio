@@ -113,7 +113,7 @@ class StepExecutor:
         self.model = model
         self.tools = tools
         self.tool_executor = ToolExecutor(tools)
-        
+
         # Import here to avoid circular dependency
         from agio.config import ExecutionConfig
         self.config = config or ExecutionConfig()
@@ -160,7 +160,7 @@ class StepExecutor:
                 run_id=run_id,
                 tool_count=len(pending_tool_calls),
             )
-            
+
             async for event, new_seq in self._execute_tool_calls(
                 pending_tool_calls, session_id, run_id, current_sequence, messages, abort_signal, wire,
                 depth=depth, parent_run_id=parent_run_id, nested_runnable_id=nested_runnable_id,
@@ -175,7 +175,7 @@ class StepExecutor:
             if abort_signal and abort_signal.is_aborted():
                 logger.info("step_executor_aborted", reason=abort_signal.reason)
                 raise asyncio.CancelledError(abort_signal.reason or "Execution aborted")
-            
+
             current_step += 1
             step_start_time = time.time()
 
@@ -200,13 +200,16 @@ class StepExecutor:
             )
 
             full_content = ""
+            full_reasoning_content = ""
             accumulator = ToolCallAccumulator()
             first_token_time = None
             usage_data = None
 
             # Stream LLM response
             async for chunk in self.model.arun_stream(messages, tools=tool_schemas):
-                if first_token_time is None and (chunk.content or chunk.tool_calls):
+                if first_token_time is None and (
+                    chunk.content or chunk.reasoning_content or chunk.tool_calls
+                ):
                     first_token_time = time.time()
 
                 if chunk.content:
@@ -215,6 +218,17 @@ class StepExecutor:
                         step_id=assistant_step.id,
                         run_id=run_id,
                         delta=StepDelta(content=chunk.content),
+                        depth=depth,
+                        parent_run_id=parent_run_id,
+                        nested_runnable_id=nested_runnable_id,
+                    )
+
+                if chunk.reasoning_content:
+                    full_reasoning_content += chunk.reasoning_content
+                    yield create_step_delta_event(
+                        step_id=assistant_step.id,
+                        run_id=run_id,
+                        delta=StepDelta(reasoning_content=chunk.reasoning_content),
                         depth=depth,
                         parent_run_id=parent_run_id,
                         nested_runnable_id=nested_runnable_id,
@@ -239,6 +253,7 @@ class StepExecutor:
             final_tool_calls = accumulator.finalize()
 
             assistant_step.content = full_content or None
+            assistant_step.reasoning_content = full_reasoning_content or None
             assistant_step.tool_calls = final_tool_calls or None
 
             if assistant_step.metrics:
@@ -328,7 +343,7 @@ class StepExecutor:
             tool_calls, abort_signal=abort_signal, wire=wire, session_id=session_id,
             parent_run_id=run_id,  # Pass current run_id as parent for nested RunnableTool
         )
-        
+
         for result in results:
             tool_step = Step(
                 id=str(uuid4()),
@@ -344,10 +359,10 @@ class StepExecutor:
                     tool_exec_time_ms=result.duration * 1000 if result.duration else None,
                 ),
             )
-            
+
             messages.append(StepAdapter.to_llm_message(tool_step))
             current_sequence += 1
-            
+
             yield create_step_completed_event(
                 step_id=tool_step.id, 
                 run_id=run_id, 

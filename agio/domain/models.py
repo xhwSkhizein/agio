@@ -125,6 +125,7 @@ class Step(BaseModel):
     # --- Core Content (Standard LLM Message) ---
     role: MessageRole
     content: str | None = None
+    reasoning_content: str | None = None  # Reasoning content (e.g., DeepSeek thinking mode)
 
     # Assistant-specific fields
     tool_calls: list[dict] | None = None
