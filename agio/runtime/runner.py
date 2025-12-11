@@ -51,6 +51,7 @@ logger = get_logger(__name__)
 
 class TerminationSummaryResult(NamedTuple):
     """Result from termination summary generation."""
+
     summary: str
     tokens_used: int
     prompt_tokens_used: int
@@ -87,6 +88,7 @@ class StepRunner:
 
         # Import here to avoid circular dependency
         from agio.config import ExecutionConfig
+
         self.config = config or ExecutionConfig()
 
     async def run(
@@ -99,7 +101,7 @@ class StepRunner:
     ) -> "RunOutput":
         """
         Execute Agent, writing all events to Wire.
-        
+
         Wire is created at API entry point and passed here.
         Events are written to wire, which is consumed by API layer.
 
@@ -109,11 +111,12 @@ class StepRunner:
             wire: Event streaming channel (created by API layer)
             abort_signal: Abort signal
             context: Execution context
-            
+
         Returns:
             RunOutput with response and metrics
         """
         from agio.workflow.protocol import RunOutput, RunMetrics
+
         # 1. Create Run
         run = AgentRun(
             id=str(uuid4()),
@@ -139,9 +142,9 @@ class StepRunner:
         nested_runnable_id = context.nested_runnable_id if context else None
 
         logger.info(
-            "run_started", 
-            run_id=run.id, 
-            session_id=session.session_id, 
+            "run_started",
+            run_id=run.id,
+            session_id=session.session_id,
             query=query,
             depth=depth,
             parent_run_id=parent_run_id,
@@ -149,14 +152,16 @@ class StepRunner:
         )
 
         # 2. Send Run started event with nested context
-        await wire.write(create_run_started_event(
-            run_id=run.id, 
-            query=query, 
-            session_id=session.session_id,
-            depth=depth,
-            parent_run_id=parent_run_id,
-            nested_runnable_id=nested_runnable_id,
-        ))
+        await wire.write(
+            create_run_started_event(
+                run_id=run.id,
+                query=query,
+                session_id=session.session_id,
+                depth=depth,
+                parent_run_id=parent_run_id,
+                nested_runnable_id=nested_runnable_id,
+            )
+        )
 
         # 3. Create User Step
         user_step = Step(
@@ -216,6 +221,9 @@ class StepRunner:
                 parent_run_id=parent_run_id,
                 nested_runnable_id=nested_runnable_id,
             ):
+                # Write event to wire
+                await wire.write(event)
+                # handle Completed event
                 if event.type == StepEventType.STEP_COMPLETED and event.snapshot:
                     step = event.snapshot
 
@@ -243,9 +251,6 @@ class StepRunner:
                     elif step.role.value == "tool":
                         # Tool result received, clear pending
                         pending_tool_calls = None
-
-                # Write event to wire
-                await wire.write(event)
 
             # 7. Complete
             run.status = RunStatus.COMPLETED
@@ -294,20 +299,22 @@ class StepRunner:
                 termination_reason=termination_reason,
             )
 
-            await wire.write(create_run_completed_event(
-                run_id=run.id,
-                response=run.response_content or "",
-                metrics={
-                    "duration": run.metrics.duration,
-                    "tool_calls_count": run.metrics.tool_calls_count,
-                    "total_tokens": run.metrics.total_tokens,
-                },
-                termination_reason=termination_reason,
-                max_steps=self.config.max_steps if termination_reason else None,
-                depth=depth,
-                parent_run_id=parent_run_id,
-                nested_runnable_id=nested_runnable_id,
-            ))
+            await wire.write(
+                create_run_completed_event(
+                    run_id=run.id,
+                    response=run.response_content or "",
+                    metrics={
+                        "duration": run.metrics.duration,
+                        "tool_calls_count": run.metrics.tool_calls_count,
+                        "total_tokens": run.metrics.total_tokens,
+                    },
+                    termination_reason=termination_reason,
+                    max_steps=self.config.max_steps if termination_reason else None,
+                    depth=depth,
+                    parent_run_id=parent_run_id,
+                    nested_runnable_id=nested_runnable_id,
+                )
+            )
 
             if self.session_store:
                 await self.session_store.save_run(run)
@@ -337,13 +344,15 @@ class StepRunner:
             if self.session_store:
                 await self.session_store.save_run(run)
 
-            await wire.write(create_run_failed_event(
-                run_id=run.id, 
-                error=f"Run was cancelled: {reason}",
-                depth=depth,
-                parent_run_id=parent_run_id,
-                nested_runnable_id=nested_runnable_id,
-            ))
+            await wire.write(
+                create_run_failed_event(
+                    run_id=run.id,
+                    error=f"Run was cancelled: {reason}",
+                    depth=depth,
+                    parent_run_id=parent_run_id,
+                    nested_runnable_id=nested_runnable_id,
+                )
+            )
             return RunOutput(
                 run_id=run.id,
                 session_id=session.session_id,
@@ -359,13 +368,15 @@ class StepRunner:
             if self.session_store:
                 await self.session_store.save_run(run)
 
-            await wire.write(create_run_failed_event(
-                run_id=run.id, 
-                error=str(e),
-                depth=depth,
-                parent_run_id=parent_run_id,
-                nested_runnable_id=nested_runnable_id,
-            ))
+            await wire.write(
+                create_run_failed_event(
+                    run_id=run.id,
+                    error=str(e),
+                    depth=depth,
+                    parent_run_id=parent_run_id,
+                    nested_runnable_id=nested_runnable_id,
+                )
+            )
             raise e
         finally:
             clear_tracking_context()
@@ -392,10 +403,10 @@ class StepRunner:
     ) -> TerminationSummaryResult:
         """
         Generate summary when execution is terminated.
-        
+
         This continues the conversation by appending appropriate messages,
         saves the new steps, and sends wire events.
-        
+
         Args:
             session: Current session
             run: Current run
@@ -404,7 +415,7 @@ class StepRunner:
             pending_tool_calls: Unprocessed tool calls if any
             wire: Wire for event streaming
             current_sequence: Current sequence number
-            
+
         Returns:
             TerminationSummaryResult with summary and metrics
         """
@@ -435,16 +446,21 @@ class StepRunner:
                 if self.session_store:
                     await self.session_store.save_step(tool_step)
 
-                await wire.write(StepEvent(
-                    type=StepEventType.STEP_COMPLETED,
-                    run_id=run.id,
-                    snapshot=tool_step,
-                ))
+                await wire.write(
+                    StepEvent(
+                        type=StepEventType.STEP_COMPLETED,
+                        run_id=run.id,
+                        snapshot=tool_step,
+                    )
+                )
 
                 next_sequence += 1
 
         # 2. Add user message requesting summary
-        from agio.runtime.summarizer import DEFAULT_TERMINATION_USER_PROMPT, _format_termination_reason
+        from agio.runtime.summarizer import (
+            DEFAULT_TERMINATION_USER_PROMPT,
+            _format_termination_reason,
+        )
 
         prompt_template = self.config.termination_summary_prompt or DEFAULT_TERMINATION_USER_PROMPT
         user_prompt = prompt_template.format(
@@ -462,11 +478,13 @@ class StepRunner:
         if self.session_store:
             await self.session_store.save_step(user_step)
 
-        await wire.write(StepEvent(
-            type=StepEventType.STEP_COMPLETED,
-            run_id=run.id,
-            snapshot=user_step,
-        ))
+        await wire.write(
+            StepEvent(
+                type=StepEventType.STEP_COMPLETED,
+                run_id=run.id,
+                snapshot=user_step,
+            )
+        )
 
         next_sequence += 1
 
@@ -478,18 +496,22 @@ class StepRunner:
             for tool_call in pending_tool_calls:
                 call_id = tool_call.get("id", "unknown")
                 tool_name = tool_call.get("function", {}).get("name", "unknown")
-                summary_messages.append({
-                    "role": "tool",
-                    "tool_call_id": call_id,
-                    "name": tool_name,
-                    "content": f"[Execution interrupted: {termination_reason}. This tool call was not executed.]",
-                })
+                summary_messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call_id,
+                        "name": tool_name,
+                        "content": f"[Execution interrupted: {termination_reason}. This tool call was not executed.]",
+                    }
+                )
 
         # Add user summary request
-        summary_messages.append({
-            "role": "user",
-            "content": user_prompt,
-        })
+        summary_messages.append(
+            {
+                "role": "user",
+                "content": user_prompt,
+            }
+        )
 
         logger.debug(
             "generating_termination_summary",
@@ -504,10 +526,10 @@ class StepRunner:
             summary = response.content if response.content else ""
 
             # Track token usage
-            if hasattr(response, 'usage') and response.usage:
-                tokens_used = getattr(response.usage, 'total_tokens', 0)
-                prompt_tokens_used = getattr(response.usage, 'prompt_tokens', 0)
-                completion_tokens_used = getattr(response.usage, 'completion_tokens', 0)
+            if hasattr(response, "usage") and response.usage:
+                tokens_used = getattr(response.usage, "total_tokens", 0)
+                prompt_tokens_used = getattr(response.usage, "prompt_tokens", 0)
+                completion_tokens_used = getattr(response.usage, "completion_tokens", 0)
 
             logger.info(
                 "termination_summary_generated",
@@ -536,21 +558,27 @@ class StepRunner:
             sequence=next_sequence,
             role=MessageRole.ASSISTANT,
             content=summary,
-            metrics=StepMetrics(
-                total_tokens=tokens_used,
-                input_tokens=prompt_tokens_used,
-                output_tokens=completion_tokens_used,
-            ) if tokens_used > 0 else None,
+            metrics=(
+                StepMetrics(
+                    total_tokens=tokens_used,
+                    input_tokens=prompt_tokens_used,
+                    output_tokens=completion_tokens_used,
+                )
+                if tokens_used > 0
+                else None
+            ),
         )
 
         if self.session_store:
             await self.session_store.save_step(assistant_step)
 
-        await wire.write(StepEvent(
-            type=StepEventType.STEP_COMPLETED,
-            run_id=run.id,
-            snapshot=assistant_step,
-        ))
+        await wire.write(
+            StepEvent(
+                type=StepEventType.STEP_COMPLETED,
+                run_id=run.id,
+                snapshot=assistant_step,
+            )
+        )
 
         return TerminationSummaryResult(
             summary=summary,
@@ -598,8 +626,11 @@ class StepRunner:
 
         try:
             async for event in executor.execute(
-                session_id=session_id, run_id=run_id, messages=messages, 
-                start_sequence=start_sequence, wire=wire
+                session_id=session_id,
+                run_id=run_id,
+                messages=messages,
+                start_sequence=start_sequence,
+                wire=wire,
             ):
                 if event.type == StepEventType.STEP_COMPLETED and event.snapshot:
                     await self.session_store.save_step(event.snapshot)
@@ -617,11 +648,13 @@ class StepRunner:
             run.metrics.duration = run.metrics.end_time - run.metrics.start_time
             await self.session_store.save_run(run)
 
-            await wire.write(create_run_completed_event(
-                run_id=run.id, 
-                response=response_content or "",
-                metrics={"duration": run.metrics.duration}
-            ))
+            await wire.write(
+                create_run_completed_event(
+                    run_id=run.id,
+                    response=response_content or "",
+                    metrics={"duration": run.metrics.duration},
+                )
+            )
             return RunOutput(
                 response=response_content,
                 run_id=run_id,
@@ -683,9 +716,9 @@ class StepRunner:
 
         try:
             async for event in executor.execute(
-                session_id=session_id, 
-                run_id=run_id, 
-                messages=messages, 
+                session_id=session_id,
+                run_id=run_id,
+                messages=messages,
                 start_sequence=start_sequence,
                 pending_tool_calls=last_step.tool_calls,
                 wire=wire,
@@ -706,11 +739,13 @@ class StepRunner:
             run.metrics.duration = run.metrics.end_time - run.metrics.start_time
             await self.session_store.save_run(run)
 
-            await wire.write(create_run_completed_event(
-                run_id=run.id, 
-                response=response_content or "",
-                metrics={"duration": run.metrics.duration}
-            ))
+            await wire.write(
+                create_run_completed_event(
+                    run_id=run.id,
+                    response=response_content or "",
+                    metrics={"duration": run.metrics.duration},
+                )
+            )
             return RunOutput(
                 response=response_content,
                 run_id=run_id,

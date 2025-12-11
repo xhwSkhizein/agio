@@ -1,7 +1,7 @@
 type: agent
 name: simple_assistant
 description: "Simple general-purpose assistant"
-model: deepseek
+model: deepseek-reasoner
 system_prompt: "You are a helpful assistant. Answer questions clearly and concisely."
 tools: []
 session_store: mongodb_session_store

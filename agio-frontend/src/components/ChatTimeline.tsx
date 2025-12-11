@@ -89,7 +89,7 @@ export function ChatTimeline({
                     <details className="group">
                       <summary className="cursor-pointer text-[10px] text-blue-400 font-medium flex items-center gap-1.5 hover:text-blue-300">
                         <span className="transition-transform group-open:rotate-90">▶</span>
-                        <span>思考过程 (Thinking)</span>
+                        <span>Thinking</span>
                       </summary>
                       <div className="mt-2 text-[10px] text-blue-300/80 leading-relaxed">
                         <MessageContent content={event.reasoning_content} />

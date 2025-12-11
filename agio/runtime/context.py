@@ -6,7 +6,7 @@ This module provides context building from Steps using the StepAdapter.
 
 from typing import TYPE_CHECKING
 
-from agio.domain import Step, StepAdapter
+from agio.domain import StepAdapter
 from agio.utils.logging import get_logger
 
 if TYPE_CHECKING:
@@ -123,40 +123,8 @@ def validate_context(messages: list[dict]) -> bool:
     return True
 
 
-async def get_context_summary(
-    session_id: str,
-    session_store: "SessionStore",
-) -> dict:
-    """
-    Get a summary of the context without building full messages.
-
-    Args:
-        session_id: Session ID
-        session_store: Repository
-
-    Returns:
-        dict: Summary with counts and stats
-    """
-    steps = await session_store.get_steps(session_id)
-
-    return {
-        "total_steps": len(steps),
-        "user_steps": sum(1 for s in steps if s.is_user_step()),
-        "assistant_steps": sum(1 for s in steps if s.is_assistant_step()),
-        "tool_steps": sum(1 for s in steps if s.is_tool_step()),
-        "total_tool_calls": sum(
-            len(s.tool_calls) for s in steps if s.is_assistant_step() and s.tool_calls
-        ),
-        "sequence_range": {
-            "min": steps[0].sequence if steps else None,
-            "max": steps[-1].sequence if steps else None,
-        },
-    }
-
-
 __all__ = [
     "build_context_from_steps",
     "build_context_from_sequence_range",
     "validate_context",
-    "get_context_summary",
 ]
