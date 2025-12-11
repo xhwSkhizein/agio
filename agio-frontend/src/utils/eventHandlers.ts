@@ -6,13 +6,6 @@ import type { MutableRefObject } from 'react'
 import type { TimelineEvent, ToolCallTracker } from '../types/chat'
 import type { WorkflowNode } from '../types/workflow'
 import { generateId } from '../types/chat'
-import {
-  handleNestedRunStarted,
-  handleNestedRunCompleted,
-  handleNestedStepDelta,
-  handleNestedStepCompleted,
-} from './nestedExecutionHandlers'
-import type { NestedExecutionMap } from '../types/chat'
 
 interface SSEEventData {
   step_id?: string

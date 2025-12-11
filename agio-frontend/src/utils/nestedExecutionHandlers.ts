@@ -186,7 +186,9 @@ export function handleNestedRunCompleted(
 export function handleNestedStepDelta(
   data: SSEEventData,
   tracking: NestedExecutionMap,
-  newEvents: TimelineEvent[]
+  newEvents: TimelineEvent[],
+  nestedStreamingContentRef?: { [key: string]: string },
+  nestedStreamingReasoningContentRef?: { [key: string]: string }
 ): TimelineEvent[] {
   const parentRunId = data.parent_run_id
   const nestedRunId = data.run_id
@@ -225,44 +227,50 @@ export function handleNestedStepDelta(
     batch.executionIds.add(nestedRunId)
   }
 
-  // Handle assistant content - accumulate by step_id
-  if (data.delta?.content) {
+  // Handle assistant content - use accumulated content from ref (similar to main events)
+  // This ensures consistency and prevents duplicate accumulation
+  const contentKey = `${nestedRunId}_${stepId}`
+  const reasoningKey = `${nestedRunId}_${stepId}_reasoning`
+  
+  if (nestedStreamingContentRef && nestedStreamingContentRef[contentKey] !== undefined) {
+    const accumulatedContent = nestedStreamingContentRef[contentKey]
     const existingStep = exec.steps.find(
       s => s.type === 'assistant_content' && s.stepId === stepId
     ) as Extract<NestedStep, { type: 'assistant_content' }> | undefined
 
     if (existingStep) {
-      // Accumulate content
-      existingStep.content += data.delta.content
+      // Replace with accumulated content (don't append)
+      existingStep.content = accumulatedContent
     } else {
-      // Create new assistant content step
+      // Create new assistant content step with accumulated content
       exec.steps.push({
         type: 'assistant_content',
         stepId,
-        content: data.delta.content,
+        content: accumulatedContent,
       })
     }
   }
 
-  // Handle reasoning_content - accumulate by step_id
-  if (data.delta?.reasoning_content) {
+  // Handle reasoning_content - use accumulated content from ref
+  if (nestedStreamingReasoningContentRef && nestedStreamingReasoningContentRef[reasoningKey] !== undefined) {
+    const accumulatedReasoning = nestedStreamingReasoningContentRef[reasoningKey]
     const existingStep = exec.steps.find(
       s => s.type === 'assistant_content' && s.stepId === stepId
     ) as Extract<NestedStep, { type: 'assistant_content' }> | undefined
 
     if (existingStep) {
-      // Accumulate reasoning_content
-      if (!existingStep.reasoning_content) {
-        existingStep.reasoning_content = ''
-      }
-      existingStep.reasoning_content += data.delta.reasoning_content
+      // Replace with accumulated reasoning content
+      existingStep.reasoning_content = accumulatedReasoning
     } else {
       // Create new assistant content step with reasoning_content
+      // If content also exists, use it; otherwise use empty string
+      const contentKey = `${nestedRunId}_${stepId}`
+      const existingContent = nestedStreamingContentRef?.[contentKey] || ''
       exec.steps.push({
         type: 'assistant_content',
         stepId,
-        content: '',
-        reasoning_content: data.delta.reasoning_content,
+        content: existingContent,
+        reasoning_content: accumulatedReasoning,
       })
     }
   }
