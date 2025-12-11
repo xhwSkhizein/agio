@@ -28,6 +28,10 @@ class StepAdapter:
         if step.content is not None:
             msg["content"] = step.content
 
+        # Include reasoning_content if present (will be handled by DeepseekModel preprocessing)
+        if step.reasoning_content is not None:
+            msg["reasoning_content"] = step.reasoning_content
+
         if step.tool_calls is not None:
             msg["tool_calls"] = step.tool_calls
 
@@ -61,6 +65,7 @@ class StepAdapter:
             sequence=sequence,
             role=MessageRole(msg["role"]),
             content=msg.get("content"),
+            reasoning_content=msg.get("reasoning_content"),
             tool_calls=msg.get("tool_calls"),
             tool_call_id=msg.get("tool_call_id"),
             name=msg.get("name"),
