@@ -451,6 +451,10 @@ class TraceCollector:
             
         Yields:
             StepEvent: 透传原始事件，注入 trace_id/span_id
+            
+        注意：
+        - 嵌套事件（nested_runnable_id 不为 None）会被跳过处理，因为它们已有自己的追踪上下文
+        - 事件会被透传，同时构建 Trace
         """
         # 初始化 Trace
         trace = Trace(
@@ -468,6 +472,12 @@ class TraceCollector:
         
         try:
             async for event in event_stream:
+                # 跳过嵌套事件的处理（它们已有自己的追踪上下文）
+                # 但仍需透传以支持实时流式输出
+                if event.nested_runnable_id:
+                    yield event
+                    continue
+                
                 # 处理事件，更新 Trace
                 current_span = self._process_event(
                     event, trace, span_stack, current_span
@@ -496,7 +506,19 @@ class TraceCollector:
                 trace.complete(status=SpanStatus.OK)
             
             if self.store:
-                await self.store.save_trace(trace)
+                try:
+                    await self.store.save_trace(trace)
+                except Exception as e:
+                    logger.error("trace_save_failed", trace_id=trace.trace_id, error=str(e))
+            
+            # 导出到 OTLP（异步，非阻塞）
+            try:
+                from agio.observability import get_otlp_exporter
+                exporter = get_otlp_exporter()
+                if exporter.enabled:
+                    await exporter.export_trace(trace)
+            except Exception as e:
+                logger.warning("otlp_export_failed", trace_id=trace.trace_id, error=str(e))
     
     def _process_event(
         self,
@@ -627,6 +649,16 @@ class TraceCollector:
                 
             elif step.role.value == "assistant":
                 # LLM 调用 Span
+                from datetime import datetime, timezone, timedelta
+                
+                # 计算真实的开始时间（根据 duration 反推）
+                end_time = datetime.now(timezone.utc)
+                duration_ms = step.metrics.duration_ms if step.metrics else None
+                if duration_ms is not None:
+                    start_time = end_time - timedelta(milliseconds=duration_ms)
+                else:
+                    start_time = end_time
+                
                 span = Span(
                     trace_id=trace.trace_id,
                     parent_span_id=parent.span_id if parent else None,
@@ -643,6 +675,11 @@ class TraceCollector:
                     output_preview=step.content[:self.PREVIEW_LENGTH] 
                         if step.content else None,
                 )
+                span.start_time = start_time
+                span.end_time = end_time
+                span.duration_ms = duration_ms or 0
+                span.status = SpanStatus.OK
+                
                 if step.metrics:
                     span.metrics = {
                         "tokens.input": step.metrics.input_tokens,
@@ -650,8 +687,6 @@ class TraceCollector:
                         "tokens.total": step.metrics.total_tokens,
                         "first_token_ms": step.metrics.first_token_latency_ms,
                     }
-                    span.duration_ms = step.metrics.duration_ms
-                span.complete(status=SpanStatus.OK)
             else:
                 return current_span
             

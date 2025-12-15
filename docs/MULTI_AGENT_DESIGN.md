@@ -61,6 +61,35 @@
 └─────────────────────────────────────────────────────────────┘
 ```
 
+### 1.5 Wire-based 架构
+
+Agio 采用 **Wire-based** 事件流架构，核心设计：
+
+```
+API 入口
+    │
+    ├── 创建 Wire（事件通道）
+    ├── 创建 ExecutionContext（包含 wire）
+    │
+    ▼
+Runnable.run(input, context)
+    │
+    ├── 写入事件到 context.wire
+    ├── 所有嵌套执行共享同一个 wire
+    │
+    ▼
+返回 RunOutput（response + metrics）
+    │
+    ▼
+API 层从 wire.read() 读取事件并流式返回
+```
+
+**优势**：
+- 统一的事件通道，避免 AsyncIterator 链式传递的复杂性
+- 所有嵌套执行共享同一个 Wire，事件自然聚合
+- API 层统一处理事件流，简化 SSE 实现
+- 支持非阻塞执行，执行和流式返回解耦
+
 ---
 
 ## 2. 核心概念与术语
@@ -132,34 +161,43 @@
 ```python
 # agio/workflow/protocol.py
 
-from typing import Protocol, AsyncIterator
+from typing import Protocol
 from dataclasses import dataclass, field
+from agio.runtime.execution_context import ExecutionContext
+
+# RunContext 是 ExecutionContext 的别名（向后兼容）
+RunContext = ExecutionContext
+
 
 @dataclass
-class RunContext:
+class RunMetrics:
+    """执行指标"""
+    duration: float = 0.0  # 秒
+    total_tokens: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    tool_calls_count: int = 0
+    # Workflow 专用
+    iterations: int | None = None
+    stages_executed: int | None = None
+
+
+@dataclass
+class RunOutput:
     """
-    执行上下文 - 携带执行过程中的元数据
+    执行结果
     
-    设计要点：
-    1. 所有字段可选，单独使用 Agent 时可不传
-    2. 预留 trace_id/span_id 为可观测性设计空间
-    3. depth 用于嵌套执行时的层级追踪
+    包含响应和执行指标，替代之前的 str | None 返回类型
     """
-    
-    # Session 隔离：每个 Agent 使用独立 session
+    response: str | None = None
+    run_id: str | None = None
     session_id: str | None = None
-    user_id: str | None = None
+    metrics: RunMetrics = field(default_factory=RunMetrics)
     
-    # 可观测性预留
-    trace_id: str | None = None
-    parent_span_id: str | None = None
-    
-    # 嵌套执行上下文
-    parent_stage_id: str | None = None
-    depth: int = 0
-    
-    # 扩展元数据
-    metadata: dict = field(default_factory=dict)
+    # 额外上下文
+    workflow_id: str | None = None
+    termination_reason: str | None = None  # "max_steps", "max_iterations" 等
+    error: str | None = None
 
 
 class Runnable(Protocol):
@@ -170,6 +208,11 @@ class Runnable(Protocol):
     1. 可以通过统一的 API 调用
     2. 可以互相嵌套组合
     3. 可以作为 Tool 使用（AgentAsTool、WorkflowAsTool）
+    
+    Wire-based 执行架构：
+    - run() 需要 context.wire（必需）
+    - 事件写入到 wire
+    - 返回 RunOutput（response + metrics）
     """
     
     @property
@@ -181,83 +224,78 @@ class Runnable(Protocol):
         self, 
         input: str,
         *,
-        context: RunContext | None = None,
-    ) -> AsyncIterator["StepEvent"]:
+        context: ExecutionContext,  # 必需，包含 wire
+    ) -> RunOutput:
         """
-        执行并返回事件流
+        执行并写入事件到 context.wire
         
         Args:
             input: 构建好的输入字符串
-            context: 可选的执行上下文
+            context: 执行上下文（必需，必须包含 wire）
             
-        Yields:
-            StepEvent: 执行过程中的事件流
+        Returns:
+            RunOutput: 包含响应和执行指标
         """
-        ...
-    
-    @property
-    def last_output(self) -> str | None:
-        """获取最近一次执行的最终输出"""
         ...
 ```
 
 ### 3.2 Agent 实现 Runnable
 
 ```python
-# agio/agent.py - 改造
+# agio/agent.py
 
 class Agent:
     """
     Agent 实现 Runnable 协议
     
-    改造要点：
-    1. 添加 run() 方法实现 Runnable 协议
-    2. 添加 last_output 属性追踪最终输出
-    3. 保留 arun_stream() 作为便捷 API
+    要点：
+    1. run() 方法实现 Runnable 协议
+    2. 使用 context.wire 写入事件
+    3. 返回 RunOutput（response + metrics）
     """
     
     def __init__(
         self,
         model: Model,
         tools: list[BaseTool] | None = None,
-        name: str = "agent",
+        name: str = "agio_agent",
         system_prompt: str | None = None,
         session_store: SessionStore | None = None,
-        # ... 其他现有参数
+        user_id: str | None = None,
     ):
         self._id = name
-        self._last_output: str | None = None
-        # ... 现有初始化逻辑
+        self.model = model
+        self.tools = tools or []
+        self.session_store = session_store
+        self.user_id = user_id
+        self.system_prompt = system_prompt
     
     @property
     def id(self) -> str:
         return self._id
     
-    @property
-    def last_output(self) -> str | None:
-        return self._last_output
-    
     async def run(
         self, 
         input: str,
         *,
-        context: RunContext | None = None,
-    ) -> AsyncIterator[StepEvent]:
+        context: ExecutionContext,  # 必需，包含 wire
+    ) -> RunOutput:
         """
         Runnable 协议实现
         
         执行逻辑：
-        1. input 作为 user message
-        2. 执行 LLM ↔ Tool 循环
-        3. 最后一个无 tool_calls 的 assistant message 作为 final_output
+        1. 使用 context.session_id（必需）
+        2. 创建 StepRunner
+        3. 执行并写入事件到 context.wire
+        4. 返回 RunOutput
         """
-        self._last_output = None
+        from agio.config import ExecutionConfig
+        from agio.runtime import StepRunner
         
-        # 如果有 context，使用其 session_id；否则创建临时 session
-        session_id = context.session_id if context else str(uuid4())
-        user_id = context.user_id if context else self.user_id
+        session_id = context.session_id  # ExecutionContext 保证 session_id 存在
+        current_user_id = context.user_id or self.user_id
         
-        session = AgentSession(session_id=session_id, user_id=user_id)
+        session = AgentSession(session_id=session_id, user_id=current_user_id)
         
         runner = StepRunner(
             agent=self,
@@ -265,72 +303,44 @@ class Agent:
             session_store=self.session_store,
         )
         
-        async for event in runner.run_stream(session, input):
-            # 添加可观测性上下文
-            if context:
-                event.trace_id = context.trace_id
-                event.parent_span_id = context.parent_span_id
-                event.depth = context.depth
-            
-            yield event
-            
-            # 追踪最终输出
-            if event.type == StepEventType.RUN_COMPLETED:
-                self._last_output = event.data.get("response", "")
-    
-    # 保留原有 API 作为便捷方法
-    async def arun_stream(
-        self, 
-        query: str, 
-        user_id: str | None = None, 
-        session_id: str | None = None,
-    ) -> AsyncIterator[StepEvent]:
-        """
-        便捷 API，内部调用 run()
-        
-        保持向后兼容，现有代码无需修改
-        """
-        context = RunContext(
-            session_id=session_id or str(uuid4()),
-            user_id=user_id or self.user_id,
-        )
-        async for event in self.run(query, context=context):
-            yield event
+        # 执行并写入事件到 wire，返回 RunOutput
+        return await runner.run(session, input, context.wire, context=context)
 ```
 
 ### 3.3 StepEvent 扩展
 
 ```python
-# agio/domain/events.py - 扩展
+# agio/domain/events.py
 
 class StepEventType(str, Enum):
     """事件类型"""
     
-    # 现有事件（保持不变）
+    # Step 级别事件
+    STEP_DELTA = "step_delta"  # Step 增量更新
+    STEP_COMPLETED = "step_completed"  # Step 完成（最终快照）
+    
+    # Run 级别事件
     RUN_STARTED = "run_started"
     RUN_COMPLETED = "run_completed"
     RUN_FAILED = "run_failed"
-    STEP_DELTA = "step_delta"
-    STEP_COMPLETED = "step_completed"
-    ERROR = "error"
     
-    # Workflow 事件（新增）
+    # Workflow 事件
     STAGE_STARTED = "stage_started"
     STAGE_COMPLETED = "stage_completed"
-    STAGE_SKIPPED = "stage_skipped"      # 条件不满足时跳过
+    STAGE_SKIPPED = "stage_skipped"  # 条件不满足时跳过
     ITERATION_STARTED = "iteration_started"  # Loop 专用
-    BRANCH_STARTED = "branch_started"    # Parallel 专用
+    BRANCH_STARTED = "branch_started"  # Parallel 专用
     BRANCH_COMPLETED = "branch_completed"
+    
+    # 错误事件
+    ERROR = "error"
 
 
 class StepEvent(BaseModel):
     """
     统一事件模型
     
-    扩展要点：
-    1. 添加 Workflow 上下文字段
-    2. 预留可观测性字段
-    3. 保持向后兼容
+    用于实时流式传输 Agent 执行过程到客户端（通过 SSE）
     """
     
     type: StepEventType
@@ -339,20 +349,31 @@ class StepEvent(BaseModel):
     
     # Step 相关
     step_id: str | None = None
-    delta: StepDelta | None = None
-    snapshot: Step | None = None
-    data: dict | None = None
+    delta: StepDelta | None = None  # STEP_DELTA 使用
+    snapshot: Step | None = None  # STEP_COMPLETED 使用
+    data: dict | None = None  # RUN_* 和 ERROR 事件使用
     
-    # Workflow 上下文（新增）
+    # Workflow 上下文
     stage_id: str | None = None
     branch_id: str | None = None
     iteration: int | None = None
     
-    # 可观测性预留（新增）
+    # Workflow 层级信息（前端构建树结构用）
+    workflow_type: str | None = None  # "pipeline" | "parallel" | "loop"
+    workflow_id: str | None = None
+    parent_run_id: str | None = None
+    stage_name: str | None = None
+    stage_index: int | None = None
+    total_stages: int | None = None
+    
+    # 可观测性
     trace_id: str | None = None
     span_id: str | None = None
     parent_span_id: str | None = None
     depth: int = 0
+    
+    # 嵌套执行上下文
+    nested_runnable_id: str | None = None  # 嵌套的 Agent/Workflow ID
 ```
 
 ---
@@ -794,48 +815,50 @@ class PipelineWorkflow(BaseWorkflow):
     3. 每个 Stage 可引用前面所有 Stage 的输出
     """
     
-    async def run(
+    async def _execute(
         self, 
         input: str, 
         *, 
-        context: RunContext | None = None,
-    ) -> AsyncIterator[StepEvent]:
-        run_id = str(uuid4())
+        context: ExecutionContext,
+    ) -> RunOutput:
+        from agio.workflow.store import OutputStore
+        from agio.workflow.protocol import RunOutput, RunMetrics
+        from agio.runtime.event_factory import EventFactory
+        
         store = OutputStore()
         store.set("query", input)
         
-        # 初始化 trace
-        trace_id = context.trace_id if context else str(uuid4())
+        ef = EventFactory(context)
         
-        yield StepEvent(
-            type=StepEventType.RUN_STARTED, 
-            run_id=run_id,
-            trace_id=trace_id,
-            data={"workflow_id": self._id, "type": "pipeline"},
-        )
+        # 写入 RUN_STARTED 事件
+        await context.wire.write(ef.run_started(input))
         
         final_output = ""
+        stages_executed = 0
         
-        for stage in self._stages:
+        for idx, stage in enumerate(self._stages):
             outputs_dict = store.to_dict()
             
             # 检查条件
             if not stage.should_execute(outputs_dict):
-                yield StepEvent(
-                    type=StepEventType.STAGE_SKIPPED,
-                    run_id=run_id,
+                await context.wire.write(ef.stage_skipped(
                     stage_id=stage.id,
-                    trace_id=trace_id,
-                    data={"condition": stage.condition},
-                )
+                    condition=stage.condition,
+                    stage_index=idx,
+                    total_stages=len(self._stages),
+                    workflow_type="pipeline",
+                    workflow_id=self._id,
+                ))
                 continue
             
-            yield StepEvent(
-                type=StepEventType.STAGE_STARTED,
-                run_id=run_id,
+            # 写入 STAGE_STARTED 事件
+            await context.wire.write(ef.stage_started(
                 stage_id=stage.id,
-                trace_id=trace_id,
-            )
+                stage_index=idx,
+                total_stages=len(self._stages),
+                workflow_type="pipeline",
+                workflow_id=self._id,
+            ))
             
             # 构建输入
             stage_input = stage.get_input_mapping().build(outputs_dict)
@@ -843,48 +866,51 @@ class PipelineWorkflow(BaseWorkflow):
             # 获取 Runnable 实例
             runnable = self._resolve_runnable(stage.runnable)
             
-            # 创建子上下文（独立 session）
+            # 创建子上下文（独立 session，共享 wire）
             child_context = self._create_child_context(context, stage)
-            child_context.trace_id = trace_id
             
-            # 执行
-            stage_output = ""
-            async for event in runnable.run(stage_input, context=child_context):
-                # 添加 stage 上下文
-                event.stage_id = stage.id
-                event.trace_id = trace_id
-                yield event
-                
-                # 提取输出
-                if event.type == StepEventType.RUN_COMPLETED:
-                    stage_output = event.data.get("response", "")
+            # 执行 Runnable（事件写入到共享的 wire）
+            result = await runnable.run(stage_input, context=child_context)
+            stage_output = result.response or ""
             
             # 存储输出
             store.set(stage.id, stage_output)
             final_output = stage_output
+            stages_executed += 1
             
-            yield StepEvent(
-                type=StepEventType.STAGE_COMPLETED,
-                run_id=run_id,
+            # 写入 STAGE_COMPLETED 事件
+            await context.wire.write(ef.stage_completed(
                 stage_id=stage.id,
-                trace_id=trace_id,
                 data={"output_length": len(stage_output)},
-            )
+                stage_index=idx,
+                total_stages=len(self._stages),
+                workflow_type="pipeline",
+                workflow_id=self._id,
+            ))
         
-        self._last_output = final_output
+        # 写入 RUN_COMPLETED 事件
+        metrics = RunMetrics(
+            stages_executed=stages_executed,
+        )
+        await context.wire.write(ef.run_completed(
+            response=final_output,
+            metrics=metrics.__dict__,
+        ))
         
-        yield StepEvent(
-            type=StepEventType.RUN_COMPLETED,
-            run_id=run_id,
-            trace_id=trace_id,
-            data={"response": final_output},
+        return RunOutput(
+            response=final_output,
+            run_id=context.run_id,
+            session_id=context.session_id,
+            workflow_id=self._id,
+            metrics=metrics,
         )
     
     def _resolve_runnable(self, ref: Runnable | str) -> Runnable:
-        """解析 Runnable 引用（由 WorkflowEngine 注入）"""
+        """解析 Runnable 引用"""
         if isinstance(ref, str):
-            # 从注册表获取
-            return self._registry.get(ref)
+            if ref not in self._registry:
+                raise ValueError(f"Runnable not found in registry: {ref}")
+            return self._registry[ref]
         return ref
 ```
 
@@ -1393,8 +1419,9 @@ stages:
 ```python
 # agio/workflow/engine.py
 
-from typing import AsyncIterator
 import yaml
+from agio.workflow.protocol import Runnable, RunContext, RunOutput
+from agio.workflow.base import BaseWorkflow
 
 class WorkflowEngine:
     """
@@ -1423,11 +1450,13 @@ class WorkflowEngine:
         """从 YAML 文件加载 Workflow"""
         with open(config_path) as f:
             config = yaml.safe_load(f)
-        return self._build_workflow(config)
+        return self.load_workflow_from_dict(config)
     
     def load_workflow_from_dict(self, config: dict) -> BaseWorkflow:
         """从字典配置构建 Workflow"""
-        return self._build_workflow(config)
+        workflow = self._build_workflow(config)
+        workflow.set_registry(self._registry)  # 注入注册表
+        return workflow
     
     def _build_workflow(self, config: dict) -> BaseWorkflow:
         """根据配置构建 Workflow"""
@@ -1444,32 +1473,26 @@ class WorkflowEngine:
     
     def _build_pipeline(self, config: dict) -> PipelineWorkflow:
         stages = [self._build_stage(s) for s in config.get("stages", [])]
-        workflow = PipelineWorkflow(id=config["id"], stages=stages)
-        workflow._registry = self._registry  # 注入注册表
-        return workflow
+        return PipelineWorkflow(id=config["id"], stages=stages)
     
     def _build_loop(self, config: dict) -> LoopWorkflow:
         stages = [self._build_stage(s) for s in config.get("stages", [])]
-        workflow = LoopWorkflow(
+        return LoopWorkflow(
             id=config["id"],
             stages=stages,
             condition=config.get("condition", "true"),
             max_iterations=config.get("max_iterations", 10),
         )
-        workflow._registry = self._registry
-        return workflow
     
     def _build_parallel(self, config: dict) -> ParallelWorkflow:
         # parallel 可以用 stages 或 branches
         stages_config = config.get("stages") or config.get("branches", [])
         stages = [self._build_stage(s) for s in stages_config]
-        workflow = ParallelWorkflow(
+        return ParallelWorkflow(
             id=config["id"],
             stages=stages,
             merge_template=config.get("merge_template"),
         )
-        workflow._registry = self._registry
-        return workflow
     
     def _build_stage(self, config: dict) -> Stage:
         """构建 Stage"""
@@ -1477,9 +1500,9 @@ class WorkflowEngine:
         
         # 如果 runnable 是嵌套 workflow 配置（dict）
         if isinstance(runnable_config, dict):
-            runnable = self._build_workflow(runnable_config)
-            self.register(runnable)  # 注册嵌套 workflow
-            runnable_ref = runnable.id
+            nested_workflow = self._build_workflow(runnable_config)
+            self.register(nested_workflow)  # 注册嵌套 workflow
+            runnable_ref = nested_workflow.id
         else:
             runnable_ref = runnable_config
         
@@ -1494,16 +1517,16 @@ class WorkflowEngine:
         self, 
         runnable_id: str, 
         input: str,
-        context: RunContext | None = None,
-    ) -> AsyncIterator[StepEvent]:
+        context: RunContext,  # 必需，包含 wire
+    ) -> RunOutput:
         """
         执行 Runnable（Agent 或 Workflow）
         
-        统一入口，不区分类型
+        统一入口，不区分类型。
+        事件写入到 context.wire，由 API 层读取并流式返回。
         """
         runnable = self.get(runnable_id)
-        async for event in runnable.run(input, context=context):
-            yield event
+        return await runnable.run(input, context=context)
 ```
 
 ### 8.2 与现有配置系统集成
@@ -1726,10 +1749,12 @@ class TraceCollector:
 Agent 和 Workflow 共享同一套 API，通过 `runnable_id` 调用：
 
 ```python
-# agio/api/routes/runnable.py
+# agio/api/routes/runnables.py
 
 from fastapi import APIRouter
 from sse_starlette.sse import EventSourceResponse
+from agio.runtime.wire import Wire
+from agio.runtime.execution_context import ExecutionContext
 
 router = APIRouter(prefix="/runnables", tags=["Runnable"])
 
@@ -1738,28 +1763,55 @@ router = APIRouter(prefix="/runnables", tags=["Runnable"])
 async def run_runnable(
     runnable_id: str,
     request: RunRequest,
+    config_system: ConfigSystem = Depends(get_config_system),
 ):
     """
     执行 Runnable（Agent 或 Workflow）
     
-    统一入口，前端无需区分类型
+    统一入口，前端无需区分类型。
+    使用 Wire-based 架构：创建 Wire，执行写入事件，API 层读取并流式返回。
     """
+    # 创建 Wire（事件通道）
+    wire = Wire()
+    
+    # 创建 ExecutionContext
+    context = ExecutionContext(
+        run_id=str(uuid4()),
+        session_id=request.session_id or str(uuid4()),
+        wire=wire,
+        user_id=request.user_id,
+        trace_id=str(uuid4()),
+    )
+    
+    # 启动执行任务（非阻塞）
+    async def execute():
+        try:
+            engine = config_system.workflow_engine
+            await engine.run(
+                runnable_id=runnable_id,
+                input=request.query,
+                context=context,
+            )
+        finally:
+            await wire.close()
+    
+    task = asyncio.create_task(execute())
+    
+    # 流式返回事件
     async def event_generator():
-        context = RunContext(
-            session_id=request.session_id,
-            user_id=request.user_id,
-            trace_id=str(uuid4()),
-        )
-        
-        async for event in config_loader.engine.run(
-            runnable_id=runnable_id,
-            input=request.query,
-            context=context,
-        ):
-            yield {
-                "event": event.type.value,
-                "data": event.model_dump_json(),
-            }
+        try:
+            async for event in wire.read():
+                yield {
+                    "event": event.type.value,
+                    "data": event.model_dump_json(),
+                }
+        finally:
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
     
     return EventSourceResponse(event_generator())
 

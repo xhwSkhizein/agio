@@ -88,34 +88,135 @@ messages = StepAdapter.steps_to_messages(steps)
 | `runner.py` | StepRunner - 管理 Run 生命周期 |
 | `executor.py` | StepExecutor - LLM 调用循环 |
 | `tool_executor.py` | ToolExecutor - 并行工具执行 |
+| `execution_context.py` | ExecutionContext - 统一执行上下文 |
+| `event_factory.py` | EventFactory - 上下文绑定的事件工厂 |
+| `wire.py` | Wire - 事件流通道 |
 | `context.py` | 从 Steps 构建 LLM 上下文 |
 | `control.py` | AbortSignal, retry_from_sequence, fork_session |
+
+#### ExecutionContext - 统一执行上下文
+
+`ExecutionContext` 是一个不可变的数据类，封装所有执行相关的上下文信息：
+
+```python
+from agio.runtime.execution_context import ExecutionContext
+from agio.runtime.wire import Wire
+
+# 创建顶层执行上下文
+wire = Wire()
+ctx = ExecutionContext(
+    run_id="run-001",
+    session_id="session-001",
+    wire=wire,  # 必需：事件流通道
+    depth=0,  # 嵌套深度
+)
+
+# 创建嵌套执行上下文（用于 Agent 调用 Agent）
+child_ctx = ctx.child(
+    run_id="run-002",
+    nested_runnable_id="research_agent",
+    session_id=str(uuid4()),  # 可选：为嵌套执行创建新 session
+)
+# child_ctx.depth == 1, child_ctx.parent_run_id == "run-001"
+```
+
+**字段说明**：
+- `run_id` - 当前 Run 唯一标识（必需）
+- `session_id` - 会话标识（必需）
+- `wire` - 事件流通道（必需），所有嵌套执行共享同一个 Wire
+- `depth` - 嵌套深度，0 表示顶层
+- `parent_run_id` - 父级 Run ID（嵌套时使用）
+- `nested_runnable_id` - 被嵌套调用的 Runnable ID
+- `parent_stage_id` - 父级 Stage ID（Workflow 中使用）
+- `workflow_id` - Workflow ID（可选）
+- `user_id` - 用户 ID（可选）
+- `trace_id` / `span_id` / `parent_span_id` - 分布式追踪字段
+- `metadata` - 扩展元数据字典
+
+**注意**：`RunContext` 是 `ExecutionContext` 的别名，用于向后兼容。实际代码中统一使用 `ExecutionContext`。
+
+#### EventFactory - 上下文绑定的事件工厂
+
+`EventFactory` 绑定 `ExecutionContext`，简化事件创建：
+
+```python
+from agio.runtime.event_factory import EventFactory
+
+ef = EventFactory(ctx)
+
+# 创建事件无需重复传递上下文参数
+await ctx.wire.write(ef.run_started(query="Hello"))
+await ctx.wire.write(ef.step_delta(step_id, delta))
+await ctx.wire.write(ef.step_completed(step_id, snapshot))
+await ctx.wire.write(ef.run_completed(response="Done", metrics={}))
+```
+
+#### Wire - 事件流通道
+
+`Wire` 是事件流通道，提供统一的异步事件传递机制：
+
+```python
+from agio.runtime.wire import Wire
+
+# 在 API 入口创建 Wire
+wire = Wire()
+
+# 执行过程中写入事件
+await wire.write(event)
+
+# API 层读取事件并流式返回
+async for event in wire.read():
+    yield event
+
+# 执行完成后关闭
+await wire.close()
+```
+
+**设计要点**：
+- 一个 Wire 对应一次顶层执行（在 API 入口创建）
+- 所有嵌套执行共享同一个 Wire
+- 通过 `context.wire` 传递给所有组件
+- 组件直接写入事件到 Wire，而不是 yield
 
 #### 执行流程
 
 ```
-Agent.arun_stream()
+API 入口
+    │
+    ├── 创建 Wire
+    ├── 创建 ExecutionContext (包含 wire)
     │
     ▼
-StepRunner.run_stream()
+Agent.run(input, context)
+    │
+    ▼
+StepRunner.run(session, query, wire, context)
     │
     ├── 创建 AgentRun
+    ├── 创建 ExecutionContext & EventFactory
     ├── 保存 User Step
+    ├── 写入事件到 wire (via EventFactory)
     │
     ▼
-StepExecutor.execute_step()
+StepExecutor.execute(messages, ctx)
     │
     ├── 构建上下文 (context.py)
     ├── 调用 LLM (Model.arun_stream)
-    ├── 流式输出 StepEvent
+    ├── 写入 StepEvent 到 ctx.wire (via EventFactory)
     │
     ▼ (如果有 tool_calls)
 ToolExecutor.execute_tools()
     │
     ├── 并行执行工具
-    ├── 保存 Tool Steps
+    ├── 嵌套 RunnableTool 使用 ctx.child() 创建子上下文
     │
     ▼ (循环直到无 tool_calls)
+    │
+    ▼
+返回 RunOutput (response + metrics)
+    │
+    ▼
+API 层从 wire.read() 读取事件并流式返回
 ```
 
 ### 4. `providers/` - 外部服务适配器

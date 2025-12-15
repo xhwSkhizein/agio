@@ -31,8 +31,11 @@ python main.py  # 监听 0.0.0.0:8900，API 前缀 /agio
 
 ```python
 import asyncio
-from agio import Agent, OpenAIModel, StepEventType
+from agio import Agent, OpenAIModel
 from agio.providers.tools.builtin import FileReadTool, GrepTool
+from agio.runtime.wire import Wire
+from agio.runtime.execution_context import ExecutionContext
+from agio.domain.events import StepEventType
 
 async def main():
     agent = Agent(
@@ -41,9 +44,32 @@ async def main():
         system_prompt="You are a helpful assistant.",
     )
 
-    async for event in agent.arun_stream("Read README.md and summarize"):
-        if event.type == StepEventType.STEP_DELTA:
-            print(event.delta.content, end="")
+    # 创建 Wire 和 ExecutionContext
+    wire = Wire()
+    context = ExecutionContext(
+        run_id="run-001",
+        session_id="session-001",
+        wire=wire,
+    )
+    
+    # 启动执行（非阻塞）
+    async def execute():
+        try:
+            await agent.run("Read README.md and summarize", context=context)
+        finally:
+            await wire.close()
+    
+    task = asyncio.create_task(execute())
+    
+    # 读取事件并打印
+    try:
+        async for event in wire.read():
+            if event.type == StepEventType.STEP_DELTA and event.delta:
+                print(event.delta.content, end="", flush=True)
+    finally:
+        if not task.done():
+            task.cancel()
+            await task
 
 asyncio.run(main())
 ```
@@ -53,14 +79,41 @@ asyncio.run(main())
 ```python
 import asyncio
 from agio.config import init_config_system
+from agio.runtime.wire import Wire
+from agio.runtime.execution_context import ExecutionContext
+from agio.domain.events import StepEventType
 
 async def main():
     config_sys = await init_config_system("./configs")
     agent = config_sys.get("code_assistant")
 
-    async for event in agent.arun_stream("Find logging usage"):
-        if event.type.name == "RUN_COMPLETED":
-            print(event.data.get("response"))
+    # 创建 Wire 和 ExecutionContext
+    wire = Wire()
+    context = ExecutionContext(
+        run_id="run-001",
+        session_id="session-001",
+        wire=wire,
+    )
+    
+    # 启动执行
+    async def execute():
+        try:
+            result = await agent.run("Find logging usage", context=context)
+            print(result.response)
+        finally:
+            await wire.close()
+    
+    task = asyncio.create_task(execute())
+    
+    # 读取事件（可选，用于实时流式输出）
+    try:
+        async for event in wire.read():
+            if event.type == StepEventType.STEP_DELTA and event.delta:
+                print(event.delta.content, end="", flush=True)
+    finally:
+        if not task.done():
+            task.cancel()
+            await task
 
 asyncio.run(main())
 ```
