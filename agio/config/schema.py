@@ -75,6 +75,7 @@ class ComponentType(str, Enum):
     SESSION_STORE = "session_store"
     WORKFLOW = "workflow"
     TRACE_STORE = "trace_store"
+    CITATION_STORE = "citation_store"
 
 
 class ComponentConfig(BaseModel):
@@ -83,6 +84,8 @@ class ComponentConfig(BaseModel):
     type: str
     name: str
     enabled: bool = True
+    description: str | None = None
+    tags: list[str] = Field(default_factory=list)
 
 
 class ModelConfig(ComponentConfig):
@@ -121,10 +124,6 @@ class ToolConfig(ComponentConfig):
         description="Dependencies mapping: {param_name: component_name}",
     )
     
-    # Optional metadata
-    description: str | None = None
-    tags: list[str] | None = None
-    
     @property
     def effective_params(self) -> dict:
         """Get params, defaulting to empty dict if None."""
@@ -134,11 +133,6 @@ class ToolConfig(ComponentConfig):
     def effective_dependencies(self) -> dict[str, str]:
         """Get dependencies, defaulting to empty dict if None."""
         return self.dependencies or {}
-    
-    @property
-    def effective_tags(self) -> list[str]:
-        """Get tags, defaulting to empty list if None."""
-        return self.tags or []
 
 
 class MemoryConfig(ComponentConfig):
@@ -186,6 +180,17 @@ class TraceStoreConfig(ComponentConfig):
     flush_interval: int = Field(default=60, description="Flush interval in seconds")
 
 
+class CitationStoreConfig(ComponentConfig):
+    """Configuration for citation store components"""
+
+    type: Literal["citation_store"] = "citation_store"
+    store_type: str  # "mongodb", "inmemory"
+    
+    # MongoDB specific
+    mongo_uri: str | None = None
+    mongo_db_name: str | None = None
+
+
 class RunnableToolConfig(BaseModel):
     """Configuration for Runnable (Agent/Workflow) as Tool."""
 
@@ -212,9 +217,10 @@ class AgentConfig(ComponentConfig):
 
     system_prompt: str | None = None
     max_steps: int = 10
+    max_tokens: int | None = None
     enable_memory_update: bool = False
     user_id: str | None = None
-    tags: list[str] = Field(default_factory=list)
+    hooks: list[str] = Field(default_factory=list)
 
     # Termination summary configuration
     enable_termination_summary: bool = Field(
@@ -270,6 +276,7 @@ __all__ = [
     "KnowledgeConfig",
     "SessionStoreConfig",
     "TraceStoreConfig",
+    "CitationStoreConfig",
     "AgentConfig",
     "StageConfig",
     "WorkflowConfig",

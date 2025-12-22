@@ -452,7 +452,7 @@ class InMemoryPermissionStore(PermissionStore):
 
 from typing import Optional
 from agio.providers.tools import BaseTool
-from agio.runtime.execution_context import ExecutionContext
+from agio.domain import ExecutionContext
 from agio.domain.interaction import InteractionRequest, InteractionType
 from agio.runtime.permissions import PermissionDecision
 from agio.providers.storage.permissions import PermissionStore
@@ -809,7 +809,7 @@ from agio.utils.logging import get_logger
 if TYPE_CHECKING:
     from agio.providers.tools import BaseTool
     from agio.runtime.control import AbortSignal
-    from agio.runtime.execution_context import ExecutionContext
+    from agio.domain import ExecutionContext
     from agio.runtime.tool_cache import ToolResultCache
 
 logger = get_logger(__name__)
@@ -1633,7 +1633,7 @@ from agio.domain.interaction import InteractionResponse
 from agio.config import ConfigSystem, get_config_system
 from agio.providers.storage.base import SessionStore, get_session_store
 from agio.runtime import Wire
-from agio.runtime.execution_context import ExecutionContext
+from agio.domain import ExecutionContext
 from agio.utils.logging import get_logger
 
 logger = get_logger(__name__)

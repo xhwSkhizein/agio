@@ -212,7 +212,7 @@ class SuspendExecution(Exception):
 from enum import Enum
 from typing import Optional
 from agio.providers.tools import BaseTool
-from agio.runtime.execution_context import ExecutionContext
+from agio.domain import ExecutionContext
 from agio.domain.interaction import InteractionRequest, InteractionType
 
 class PermissionDecision(str, Enum):
@@ -648,7 +648,7 @@ async def resume_from_interaction(
     """
     from agio.domain import RunStatus
     from agio.workflow.protocol import RunOutput, RunMetrics
-    from agio.runtime.execution_context import ExecutionContext
+    from agio.domain import ExecutionContext
     from agio.domain.interaction import InteractionType
     
     # 1. 加载暂停状态
@@ -965,7 +965,7 @@ from agio.domain.interaction import InteractionResponse
 from agio.config import ConfigSystem, get_config_system
 from agio.providers.storage.base import SessionStore, get_session_store
 from agio.runtime import Wire
-from agio.runtime.execution_context import ExecutionContext
+from agio.domain import ExecutionContext
 from uuid import uuid4
 
 router = APIRouter(prefix="/interactions")

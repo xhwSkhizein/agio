@@ -95,6 +95,7 @@ class WaterfallSpan(BaseModel):
     label: str
     sublabel: str | None
     tokens: int | None
+    metrics: dict[str, Any] | None = None
 
 
 class WaterfallData(BaseModel):
@@ -306,6 +307,7 @@ def _build_waterfall(trace: Trace) -> WaterfallData:
                 label=label,
                 sublabel=sublabel,
                 tokens=tokens,
+                metrics=span.metrics or {},
             )
         )
 

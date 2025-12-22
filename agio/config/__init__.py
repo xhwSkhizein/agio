@@ -41,16 +41,30 @@ from agio.config.exceptions import (
     ConfigNotFoundError,
 )
 
+# Core modules
+from agio.config.registry import ConfigRegistry
+from agio.config.container import ComponentContainer, ComponentMetadata
+from agio.config.dependency import DependencyResolver, DependencyNode
+from agio.config.builder_registry import BuilderRegistry
+from agio.config.hot_reload import HotReloadManager
+from agio.config.model_provider_registry import (
+    ModelProviderRegistry,
+    get_model_provider_registry,
+)
+
 # System
 from agio.config.system import (
     ConfigSystem,
     get_config_system,
     init_config_system,
+    reset_config_system,
 )
 
 __all__ = [
-    "ConfigSystem",
-    "get_config_system",
+    # Settings
+    "AgioSettings",
+    "settings",
+    # Schema
     "ComponentType",
     "ComponentConfig",
     "ExecutionConfig",
@@ -68,13 +82,24 @@ __all__ = [
     "AgentConfig",
     "StageConfig",
     "WorkflowConfig",
-    # System
-    "ConfigSystem",
-    "get_config_system",
-    "init_config_system",
     # Exceptions
     "ConfigError",
     "ConfigNotFoundError",
     "ComponentNotFoundError",
     "ComponentBuildError",
+    # Core modules
+    "ConfigRegistry",
+    "ComponentContainer",
+    "ComponentMetadata",
+    "DependencyResolver",
+    "DependencyNode",
+    "BuilderRegistry",
+    "HotReloadManager",
+    "ModelProviderRegistry",
+    "get_model_provider_registry",
+    # System
+    "ConfigSystem",
+    "get_config_system",
+    "init_config_system",
+    "reset_config_system",
 ]

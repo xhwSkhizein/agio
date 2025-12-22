@@ -270,6 +270,14 @@ class TraceCollector:
                 span.end_time = end_time
                 span.duration_ms = duration_ms or 0
                 span.status = SpanStatus.OK
+                
+                if step.metrics:
+                    span.metrics = {
+                        "tool.exec_time_ms": step.metrics.tool_exec_time_ms,
+                        "tool.exec_start_at": step.metrics.tool_exec_start_at,
+                        "tool.exec_end_at": step.metrics.tool_exec_end_at,
+                        "duration_ms": duration_ms,
+                    }
 
             elif step.role.value == "assistant":
                 # LLM 调用 Span
@@ -311,6 +319,9 @@ class TraceCollector:
                         "tokens.output": step.metrics.output_tokens,
                         "tokens.total": step.metrics.total_tokens,
                         "first_token_ms": step.metrics.first_token_latency_ms,
+                        "duration_ms": duration_ms,
+                        "model": step.metrics.model_name,
+                        "provider": step.metrics.provider,
                     }
             else:
                 return current_span

@@ -1,37 +1,35 @@
 """
-ConfigSystem - 配置系统核心入口
+ConfigSystem - 配置系统门面/协调者（重构版）
+
+职责：
+- 协调各模块工作（Registry, Container, DependencyResolver, BuilderRegistry, HotReloadManager）
+- 提供统一的外部接口
+- 处理组件构建流程
 """
 
-from datetime import datetime
+import threading
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-from agio.config.builders import (
-    AgentBuilder,
-    ComponentBuilder,
-    KnowledgeBuilder,
-    MemoryBuilder,
-    ModelBuilder,
-    SessionStoreBuilder,
-    ToolBuilder,
-    TraceStoreBuilder,
-    WorkflowBuilder,
-)
+from agio.config.builder_registry import BuilderRegistry
+from agio.config.container import ComponentContainer, ComponentMetadata
+from agio.config.dependency import DependencyResolver
 from agio.config.exceptions import (
     ComponentBuildError,
     ComponentNotFoundError,
     ConfigNotFoundError,
 )
+from agio.config.hot_reload import HotReloadManager
 from agio.config.loader import ConfigLoader
+from agio.config.registry import ConfigRegistry
 from agio.config.schema import (
     AgentConfig,
+    CitationStoreConfig,
     ComponentConfig,
     ComponentType,
-    KnowledgeConfig,
-    MemoryConfig,
     ModelConfig,
-    SessionStoreConfig,
     RunnableToolConfig,
+    SessionStoreConfig,
     ToolConfig,
     TraceStoreConfig,
     WorkflowConfig,
@@ -41,93 +39,44 @@ from agio.utils.logging import get_logger
 logger = get_logger(__name__)
 
 
-class ComponentMeta:
-    """组件元数据"""
-
-    def __init__(
-        self,
-        component_type: ComponentType,
-        config: ComponentConfig,
-        dependencies: list[str],
-    ):
-        self.component_type = component_type
-        self.config = config
-        self.dependencies = dependencies
-        self.created_at = datetime.now()
-
-
 class ConfigSystem:
     """
-    配置系统核心类 - 单一入口点
-
-    职责：
-    - 配置加载和存储
-    - 组件构建和生命周期管理
-    - 依赖解析和自动装配
-    - 配置变更和热重载
+    配置系统门面 - 协调各模块
+    
+    架构：
+    - ConfigRegistry: 配置存储
+    - ComponentContainer: 实例管理
+    - DependencyResolver: 依赖解析和拓扑排序
+    - BuilderRegistry: 构建器管理
+    - HotReloadManager: 热重载
     """
 
-    # 组件类型默认优先级（仅作为拓扑排序的 fallback）
-    # 实际构建顺序由拓扑排序决定
-    TYPE_PRIORITY = {
-        ComponentType.MODEL: 0,
-        ComponentType.SESSION_STORE: 0,
-        ComponentType.TRACE_STORE: 0,
-        ComponentType.MEMORY: 1,
-        ComponentType.KNOWLEDGE: 1,
-        ComponentType.TOOL: 2,
-        ComponentType.AGENT: 3,
-        ComponentType.WORKFLOW: 3,  # Same level - actual order from topology
-    }
-
-    # 配置类型映射
     CONFIG_CLASSES = {
         ComponentType.MODEL: ModelConfig,
         ComponentType.TOOL: ToolConfig,
-        ComponentType.MEMORY: MemoryConfig,
-        ComponentType.KNOWLEDGE: KnowledgeConfig,
         ComponentType.SESSION_STORE: SessionStoreConfig,
         ComponentType.TRACE_STORE: TraceStoreConfig,
+        ComponentType.CITATION_STORE: CitationStoreConfig,
         ComponentType.AGENT: AgentConfig,
         ComponentType.WORKFLOW: WorkflowConfig,
     }
 
     def __init__(self):
-        # 配置存储 {(type, name): config_dict}
-        self._configs: dict[tuple[ComponentType, str], dict] = {}
-
-        # 组件实例池 {name: instance}
-        self._instances: dict[str, Any] = {}
-
-        # 组件元数据 {name: ComponentMeta}
-        self._metadata: dict[str, ComponentMeta] = {}
-
-        # 组件构建器
-        self._builders: dict[ComponentType, ComponentBuilder] = {
-            ComponentType.MODEL: ModelBuilder(),
-            ComponentType.TOOL: ToolBuilder(),
-            ComponentType.MEMORY: MemoryBuilder(),
-            ComponentType.KNOWLEDGE: KnowledgeBuilder(),
-            ComponentType.SESSION_STORE: SessionStoreBuilder(),
-            ComponentType.TRACE_STORE: TraceStoreBuilder(),
-            ComponentType.AGENT: AgentBuilder(),
-            ComponentType.WORKFLOW: WorkflowBuilder(),
-        }
-
-        # 变更回调
-        self._change_callbacks: list[Callable[[str, str], None]] = []
-
-    # ========================================================================
-    # 配置管理
-    # ========================================================================
+        self.registry = ConfigRegistry()
+        self.container = ComponentContainer()
+        self.dependency_resolver = DependencyResolver()
+        self.builder_registry = BuilderRegistry()
+        self.hot_reload = HotReloadManager(
+            self.container, self.dependency_resolver, self.builder_registry
+        )
 
     async def load_from_directory(self, config_dir: str | Path) -> dict[str, int]:
         """
         从目录加载所有配置文件
-
+        
         Args:
             config_dir: 配置文件目录
-
+            
         Returns:
             加载统计 {"loaded": count, "failed": count}
         """
@@ -135,162 +84,120 @@ class ConfigSystem:
 
         loader = ConfigLoader(config_dir)
         configs_by_type = await loader.load_all_configs()
-        load_order = loader.get_load_order(configs_by_type)
 
         stats = {"loaded": 0, "failed": 0}
 
-        for component_type, config_data in load_order:
-            name = config_data.get("name")
+        all_config_dicts = []
+        for configs in configs_by_type.values():
+            all_config_dicts.extend(configs)
+
+        for config_dict in all_config_dicts:
+            name = config_dict.get("name", "unknown")
             try:
-                self._configs[(component_type, name)] = config_data
-                logger.info(f"Loaded config: {component_type.value}/{name}")
+                config = self._parse_config(config_dict)
+                self.registry.register(config)
+                logger.info(f"Loaded config: {config.type}/{config.name}")
                 stats["loaded"] += 1
             except Exception as e:
-                logger.exception(f"Failed to load {component_type.value}/{name}: {e}")
+                logger.error(f"Failed to parse config {name}: {e}")
                 stats["failed"] += 1
 
         logger.info(f"Config loading completed: {stats}")
         return stats
 
+    def _parse_config(self, config_dict: dict) -> ComponentConfig:
+        """解析配置字典为 Pydantic 模型"""
+        component_type = ComponentType(config_dict["type"])
+        config_class = self.CONFIG_CLASSES.get(component_type)
+        
+        if not config_class:
+            raise ConfigNotFoundError(f"Unknown component type: {component_type}")
+        
+        return config_class(**config_dict)
+
     async def save_config(self, config: ComponentConfig) -> None:
         """
         保存配置（触发热重载）
-
+        
         Args:
             config: 组件配置
         """
         component_type = ComponentType(config.type)
         name = config.name
 
-        # 检查是否是更新
-        is_update = (component_type, name) in self._configs
+        is_update = self.registry.has(component_type, name)
 
-        # 保存配置
-        self._configs[(component_type, name)] = config.model_dump()
-
+        self.registry.register(config)
         logger.info(f"Config saved: {component_type.value}/{name}")
 
-        # 触发热重载
-        if is_update and name in self._instances:
-            await self._handle_config_change(name, "update")
+        if is_update and self.container.has(name):
+            await self.hot_reload.handle_change(
+                name, "update", lambda n: self._build_by_name(n)
+            )
         else:
-            # 新配置，尝试构建
-            await self._build_component(component_type, name)
-            await self._notify_change(name, "create")
+            await self._build_component(config)
+            self.hot_reload._notify_callbacks(name, "create")
 
     async def delete_config(self, component_type: ComponentType, name: str) -> None:
         """
         删除配置
-
+        
         Args:
             component_type: 组件类型
             name: 组件名称
         """
-        key = (component_type, name)
-        if key not in self._configs:
+        if not self.registry.has(component_type, name):
             raise ConfigNotFoundError(f"Config {component_type.value}/{name} not found")
 
-        # 获取受影响的组件
-        affected = self._get_affected_components(name)
+        await self.hot_reload.handle_change(name, "delete", None)
 
-        # 逆序销毁组件
-        for comp_name in reversed(affected):
-            await self._destroy_component(comp_name)
-
-        # 删除配置
-        del self._configs[key]
-
+        self.registry.remove(component_type, name)
         logger.info(f"Config deleted: {component_type.value}/{name}")
-        await self._notify_change(name, "delete")
 
     def get_config(
         self, component_type: ComponentType, name: str
     ) -> dict | None:
-        """获取配置"""
-        return self._configs.get((component_type, name))
+        """获取配置（返回 dict 格式以保持向后兼容）"""
+        config = self.registry.get(component_type, name)
+        return config.model_dump() if config else None
 
     def list_configs(
         self, component_type: ComponentType | None = None
     ) -> list[dict]:
-        """列出配置"""
-        result = []
-        for (ct, name), config in self._configs.items():
-            if component_type is None or ct == component_type:
-                result.append({"type": ct.value, "name": name, "config": config})
-        return result
-
-    # ========================================================================
-    # 组件管理
-    # ========================================================================
-
-    def get(self, name: str) -> Any:
-        """
-        获取组件实例
-
-        Args:
-            name: 组件名称
-
-        Returns:
-            组件实例
-
-        Raises:
-            ComponentNotFoundError: 组件不存在
-        """
-        if name not in self._instances:
-            raise ComponentNotFoundError(f"Component '{name}' not found")
-        return self._instances[name]
-
-    def get_or_none(self, name: str) -> Any | None:
-        """获取组件实例，不存在返回 None"""
-        return self._instances.get(name)
-
-    def get_instance(self, name: str) -> Any:
-        """
-        获取组件实例 (get 的别名)
-
-        Args:
-            name: 组件名称
-
-        Returns:
-            组件实例
-
-        Raises:
-            ComponentNotFoundError: 组件不存在
-        """
-        return self.get(name)
-
-    def get_all_instances(self) -> dict[str, Any]:
-        """
-        获取所有组件实例
-
-        Returns:
-            组件名称到实例的映射
-        """
-        return dict(self._instances)
+        """列出配置（返回 dict 列表以保持向后兼容）"""
+        if component_type is None:
+            configs = self.registry.list_all()
+        else:
+            configs = self.registry.list_by_type(component_type)
+        return [config.model_dump() for config in configs]
 
     async def build_all(self) -> dict[str, int]:
         """
-        按依赖顺序构建所有组件（使用拓扑排序）
-
+        按依赖顺序构建所有组件
+        
         Returns:
             构建统计 {"built": count, "failed": count}
         """
         logger.info("Building all components...")
 
-        # 使用拓扑排序确定构建顺序
-        sorted_configs = self._get_topological_build_order()
+        configs = self.registry.list_all()
+        available_names = self.registry.get_all_names()
+
+        sorted_configs = self.dependency_resolver.topological_sort(
+            configs, available_names
+        )
 
         stats = {"built": 0, "failed": 0}
 
-        for (component_type, name), config_data in sorted_configs:
-            # 跳过已构建的组件
-            if name in self._instances:
+        for config in sorted_configs:
+            if self.container.has(config.name):
                 continue
+
             try:
-                await self._build_component(component_type, name)
+                await self._build_component(config)
                 stats["built"] += 1
             except Exception as e:
-                logger.exception(f"Failed to build {component_type.value}/{name}: {e}")
+                logger.exception(f"Failed to build {config.type}/{config.name}: {e}")
                 stats["failed"] += 1
 
         logger.info(f"Build completed: {stats}")
@@ -299,193 +206,163 @@ class ConfigSystem:
     async def rebuild(self, name: str) -> None:
         """
         重建单个组件及其依赖者
-
+        
         Args:
             name: 组件名称
         """
-        affected = self._get_affected_components(name)
+        await self.hot_reload.handle_change(
+            name, "update", lambda n: self._build_by_name(n)
+        )
 
-        # 逆序销毁
-        for comp_name in reversed(affected):
-            await self._destroy_component(comp_name)
+    def get(self, name: str) -> Any:
+        """获取组件实例"""
+        return self.container.get(name)
 
-        # 正序重建
-        for comp_name in affected:
-            meta = self._metadata.get(comp_name)
-            if meta:
-                await self._build_component(meta.component_type, comp_name)
+    def get_or_none(self, name: str) -> Any | None:
+        """获取组件实例（不存在返回 None）"""
+        return self.container.get_or_none(name)
 
-    # ========================================================================
-    # 热重载
-    # ========================================================================
+    def get_instance(self, name: str) -> Any:
+        """获取组件实例（get 的别名）"""
+        return self.get(name)
 
-    def on_change(self, callback: Callable[[str, str], None]) -> None:
-        """
-        注册配置变更回调
+    def get_all_instances(self) -> dict[str, Any]:
+        """获取所有组件实例"""
+        return self.container.get_all_instances()
 
-        Args:
-            callback: 回调函数 (name, change_type) -> None
-        """
-        self._change_callbacks.append(callback)
+    def list_components(self) -> list[dict]:
+        """列出所有已构建的组件"""
+        result = []
+        for name in self.container.list_names():
+            metadata = self.container.get_metadata(name)
+            if metadata:
+                result.append({
+                    "name": name,
+                    "type": metadata.component_type.value,
+                    "dependencies": metadata.dependencies,
+                    "created_at": metadata.created_at.isoformat(),
+                })
+        return result
 
-    async def _handle_config_change(self, name: str, change_type: str) -> None:
-        """处理配置变更"""
-        logger.info(f"Handling config change: {name} ({change_type})")
+    def get_component_info(self, name: str) -> dict | None:
+        """获取组件详细信息"""
+        if not self.container.has(name):
+            return None
 
-        affected = self._get_affected_components(name)
+        metadata = self.container.get_metadata(name)
+        if not metadata:
+            return None
 
-        # 逆序销毁
-        for comp_name in reversed(affected):
-            await self._destroy_component(comp_name)
+        return {
+            "name": name,
+            "type": metadata.component_type.value,
+            "config": metadata.config.model_dump(),
+            "dependencies": metadata.dependencies,
+            "created_at": metadata.created_at.isoformat(),
+        }
 
-        # 正序重建
-        for comp_name in affected:
-            # 查找配置
-            for (ct, n), _ in self._configs.items():
-                if n == comp_name:
-                    await self._build_component(ct, comp_name)
-                    break
+    def on_change(self, callback) -> None:
+        """注册配置变更回调"""
+        self.hot_reload.register_callback(callback)
 
-        await self._notify_change(name, change_type)
-
-    async def _notify_change(self, name: str, change_type: str) -> None:
-        """通知变更回调"""
-        for callback in self._change_callbacks:
-            try:
-                callback(name, change_type)
-            except Exception as e:
-                logger.error(f"Change callback error: {e}")
-
-    # ========================================================================
-    # 内部方法
-    # ========================================================================
-
-    async def _build_component(
-        self, component_type: ComponentType, name: str
-    ) -> Any:
+    async def _build_component(self, config: ComponentConfig) -> Any:
         """构建单个组件"""
-        config_data = self._configs.get((component_type, name))
-        if not config_data:
-            raise ConfigNotFoundError(f"Config {component_type.value}/{name} not found")
-
-        # 解析配置
-        config_class = self.CONFIG_CLASSES.get(component_type)
-        if not config_class:
-            raise ComponentBuildError(f"Unknown component type: {component_type}")
-
-        config = config_class(**config_data)
-
-        # 解析依赖
         dependencies = await self._resolve_dependencies(config)
-        dependency_names = list(dependencies.keys())
 
-        # 构建组件
-        builder = self._builders.get(component_type)
+        component_type = ComponentType(config.type)
+        builder = self.builder_registry.get(component_type)
         if not builder:
             raise ComponentBuildError(f"No builder for type: {component_type}")
 
         instance = await builder.build(config, dependencies)
 
-        # 存储实例和元数据
-        self._instances[name] = instance
-        self._metadata[name] = ComponentMeta(
+        metadata = ComponentMetadata(
             component_type=component_type,
             config=config,
-            dependencies=dependency_names,
+            dependencies=list(dependencies.keys()),
         )
+        self.container.register(config.name, instance, metadata)
 
-        logger.info(f"Component built: {component_type.value}/{name}")
+        logger.info(f"Component built: {component_type.value}/{config.name}")
         return instance
 
-    async def _destroy_component(self, name: str) -> None:
-        """销毁组件"""
-        if name not in self._instances:
-            return
-
-        instance = self._instances.pop(name)
-        meta = self._metadata.pop(name, None)
-
-        # 清理资源
-        if meta:
-            builder = self._builders.get(meta.component_type)
-            if builder:
-                try:
-                    await builder.cleanup(instance)
-                except Exception as e:
-                    logger.error(f"Cleanup error for {name}: {e}")
-
-        logger.info(f"Component destroyed: {name}")
+    async def _build_by_name(self, name: str) -> Any:
+        """根据名称构建组件（用于热重载）"""
+        for config in self.registry.list_all():
+            if config.name == name:
+                return await self._build_component(config)
+        
+        raise ConfigNotFoundError(f"Config for component '{name}' not found")
 
     async def _resolve_dependencies(self, config: ComponentConfig) -> dict[str, Any]:
         """解析组件依赖"""
+        if isinstance(config, AgentConfig):
+            return await self._resolve_agent_dependencies(config)
+        elif isinstance(config, ToolConfig):
+            return await self._resolve_tool_dependencies(config)
+        elif isinstance(config, WorkflowConfig):
+            return await self._resolve_workflow_dependencies(config)
+        return {}
+
+    async def _resolve_agent_dependencies(self, config: AgentConfig) -> dict[str, Any]:
+        """解析 Agent 依赖"""
         dependencies = {}
 
-        if isinstance(config, AgentConfig):
-            # Model (required)
-            dependencies["model"] = self.get(config.model)
+        dependencies["model"] = self.container.get(config.model)
 
-            # Tools (list) - support string refs, agent_tool, workflow_tool
-            tools = []
-            for tool_ref in config.tools:
-                # Pass current agent name for self-reference detection
-                # and session_store for nested RunnableTool execution
-                tool = await self._resolve_tool_reference(
-                    tool_ref, 
-                    current_component=config.name,
-                    session_store_name=config.session_store,
-                )
-                tools.append(tool)
-            dependencies["tools"] = tools
+        tools = []
+        for tool_ref in config.tools:
+            tool = await self._resolve_tool_reference(
+                tool_ref,
+                current_component=config.name,
+                session_store_name=config.session_store,
+            )
+            tools.append(tool)
+        dependencies["tools"] = tools
 
-            # Optional dependencies
-            if config.memory:
-                dependencies["memory"] = self.get(config.memory)
+        if config.memory:
+            dependencies["memory"] = self.container.get(config.memory)
 
-            if config.knowledge:
-                dependencies["knowledge"] = self.get(config.knowledge)
+        if config.knowledge:
+            dependencies["knowledge"] = self.container.get(config.knowledge)
 
-            if config.session_store:
-                dependencies["session_store"] = self.get(config.session_store)
+        if config.session_store:
+            dependencies["session_store"] = self.container.get(config.session_store)
 
-        elif isinstance(config, ToolConfig):
-            # Tool dependencies (e.g., llm_model)
-            for param_name, dep_name in config.effective_dependencies.items():
-                dependencies[param_name] = self.get(dep_name)
+        return dependencies
 
-        elif isinstance(config, WorkflowConfig):
-            # Workflow needs access to all instances for runnable resolution
-            dependencies["_all_instances"] = self._instances
+    async def _resolve_tool_dependencies(self, config: ToolConfig) -> dict[str, Any]:
+        """解析 Tool 依赖"""
+        dependencies = {}
+        for param_name, dep_name in config.effective_dependencies.items():
+            dependencies[param_name] = self.container.get(dep_name)
+        return dependencies
 
-            # session_store is guaranteed to exist by topological sort
-            if config.session_store:
-                dependencies["session_store"] = self.get(config.session_store)
+    async def _resolve_workflow_dependencies(
+        self, config: WorkflowConfig
+    ) -> dict[str, Any]:
+        """解析 Workflow 依赖"""
+        dependencies = {}
+
+        dependencies["_all_instances"] = self.container.get_all_instances()
+
+        if config.session_store:
+            dependencies["session_store"] = self.container.get(config.session_store)
 
         return dependencies
 
     async def _resolve_tool_reference(
-        self, 
+        self,
         tool_ref: str | dict | RunnableToolConfig,
         current_component: str | None = None,
         session_store_name: str | None = None,
     ) -> Any:
-        """
-        Resolve a tool reference to a tool instance.
-        
-        Supports:
-        - String: tool name (built-in or configured)
-        - RunnableToolConfig or Dict: agent_tool/workflow_tool wrapper
-        
-        Args:
-            tool_ref: Tool reference (string, dict, or RunnableToolConfig)
-            current_component: Current component name for self-reference detection
-            session_store_name: Session store name for RunnableTool nested execution
-        """
-        # String reference -> built-in or configured tool
+        """解析工具引用"""
         if isinstance(tool_ref, str):
             return await self._get_or_create_tool(tool_ref)
 
-        # Parse to unified format
         from agio.config.tool_reference import parse_tool_reference
+
         if isinstance(tool_ref, RunnableToolConfig):
             parsed = parse_tool_reference(tool_ref.model_dump())
         elif isinstance(tool_ref, dict):
@@ -493,55 +370,46 @@ class ConfigSystem:
         else:
             raise ComponentBuildError(f"Invalid tool reference type: {type(tool_ref)}")
 
-        # Create RunnableTool wrapper
         if parsed.type in ("agent_tool", "workflow_tool"):
             return await self._create_runnable_tool(
                 parsed.type, parsed.raw, current_component, session_store_name
             )
-        
+
         raise ComponentBuildError(
             f"Unknown tool reference format: {tool_ref}. "
             f"Expected string or dict with type='agent_tool'/'workflow_tool'"
         )
 
     async def _create_runnable_tool(
-        self, 
+        self,
         tool_type: str,
-        config: dict, 
+        config: dict,
         current_component: str | None = None,
         session_store_name: str | None = None,
     ) -> Any:
-        """
-        Create a RunnableTool wrapping an Agent or Workflow.
-        
-        Args:
-            tool_type: 'agent_tool' or 'workflow_tool'
-            config: Dict with runnable reference, description, name
-            current_component: For self-reference detection
-            session_store_name: Name of session_store to use for nested execution
-        """
+        """创建 RunnableTool"""
         from agio.workflow import as_tool
 
-        # Get runnable ID based on type
         id_field = "agent" if tool_type == "agent_tool" else "workflow"
         runnable_id = config.get(id_field)
         if not runnable_id:
             raise ComponentBuildError(f"{tool_type} config missing '{id_field}' field")
 
-        # Safety check: Detect self-reference
         if current_component and runnable_id == current_component:
             raise ComponentBuildError(
                 f"Self-reference detected: '{current_component}' cannot use itself as a tool."
             )
 
-        # Get session_store for nested execution (ensures RUN_STARTED events are emitted)
-        session_store = self.get_or_none(session_store_name) if session_store_name else None
+        session_store = (
+            self.container.get_or_none(session_store_name)
+            if session_store_name
+            else None
+        )
 
-        # Get the runnable instance and wrap as tool
-        runnable = self.get(runnable_id)
+        runnable = self.container.get(runnable_id)
         tool = as_tool(
-            runnable, 
-            description=config.get("description"), 
+            runnable,
+            description=config.get("description"),
             name=config.get("name"),
             session_store=session_store,
         )
@@ -549,228 +417,66 @@ class ConfigSystem:
         return tool
 
     async def _get_or_create_tool(self, tool_name: str) -> Any:
-        """
-        Get tool instance by name.
-        
-        Priority:
-        1. Already built tool in ConfigSystem
-        2. Tool config exists -> build it
-        3. Built-in tool from registry -> create with default params
-        """
-        # 1. Check if already built
-        if tool_name in self._instances:
-            return self._instances[tool_name]
+        """获取或创建工具"""
+        if self.container.has(tool_name):
+            return self.container.get(tool_name)
 
-        # 2. Check if config exists -> build it
-        tool_config = self.get_config(ComponentType.TOOL, tool_name)
-        if tool_config:
-            return await self._build_component(ComponentType.TOOL, tool_name)
+        config = self.registry.get(ComponentType.TOOL, tool_name)
+        if config:
+            return await self._build_component(config)
 
-        # 3. Try to create from registry (built-in tools)
         from agio.providers.tools import get_tool_registry
+
         registry = get_tool_registry()
 
         if registry.is_registered(tool_name):
             tool = registry.create(tool_name)
-            # Cache the instance
-            self._instances[tool_name] = tool
+            metadata = ComponentMetadata(
+                component_type=ComponentType.TOOL,
+                config=ToolConfig(type="tool", name=tool_name, tool_name=tool_name),
+                dependencies=[],
+            )
+            self.container.register(tool_name, tool, metadata)
             logger.info(f"Created built-in tool: {tool_name}")
             return tool
 
         raise ComponentNotFoundError(
             f"Tool '{tool_name}' not found. "
-            f"Available: configs={[n for (t, n) in self._configs.keys() if t == ComponentType.TOOL]}, "
+            f"Available: configs={list(self.registry.get_names_by_type(ComponentType.TOOL))}, "
             f"builtin={registry.list_builtin()}"
         )
 
-    def _extract_workflow_deps(self, stages: list[dict], deps: set[str]) -> None:
-        """
-        递归提取 workflow stages 中的依赖
-        
-        Args:
-            stages: workflow 的 stages 列表
-            deps: 依赖集合（会被修改）
-        """
-        for stage in stages:
-            runnable = stage.get("runnable")
-            if runnable is None:
-                continue
-            if isinstance(runnable, str):
-                # 字符串引用（agent 或其他组件）
-                deps.add(runnable)
-            elif isinstance(runnable, dict):
-                # 嵌套 workflow 定义，递归提取
-                nested_stages = runnable.get("stages", [])
-                self._extract_workflow_deps(nested_stages, deps)
 
-    def _get_topological_build_order(
-        self,
-    ) -> list[tuple[tuple[ComponentType, str], dict]]:
-        """
-        使用拓扑排序计算组件构建顺序
-        
-        复用 ConfigLoader 的依赖分析逻辑，确保被依赖的组件先构建。
-        这解决了 Agent 引用 Workflow（或反向）作为 tool 的加载顺序问题。
-        
-        Returns:
-            排序后的配置列表: [((ComponentType, name), config_dict), ...]
-        """
-        from collections import deque
-        from agio.config.tool_reference import parse_tool_reference
-
-        # 先收集所有组件名称
-        all_names = {name for (_, name) in self._configs.keys()}
-
-        # 构建依赖图
-        dependencies: dict[str, set[str]] = {}
-
-        for (component_type, name), config in self._configs.items():
-            deps: set[str] = set()
-
-            # Agent 依赖
-            if component_type == ComponentType.AGENT:
-                if "model" in config and config["model"] in all_names:
-                    deps.add(config["model"])
-                if "tools" in config:
-                    for tool_ref in config["tools"]:
-                        parsed = parse_tool_reference(tool_ref)
-                        if parsed.type == "function" and parsed.name:
-                            # 只添加存在于配置中的依赖
-                            pass  # function tools 可能是 built-in
-                        elif parsed.type == "agent_tool" and parsed.agent:
-                            deps.add(parsed.agent)
-                        elif parsed.type == "workflow_tool" and parsed.workflow:
-                            deps.add(parsed.workflow)
-                if "memory" in config:
-                    deps.add(config["memory"])
-                if "knowledge" in config:
-                    deps.add(config["knowledge"])
-                if "session_store" in config:
-                    deps.add(config["session_store"])
-
-            # Workflow 依赖
-            elif component_type == ComponentType.WORKFLOW:
-                if "stages" in config:
-                    self._extract_workflow_deps(config["stages"], deps)
-                # session_store 依赖
-                if "session_store" in config and config["session_store"]:
-                    deps.add(config["session_store"])
-
-            # Tool 依赖
-            elif component_type == ComponentType.TOOL:
-                if "dependencies" in config:
-                    for dep_name in config["dependencies"].values():
-                        deps.add(dep_name)
-
-            dependencies[name] = deps
-
-        # 过滤掉不存在的依赖（built-in tools 等）
-        for name in dependencies:
-            dependencies[name] = dependencies[name] & all_names
-
-        # 拓扑排序（Kahn's algorithm）
-        in_degree = {name: len(deps) for name, deps in dependencies.items()}
-        queue = deque([name for name, degree in in_degree.items() if degree == 0])
-        sorted_names: list[str] = []
-
-        while queue:
-            name = queue.popleft()
-            sorted_names.append(name)
-
-            for other_name, deps in dependencies.items():
-                if name in deps:
-                    in_degree[other_name] -= 1
-                    if in_degree[other_name] == 0:
-                        queue.append(other_name)
-
-        # 检测循环依赖
-        if len(sorted_names) < len(all_names):
-            unresolved = all_names - set(sorted_names)
-            logger.warning(
-                f"Circular dependency detected, unresolved components: {unresolved}"
-            )
-            # 追加未解析的组件（按类型优先级）
-            for name in sorted(
-                unresolved,
-                key=lambda n: self.TYPE_PRIORITY.get(
-                    next((t for (t, nm) in self._configs.keys() if nm == n), None), 99
-                ),
-            ):
-                sorted_names.append(name)
-
-        # 构建返回结果: 按排序后的名称查找对应配置
-        name_to_config = {name: (key, config) for key, config in self._configs.items() for _, name in [key]}
-        return [name_to_config[name] for name in sorted_names if name in name_to_config]
-
-    def _get_affected_components(self, name: str) -> list[str]:
-        """
-        获取受影响的组件列表（包括依赖者）
-
-        使用 BFS 遍历依赖图
-        """
-        affected = [name]
-        queue = [name]
-
-        while queue:
-            current = queue.pop(0)
-            for comp_name, meta in self._metadata.items():
-                if current in meta.dependencies and comp_name not in affected:
-                    affected.append(comp_name)
-                    queue.append(comp_name)
-
-        return affected
-
-    # ========================================================================
-    # 状态查询
-    # ========================================================================
-
-    def list_components(self) -> list[dict]:
-        """列出所有已构建的组件"""
-        result = []
-        for name, instance in self._instances.items():
-            meta = self._metadata.get(name)
-            result.append({
-                "name": name,
-                "type": meta.component_type.value if meta else None,
-                "dependencies": meta.dependencies if meta else [],
-                "created_at": meta.created_at.isoformat() if meta else None,
-            })
-        return result
-
-    def get_component_info(self, name: str) -> dict | None:
-        """获取组件详细信息"""
-        if name not in self._instances:
-            return None
-
-        meta = self._metadata.get(name)
-        return {
-            "name": name,
-            "type": meta.component_type.value if meta else None,
-            "config": meta.config.model_dump() if meta else None,
-            "dependencies": meta.dependencies if meta else [],
-            "created_at": meta.created_at.isoformat() if meta else None,
-        }
-
-
-# 全局单例
 _config_system: ConfigSystem | None = None
+_config_system_lock = threading.Lock()
 
 
 def get_config_system() -> ConfigSystem:
-    """获取全局 ConfigSystem 实例"""
+    """获取全局 ConfigSystem 实例（线程安全）"""
     global _config_system
+
     if _config_system is None:
-        _config_system = ConfigSystem()
+        with _config_system_lock:
+            if _config_system is None:
+                _config_system = ConfigSystem()
+
     return _config_system
+
+
+def reset_config_system() -> None:
+    """重置全局 ConfigSystem（用于测试）"""
+    global _config_system
+    with _config_system_lock:
+        _config_system = None
 
 
 async def init_config_system(config_dir: str | Path) -> ConfigSystem:
     """
     初始化全局 ConfigSystem
-
+    
     Args:
         config_dir: 配置文件目录
-
+        
     Returns:
         ConfigSystem 实例
     """

@@ -7,9 +7,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased] - 2025-11-23 - Domain Model Refactoring
+## [Unreleased]
 
-### 🔧 Changed
+### 🏗️ Configuration System Refactoring - 2025-12-22
+
+**模块化配置系统重构 - 遵循 SOLID & KISS 原则**
+
+#### 新增模块
+
+新增 6 个职责清晰的模块：
+
+- `agio/config/registry.py` - ConfigRegistry: 配置存储和查询
+- `agio/config/container.py` - ComponentContainer: 组件实例管理
+- `agio/config/dependency.py` - DependencyResolver: 依赖解析和拓扑排序
+- `agio/config/builder_registry.py` - BuilderRegistry: 构建器注册表
+- `agio/config/hot_reload.py` - HotReloadManager: 热重载管理
+- `agio/config/model_provider_registry.py` - ModelProviderRegistry: Provider 注册表
+
+#### 核心改进
+
+| 指标 | 重构前 | 重构后 | 提升 |
+|------|--------|--------|------|
+| ConfigSystem 行数 | 780 | 480 | **-38%** |
+| 模块职责 | 9+ 职责混杂 | 单一协调职责 | **清晰** |
+| 拓扑排序 | 2 处重复 | 1 处统一 | **消除重复** |
+| 循环依赖 | warning | **fail fast** | **早期发现** |
+| Provider 扩展 | 硬编码分支 | 注册表模式 | **OCP** |
+| ModelBuilder | 50 行 | 12 行 | **-76%** |
+
+#### 特性
+
+- ✅ **单一职责 (SRP)**: 每个模块职责清晰
+- ✅ **开闭原则 (OCP)**: 支持动态注册 Builder 和 Provider
+- ✅ **依赖倒置 (DIP)**: 使用 Protocol 定义抽象接口
+- ✅ **Fail Fast**: 循环依赖立即抛出异常
+- ✅ **线程安全**: 全局单例支持并发访问
+- ✅ **热重载**: 配置变更自动级联重建
+
+#### 向后兼容性
+
+- ✅ `list_configs()` / `get_config()` 保持返回 dict 格式
+- ✅ 所有现有测试通过 (215 passed)
+- ✅ API 层无需改动
+
+#### 扩展示例
+
+```python
+# 注册自定义 Provider
+from agio.config import get_model_provider_registry
+
+registry = get_model_provider_registry()
+registry.register("custom_provider", CustomModelClass)
+```
+
+#### 迁移指南
+
+无需迁移，完全向后兼容。新功能可选使用：
+
+```python
+# 访问新模块（可选）
+config_sys = get_config_system()
+registry = config_sys.registry  # ConfigRegistry
+container = config_sys.container  # ComponentContainer
+
+# 重置单例（测试用）
+from agio.config import reset_config_system
+reset_config_system()
+```
+
+详见: 
+- `configs/README.md` - 配置系统使用指南
+- `docs/ARCHITECTURE.md` - 架构设计文档
+- `docs/refactor/config-system-refactor.md` - 重构详细方案
+
+---
+
+### 🔧 Domain Model Refactoring - 2025-11-23
 
 **Domain 模型职责分离 - 遵循 SOLID 原则**
 

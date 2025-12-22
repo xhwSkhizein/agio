@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from agio.config.exceptions import ComponentBuildError
 from agio.config.schema import (
     AgentConfig,
+    CitationStoreConfig,
     KnowledgeConfig,
     MemoryConfig,
     ModelConfig,
@@ -51,49 +52,12 @@ class ModelBuilder(ComponentBuilder):
     """Builder for model components."""
 
     async def build(self, config: ModelConfig, dependencies: dict[str, Any]) -> Any:
-        """Build model instance."""
+        """Build model instance using ModelProviderRegistry."""
         try:
-            if config.provider == "openai":
-                from agio.providers.llm import OpenAIModel
+            from agio.config.model_provider_registry import get_model_provider_registry
 
-                return OpenAIModel(
-                    id=f"{config.provider}/{config.model_name}",
-                    name=config.name,
-                    api_key=config.api_key,
-                    model_name=config.model_name,
-                    base_url=config.base_url,
-                    temperature=config.temperature,
-                    max_tokens=config.max_tokens,
-                )
-
-            elif config.provider == "anthropic":
-                from agio.providers.llm import AnthropicModel
-
-                return AnthropicModel(
-                    id=f"{config.provider}/{config.model_name}",
-                    name=config.name,
-                    api_key=config.api_key,
-                    model_name=config.model_name,
-                    base_url=config.base_url,
-                    temperature=config.temperature,
-                    max_tokens=config.max_tokens,
-                )
-
-            elif config.provider == "deepseek":
-                from agio.providers.llm import DeepseekModel
-
-                return DeepseekModel(
-                    id=f"{config.provider}/{config.model_name}",
-                    name=config.name,
-                    api_key=config.api_key,
-                    model_name=config.model_name,
-                    base_url=config.base_url,
-                    temperature=config.temperature,
-                    max_tokens=config.max_tokens,
-                )
-
-            else:
-                raise ComponentBuildError(f"Unknown model provider: {config.provider}")
+            registry = get_model_provider_registry()
+            return registry.create_model(config)
 
         except Exception as e:
             raise ComponentBuildError(f"Failed to build model {config.name}: {e}")
@@ -424,3 +388,41 @@ class TraceStoreBuilder(ComponentBuilder):
 
         except Exception as e:
             raise ComponentBuildError(f"Failed to build trace_store {config.name}: {e}")
+
+
+class CitationStoreBuilder(ComponentBuilder):
+    """Builder for CitationStore components."""
+
+    async def build(self, config: CitationStoreConfig, dependencies: dict[str, Any]) -> Any:
+        """Build CitationStore instance."""
+        try:
+            if config.store_type == "mongodb":
+                from agio.providers.tools.builtin.common.citation import MongoCitationStore
+
+                store = MongoCitationStore(
+                    uri=config.mongo_uri,
+                    db_name=config.mongo_db_name,
+                )
+                
+                # Initialize connection
+                await store._ensure_connection()
+                
+                return store
+
+            elif config.store_type == "inmemory":
+                from agio.providers.tools.builtin.common.citation import InMemoryCitationStore
+
+                return InMemoryCitationStore()
+
+            else:
+                raise ComponentBuildError(
+                    f"Unknown citation store type: {config.store_type}"
+                )
+
+        except Exception as e:
+            raise ComponentBuildError(f"Failed to build citation_store {config.name}: {e}")
+
+    async def cleanup(self, instance: Any) -> None:
+        """Cleanup citation store resources."""
+        if hasattr(instance, "disconnect"):
+            await instance.disconnect()

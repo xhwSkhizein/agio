@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import time
-from datetime import datetime
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
@@ -137,19 +136,17 @@ class LSTool(BaseTool):
         return "ls"
 
     def get_description(self) -> str:
-        """获取工具的 Prompt 描述"""
-        return """列出给定路径中的文件和目录。
-使用说明: 
-- path 参数必须是绝对路径
-- 以树形格式输出目录结构
-- 最多显示1000个文件/目录
-- 当文件数量超过1000时显示截断消息
-- 输出格式示例: 
+        """Prompt description for the tool"""
+        return """List files and directories for a given path.
+Usage:
+- path: absolute path to analyze
+- level: recursion depth; 1 lists only the current directory (default 1)
+- outputs a tree format, up to 1000 files/directories with truncation notice
+- example:
   - /current/working/directory/
     - src/
       - index.ts
       - utils/
-        - file.ts
 """
 
     def get_parameters(self) -> dict[str, Any]:
@@ -158,8 +155,14 @@ class LSTool(BaseTool):
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "目录路径(必须是绝对路径)",
-                }
+                    "description": "Path to list files and directories for (must be absolute path)",
+                },
+                "level": {
+                    "type": "integer",
+                    "description": "Recursion depth; 1 lists only the given directory",
+                    "minimum": 1,
+                    "default": 1,
+                },
             },
             "required": ["path"],
         }
@@ -168,10 +171,13 @@ class LSTool(BaseTool):
         """是否支持并发"""
         return True
 
-    def validate_input(self, path: str) -> dict[str, Any]:
+    def validate_input(self, path: str, level: int) -> dict[str, Any]:
         """验证输入参数"""
         if not path.strip():
             return {"valid": False, "message": "Path cannot be empty"}
+
+        if level < 1:
+            return {"valid": False, "message": "Level must be a positive integer"}
 
         resolved_path = self._resolve_path(path)
 
@@ -230,16 +236,16 @@ class LSTool(BaseTool):
             return self._truncated_message + tree_output
         return tree_output
 
-    def _list_directory(self, initial_path: Path) -> list[Path]:
+    def _list_directory(self, initial_path: Path, max_depth: int) -> list[Path]:
         """List directory contents using BFS traversal respecting max_files."""
         results: list[Path] = []
-        queue: list[Path] = [initial_path]
+        queue: list[tuple[Path, int]] = [(initial_path, 0)]
 
         while queue:
             if len(results) >= self.max_files:
                 return results[: self.max_files]
 
-            path = queue.pop(0)
+            path, depth = queue.pop(0)
             path_posix = path.as_posix()
             if skip(path_posix):
                 continue
@@ -248,6 +254,9 @@ class LSTool(BaseTool):
                 results.append(path)
                 if len(results) >= self.max_files:
                     return results[: self.max_files]
+
+            if depth >= max_depth:
+                continue
 
             try:
                 for entry in path.iterdir():
@@ -263,7 +272,7 @@ class LSTool(BaseTool):
                         continue
 
                     if entry.is_dir():
-                        queue.append(resolved_entry)
+                        queue.append((resolved_entry, depth + 1))
                     else:
                         results.append(resolved_entry)
                         if len(results) >= self.max_files:
@@ -305,15 +314,23 @@ class LSTool(BaseTool):
         """执行目录列表"""
         start_time = time.time()
         path = parameters.get("path", ".")
+        level_raw = parameters.get("level", 1)
 
         try:
+            try:
+                level = int(level_raw)
+            except (TypeError, ValueError):
+                return self._create_error_result(
+                    parameters, "Level must be a positive integer", start_time
+                )
+
             # 检查中断
             if abort_signal and abort_signal.is_aborted():
                 return self._create_abort_result(parameters, start_time)
 
             # 验证输入
             try:
-                validation = self.validate_input(path)
+                validation = self.validate_input(path, level)
             except ValueError as error:
                 return self._create_error_result(parameters, str(error), start_time)
 
@@ -326,8 +343,8 @@ class LSTool(BaseTool):
             if abort_signal and abort_signal.is_aborted():
                 return self._create_abort_result(parameters, start_time)
 
-            # List directory contents
-            files = self._list_directory(resolved_path)
+            # List directory contents with depth control
+            files = self._list_directory(resolved_path, max_depth=level)
             formatted_files = self._format_paths_for_output(files)
             formatted_files.sort()
 

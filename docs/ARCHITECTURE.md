@@ -24,10 +24,12 @@ Agio 采用清晰的四层架构，遵循 SOLID 和 KISS 原则：
 Agent 类是用户的主要入口点，负责：
 - 持有配置（Model, Tools, Memory, Knowledge）
 - 委托执行给 StepRunner
-- 提供简洁的 API（`arun`, `arun_stream`）
+- 通过 `run(input, context)` 启动执行（写事件到 Wire）
 
 ```python
 from agio import Agent, OpenAIModel
+from agio.domain.execution_context import ExecutionContext
+from agio.runtime.wire import Wire
 
 agent = Agent(
     model=OpenAIModel(model_name="gpt-4"),
@@ -35,8 +37,10 @@ agent = Agent(
     system_prompt="You are helpful."
 )
 
-async for text in agent.arun("Hello"):
-    print(text)
+wire = Wire()
+ctx = ExecutionContext(run_id="run-1", session_id="sess-1", wire=wire)
+result = await agent.run("Hello", context=ctx)
+print(result.response)
 ```
 
 ### 2. `domain/` - 纯领域模型
@@ -99,7 +103,7 @@ messages = StepAdapter.steps_to_messages(steps)
 `ExecutionContext` 是一个不可变的数据类，封装所有执行相关的上下文信息：
 
 ```python
-from agio.runtime.execution_context import ExecutionContext
+from agio.domain.execution_context import ExecutionContext
 from agio.runtime.wire import Wire
 
 # 创建顶层执行上下文
@@ -132,8 +136,6 @@ child_ctx = ctx.child(
 - `user_id` - 用户 ID（可选）
 - `trace_id` / `span_id` / `parent_span_id` - 分布式追踪字段
 - `metadata` - 扩展元数据字典
-
-**注意**：`RunContext` 是 `ExecutionContext` 的别名，用于向后兼容。实际代码中统一使用 `ExecutionContext`。
 
 #### EventFactory - 上下文绑定的事件工厂
 
@@ -270,6 +272,26 @@ tool = registry.create("file_read")
 
 ### 5. `config/` - 配置系统
 
+配置系统采用模块化架构，遵循 SOLID 原则：
+
+```
+ConfigSystem (门面/协调者)
+├── ConfigRegistry          # 配置存储和查询
+├── ComponentContainer      # 组件实例管理
+├── DependencyResolver      # 依赖解析和拓扑排序
+├── BuilderRegistry         # 构建器管理
+├── HotReloadManager        # 热重载管理
+└── ModelProviderRegistry   # 模型 Provider 注册表
+```
+
+**核心特性**：
+- ✅ **单一职责**：每个模块职责清晰，易于维护
+- ✅ **开闭原则**：支持动态注册 Builder 和 Provider
+- ✅ **依赖倒置**：通过接口/Protocol 定义抽象
+- ✅ **Fail Fast**：循环依赖立即抛出异常
+- ✅ **线程安全**：全局单例使用 threading.Lock
+- ✅ **热重载**：配置变更自动级联重建依赖者
+
 #### 环境变量配置 (`settings.py`)
 
 ```python
@@ -301,7 +323,7 @@ config = ExecutionConfig(
 )
 ```
 
-#### 动态配置系统 (`system.py`)
+#### 动态配置系统
 
 支持从 YAML 文件加载组件配置：
 
@@ -314,16 +336,50 @@ tools:
   - file_read
   - grep
 system_prompt: "You are helpful."
+description: "My custom agent"
+tags: ["assistant", "files"]
+max_tokens: 4096
 ```
 
 ```python
 from agio.config import init_config_system
 
-# 加载配置并构建组件
+# 加载配置并构建组件（自动拓扑排序）
 config_sys = await init_config_system("configs/")
 
-# 获取组件
+# 获取组件实例
 agent = config_sys.get("my_agent")
+
+# 列出配置
+from agio.config import ComponentType
+configs = config_sys.list_configs(ComponentType.AGENT)
+
+# 动态保存配置（触发热重载）
+from agio.config import ModelConfig
+new_model = ModelConfig(
+    name="new_model",
+    provider="openai",
+    model_name="gpt-4"
+)
+await config_sys.save_config(new_model)  # 自动重建依赖者
+```
+
+#### 扩展模型 Provider
+
+使用 `ModelProviderRegistry` 支持自定义 Provider：
+
+```python
+from agio.config import get_model_provider_registry
+
+registry = get_model_provider_registry()
+
+# 注册自定义 Provider
+registry.register("custom_llm", CustomLLMClass)
+
+# 在配置中使用
+# configs/models/custom.yaml:
+#   provider: custom_llm
+#   model_name: custom-v1
 ```
 
 ## 依赖关系

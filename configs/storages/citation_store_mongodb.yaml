@@ -1,0 +1,11 @@
+type: citation_store
+name: citation_store_mongodb
+description: "MongoDB-based citation source storage for web_search and web_search results"
+store_type: mongodb
+mongo_uri: ${MONGO_URI:mongodb://localhost:27017}
+mongo_db_name: ${MONGO_DB_NAME:agio}
+enabled: true
+tags:
+  - storage
+  - citation
+  - mongodb

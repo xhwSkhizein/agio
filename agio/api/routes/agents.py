@@ -55,9 +55,7 @@ async def list_agents(
     configs = config_sys.list_configs(ComponentType.AGENT)
 
     items = []
-    for config_doc in configs:
-        config = config_doc.get("config", {})
-        
+    for config in configs:
         # Parse tools using unified parser
         tools_config = config.get("tools", [])
         parsed_tools = parse_tool_references(tools_config)

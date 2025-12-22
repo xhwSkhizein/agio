@@ -234,10 +234,7 @@ Workflow Execution
 
 from typing import Protocol
 from dataclasses import dataclass, field
-from agio.runtime.execution_context import ExecutionContext
-
-# RunContext 是 ExecutionContext 的别名（向后兼容）
-RunContext = ExecutionContext
+from agio.domain import ExecutionContext
 
 
 @dataclass
@@ -1849,7 +1846,7 @@ Agent 和 Workflow 共享同一套 API，通过 `runnable_id` 调用：
 from fastapi import APIRouter
 from sse_starlette.sse import EventSourceResponse
 from agio.runtime.wire import Wire
-from agio.runtime.execution_context import ExecutionContext
+from agio.domain import ExecutionContext
 
 router = APIRouter(prefix="/runnables", tags=["Runnable"])
 

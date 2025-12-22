@@ -150,7 +150,7 @@ class StepRunner:
             id=str(uuid4()),
             session_id=session.session_id,
             run_id=run_id,
-            sequence=await self._get_next_sequence(session.session_id),
+            sequence=await self._get_next_sequence(session.session_id, context),
             role=MessageRole.USER,
             content=query,
             # Extract metadata from ExecutionContext
@@ -307,8 +307,23 @@ class StepRunner:
         finally:
             clear_tracking_context()
 
-    async def _get_next_sequence(self, session_id: str) -> int:
-        """Get next sequence number."""
+    async def _get_next_sequence(self, session_id: str, context: ExecutionContext | None = None) -> int:
+        """
+        Get next sequence number.
+        
+        Args:
+            session_id: Session ID
+            context: Execution context (optional). If provided and contains seq_start in metadata,
+                    uses the pre-allocated sequence for parallel workflow branches.
+        
+        Returns:
+            Next sequence number
+        """
+        if context and "seq_start" in context.metadata:
+            seq_start = context.metadata["seq_start"]
+            context.metadata.pop("seq_start")
+            return seq_start
+        
         if not self.session_store:
             return 1
 

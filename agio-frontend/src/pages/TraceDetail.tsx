@@ -184,54 +184,79 @@ export default function TraceDetail() {
           onClick={() => setSelectedSpan(null)}
         >
           <div
-            className="bg-surface border border-border rounded-xl shadow-2xl p-6 max-w-2xl w-full mx-4"
+            className="bg-surface border border-border rounded-xl shadow-2xl p-6 max-w-3xl w-full mx-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-xl font-bold text-white mb-4">
-              {selectedSpan.label}
-            </h3>
-            <div className="space-y-3">
+            <div className="flex items-start justify-between gap-4">
               <div>
-                <span className="text-sm font-medium text-gray-400">Kind:</span>
-                <span className="ml-2 text-sm text-white capitalize">
-                  {selectedSpan.kind.replace('_', ' ')}
-                </span>
-              </div>
-              <div>
-                <span className="text-sm font-medium text-gray-400">Duration:</span>
-                <span className="ml-2 text-sm text-white">
-                  {selectedSpan.duration_ms?.toFixed(0)}ms
-                </span>
-              </div>
-              <div>
-                <span className="text-sm font-medium text-gray-400">Status:</span>
-                <span className={`ml-2 px-2 py-1 inline-flex text-xs font-semibold rounded-lg ${getStatusColor(selectedSpan.status)}`}>
-                  {selectedSpan.status}
-                </span>
-              </div>
-              {selectedSpan.error_message && (
-                <div>
-                  <span className="text-sm font-medium text-red-400">Error:</span>
-                  <pre className="mt-1 text-sm bg-red-500/10 p-3 rounded-lg border border-red-500/50 text-red-300">
-                    {selectedSpan.error_message}
-                  </pre>
-                </div>
-              )}
-              {selectedSpan.tokens && (
-                <div>
-                  <span className="text-sm font-medium text-gray-400">Tokens:</span>
-                  <span className="ml-2 text-sm text-white">
-                    {selectedSpan.tokens.toLocaleString()}
+                <h3 className="text-xl font-bold text-white mb-1">
+                  {selectedSpan.label}
+                </h3>
+                {selectedSpan.sublabel && (
+                  <p className="text-xs text-gray-400 mb-2">{selectedSpan.sublabel}</p>
+                )}
+                <div className="flex flex-wrap items-center gap-3 text-xs text-gray-300">
+                  <span className="px-2 py-1 rounded bg-primary-500/10 text-primary-300 border border-primary-500/30 capitalize">
+                    {selectedSpan.kind.replace('_', ' ')}
                   </span>
+                  <span>
+                    Duration:{' '}
+                    <strong className="text-white">
+                      {selectedSpan.duration_ms ? `${selectedSpan.duration_ms.toFixed(0)}ms` : '-'}
+                    </strong>
+                  </span>
+                  <span className={`px-2 py-1 rounded text-xs font-semibold ${getStatusColor(selectedSpan.status)}`}>
+                    {selectedSpan.status}
+                  </span>
+                  {selectedSpan.tokens ? (
+                    <span>
+                      Tokens:{' '}
+                      <strong className="text-white">
+                        {selectedSpan.tokens.toLocaleString()}
+                      </strong>
+                    </span>
+                  ) : null}
                 </div>
-              )}
+              </div>
+              <button
+                onClick={() => setSelectedSpan(null)}
+                className="text-gray-400 hover:text-white text-sm"
+              >
+                Close
+              </button>
             </div>
-            <button
-              onClick={() => setSelectedSpan(null)}
-              className="mt-6 w-full px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-500 transition-colors"
-            >
-              Close
-            </button>
+
+            {/* Metrics grid */}
+            {selectedSpan.metrics && Object.keys(selectedSpan.metrics).length > 0 && (
+              <div className="mt-4">
+                <h4 className="text-sm font-semibold text-white mb-2">Metrics</h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs text-gray-200 font-mono">
+                  {Object.entries(selectedSpan.metrics).map(([key, value]) => (
+                    <div
+                      key={key}
+                      className="flex flex-col bg-background border border-border rounded-lg px-3 py-2"
+                    >
+                      <span className="text-[11px] uppercase tracking-wide text-gray-400">
+                        {key}
+                      </span>
+                      <span className="text-sm text-white break-words">
+                        {value === null || value === undefined ? '-' : String(value)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Error section */}
+            {selectedSpan.error_message && (
+              <div className="mt-4">
+                <span className="text-sm font-medium text-red-400">Error</span>
+                <pre className="mt-1 text-sm bg-red-500/10 p-3 rounded-lg border border-red-500/50 text-red-300">
+                  {selectedSpan.error_message}
+                </pre>
+              </div>
+            )}
           </div>
         </div>
       )}

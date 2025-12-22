@@ -34,8 +34,7 @@ import asyncio
 from agio import Agent, OpenAIModel
 from agio.providers.tools.builtin import FileReadTool, GrepTool
 from agio.runtime.wire import Wire
-from agio.runtime.execution_context import ExecutionContext
-from agio.domain.events import StepEventType
+from agio.domain import ExecutionContext, StepEventType
 
 async def main():
     agent = Agent(
@@ -80,8 +79,7 @@ asyncio.run(main())
 import asyncio
 from agio.config import init_config_system
 from agio.runtime.wire import Wire
-from agio.runtime.execution_context import ExecutionContext
-from agio.domain.events import StepEventType
+from agio.domain import ExecutionContext, StepEventType
 
 async def main():
     config_sys = await init_config_system("./configs")

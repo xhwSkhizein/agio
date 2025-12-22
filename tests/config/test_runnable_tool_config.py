@@ -138,8 +138,16 @@ class TestConfigSystemToolResolution:
     async def test_resolve_agent_tool(self, config_system):
         """Test resolving agent_tool configuration."""
         # Register a mock agent
+        from agio.config.container import ComponentMetadata
+        from agio.config.schema import ComponentType, AgentConfig
+        
         mock_agent = MockRunnable(id="research_agent")
-        config_system._instances["research_agent"] = mock_agent
+        metadata = ComponentMetadata(
+            component_type=ComponentType.AGENT,
+            config=AgentConfig(name="research_agent", model="test"),
+            dependencies=[]
+        )
+        config_system.container.register("research_agent", mock_agent, metadata)
 
         # Resolve agent_tool
         tool_ref = {
@@ -158,8 +166,16 @@ class TestConfigSystemToolResolution:
     async def test_resolve_workflow_tool(self, config_system):
         """Test resolving workflow_tool configuration."""
         # Register a mock workflow
+        from agio.config.container import ComponentMetadata
+        from agio.config.schema import ComponentType, WorkflowConfig
+        
         mock_workflow = MockRunnable(id="analysis_pipeline")
-        config_system._instances["analysis_pipeline"] = mock_workflow
+        metadata = ComponentMetadata(
+            component_type=ComponentType.WORKFLOW,
+            config=WorkflowConfig(name="analysis_pipeline", stages=[]),
+            dependencies=[]
+        )
+        config_system.container.register("analysis_pipeline", mock_workflow, metadata)
 
         # Resolve workflow_tool
         tool_ref = {
@@ -188,8 +204,16 @@ class TestConfigSystemToolResolution:
     @pytest.mark.asyncio
     async def test_resolve_agent_tool_custom_name(self, config_system):
         """Test agent_tool with custom name."""
+        from agio.config.container import ComponentMetadata
+        from agio.config.schema import ComponentType, AgentConfig
+        
         mock_agent = MockRunnable(id="research_agent")
-        config_system._instances["research_agent"] = mock_agent
+        metadata = ComponentMetadata(
+            component_type=ComponentType.AGENT,
+            config=AgentConfig(name="research_agent", model="test"),
+            dependencies=[]
+        )
+        config_system.container.register("research_agent", mock_agent, metadata)
 
         tool_ref = {
             "type": "agent_tool",
@@ -263,8 +287,16 @@ class TestSelfReferenceDetection:
     async def test_agent_self_reference_detected(self, config_system):
         """Test that agent self-reference is detected at config time."""
         # Register an agent
+        from agio.config.container import ComponentMetadata
+        from agio.config.schema import ComponentType, AgentConfig
+        
         mock_agent = MockRunnable(id="my_agent")
-        config_system._instances["my_agent"] = mock_agent
+        metadata = ComponentMetadata(
+            component_type=ComponentType.AGENT,
+            config=AgentConfig(name="my_agent", model="test"),
+            dependencies=[]
+        )
+        config_system.container.register("my_agent", mock_agent, metadata)
 
         # Try to create agent_tool that references itself
         tool_ref = {
@@ -285,8 +317,16 @@ class TestSelfReferenceDetection:
     async def test_workflow_self_reference_detected(self, config_system):
         """Test that workflow self-reference is detected at config time."""
         # Register a workflow
+        from agio.config.container import ComponentMetadata
+        from agio.config.schema import ComponentType, WorkflowConfig
+        
         mock_workflow = MockRunnable(id="my_workflow")
-        config_system._instances["my_workflow"] = mock_workflow
+        metadata = ComponentMetadata(
+            component_type=ComponentType.WORKFLOW,
+            config=WorkflowConfig(name="my_workflow", stages=[]),
+            dependencies=[]
+        )
+        config_system.container.register("my_workflow", mock_workflow, metadata)
 
         # Try to create workflow_tool that references itself
         tool_ref = {
@@ -307,10 +347,25 @@ class TestSelfReferenceDetection:
     async def test_different_agent_reference_allowed(self, config_system):
         """Test that referencing a different agent is allowed."""
         # Register two agents
+        from agio.config.container import ComponentMetadata
+        from agio.config.schema import ComponentType, AgentConfig
+        
         mock_agent_a = MockRunnable(id="agent_a")
         mock_agent_b = MockRunnable(id="agent_b")
-        config_system._instances["agent_a"] = mock_agent_a
-        config_system._instances["agent_b"] = mock_agent_b
+        
+        metadata_a = ComponentMetadata(
+            component_type=ComponentType.AGENT,
+            config=AgentConfig(name="agent_a", model="test"),
+            dependencies=[]
+        )
+        metadata_b = ComponentMetadata(
+            component_type=ComponentType.AGENT,
+            config=AgentConfig(name="agent_b", model="test"),
+            dependencies=[]
+        )
+        
+        config_system.container.register("agent_a", mock_agent_a, metadata_a)
+        config_system.container.register("agent_b", mock_agent_b, metadata_b)
 
         # agent_a using agent_b as tool should be allowed
         tool_ref = {

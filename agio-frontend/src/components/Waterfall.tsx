@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 
-interface WaterfallSpan {
+export interface WaterfallSpan {
   span_id: string;
   parent_span_id: string | null;
   kind: string;
@@ -10,9 +10,12 @@ interface WaterfallSpan {
   duration_ms: number;
   status: string;
   error_message: string | null;
+
+  // Display info
   label: string;
   sublabel: string | null;
   tokens: number | null;
+  metrics?: Record<string, any>;
 }
 
 interface WaterfallProps {
@@ -81,6 +84,51 @@ export function Waterfall({ spans, totalDuration, onSpanClick }: WaterfallProps)
 
   const timeMarkers = [0, 0.25, 0.5, 0.75, 1];
 
+  const renderMetrics = (span: WaterfallSpan) => {
+    if (!span.metrics) return null;
+
+    const chips: { label: string; value: string | number }[] = [];
+    const tokensTotal = span.metrics["tokens.total"] ?? span.metrics["total_tokens"];
+    const tokensIn = span.metrics["tokens.input"];
+    const tokensOut = span.metrics["tokens.output"];
+    const firstToken = span.metrics["first_token_ms"];
+    const duration = span.metrics["duration_ms"];
+    const toolExec = span.metrics["tool.exec_time_ms"];
+
+    if (tokensTotal !== undefined) {
+      chips.push({ label: "tokens", value: tokensTotal });
+    } else if (tokensIn !== undefined || tokensOut !== undefined) {
+      chips.push({
+        label: "tokens",
+        value: `${tokensIn ?? "-"} / ${tokensOut ?? "-"}`,
+      });
+    }
+    if (firstToken !== undefined && firstToken !== null) {
+      chips.push({ label: "first_token", value: `${Number(firstToken).toFixed(0)}ms` });
+    }
+    if (duration !== undefined && duration !== null) {
+      chips.push({ label: "latency", value: `${Number(duration).toFixed(0)}ms` });
+    }
+    if (toolExec !== undefined && toolExec !== null) {
+      chips.push({ label: "tool_exec", value: `${Number(toolExec).toFixed(0)}ms` });
+    }
+
+    if (!chips.length) return null;
+
+    return (
+      <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-400 font-mono">
+        {chips.map((chip) => (
+          <span
+            key={`${span.span_id}-${chip.label}`}
+            className="px-2 py-0.5 rounded bg-surfaceHighlight border border-border/60 text-white/80"
+          >
+            {chip.label}: <span className="font-semibold text-white">{chip.value}</span>
+          </span>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="w-full">
       {/* Timeline header */}
@@ -141,6 +189,7 @@ export function Waterfall({ spans, totalDuration, onSpanClick }: WaterfallProps)
                     ({span.sublabel})
                   </span>
                 )}
+                {renderMetrics(span)}
               </div>
 
               {/* Timeline bar */}

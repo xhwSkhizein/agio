@@ -4,6 +4,7 @@ description: "Fetch and process web content with optional LLM processing"
 tool_name: web_fetch
 dependencies:
   llm_model: deepseek  # Reference to model config for content summarization
+  citation_source_store: citation_store_mongodb  # Reference to citation store for index-based fetching
 params:
   # timeout_seconds: 30
   # max_content_length: 4096
