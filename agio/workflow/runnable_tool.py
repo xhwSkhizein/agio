@@ -19,13 +19,15 @@ import time
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from agio.domain import StepEvent, StepEventType, ToolResult
+from agio.domain import ToolResult
 from agio.providers.tools import BaseTool
-from agio.workflow.protocol import Runnable, RunContext
+from agio.domain import ExecutionContext
+from agio.workflow.protocol import Runnable
 
 if TYPE_CHECKING:
     from agio.runtime.control import AbortSignal
     from agio.runtime.wire import Wire
+    from agio.providers.storage.base import SessionStore
 
 
 # Default maximum nesting depth for Runnable as Tool
@@ -68,6 +70,7 @@ class RunnableTool(BaseTool):
         description: str | None = None,
         name: str | None = None,
         max_depth: int = DEFAULT_MAX_DEPTH,
+        session_store: "SessionStore | None" = None,
     ):
         """
         Initialize RunnableTool.
@@ -77,11 +80,13 @@ class RunnableTool(BaseTool):
             description: Tool description for LLM
             name: Tool name, defaults to call_{runnable.id}
             max_depth: Maximum nesting depth allowed (default: 5)
+            session_store: SessionStore for Run persistence (optional)
         """
         self.runnable = runnable
         self._description = description or f"Delegate task to {runnable.id}"
         self._name = name or f"call_{runnable.id}"
         self.max_depth = max_depth
+        self.session_store = session_store
         super().__init__()
 
     def get_name(self) -> str:
@@ -166,31 +171,41 @@ class RunnableTool(BaseTool):
             input_text = f"{task}\n\nContext: {extra_context}"
 
         # Get wire and parent_run_id from parameters (passed by ToolExecutor)
+        # Note: These parameters are passed via magic keys for now (Part 3 task)
         wire: "Wire | None" = parameters.get("_wire")
         parent_run_id: str | None = parameters.get("_parent_run_id")
         
         # Build execution context with wire for unified event streaming
-        context = RunContext(
+        run_id = str(uuid4())
+        context = ExecutionContext(
+            run_id=run_id,
             wire=wire,  # Pass wire to nested execution
             session_id=str(uuid4()),  # Independent session
             trace_id=parameters.get("_trace_id"),
+            span_id=None,
             parent_span_id=parameters.get("_parent_span_id"),
             parent_run_id=parent_run_id,  # Parent run ID for grouping nested events
             nested_runnable_id=self.runnable.id,  # Identify which Runnable is executing
+            runnable_type=self.runnable.runnable_type,  # "agent" or "workflow"
+            runnable_id=self.runnable.id,  # Runnable config ID
+            nesting_type="tool_call",  # Mark as tool_call triggered execution
             depth=current_depth,
             metadata={
                 "_call_stack": call_stack,  # Pass call stack for nested detection
             },
         )
 
-        # Execute nested Runnable
-        # Events are written directly to wire by the nested execution
+        # Execute nested Runnable via RunnableExecutor
+        # This ensures RUN_STARTED/COMPLETED events are emitted
+        from agio.runtime import RunnableExecutor
+        
         output = ""
         error = None
 
         try:
-            # run() writes events to wire and returns RunOutput
-            result = await self.runnable.run(input_text, context=context)
+            # Use RunnableExecutor to handle Run lifecycle events
+            executor = RunnableExecutor(store=self.session_store)
+            result = await executor.execute(self.runnable, input_text, context)
             output = result.response or ""
 
         except CircularReferenceError as e:
@@ -224,6 +239,7 @@ def as_tool(
     description: str | None = None,
     name: str | None = None,
     max_depth: int = DEFAULT_MAX_DEPTH,
+    session_store: "SessionStore | None" = None,
 ) -> RunnableTool:
     """
     Convert a Runnable (Agent/Workflow) to a Tool.
@@ -239,11 +255,16 @@ def as_tool(
         description: Tool description for LLM reference
         name: Tool name, defaults to call_{runnable.id}
         max_depth: Maximum nesting depth allowed (default: 5)
+        session_store: SessionStore for Run persistence (optional)
 
     Returns:
         RunnableTool instance
     """
-    return RunnableTool(runnable, description, name, max_depth=max_depth)
+    return RunnableTool(
+        runnable, description, name, 
+        max_depth=max_depth, 
+        session_store=session_store,
+    )
 
 
 __all__ = [

@@ -1,0 +1,101 @@
+# Composite Workflow Example
+# Combines Pipeline, Parallel, and Loop workflows
+# Demonstrates nested workflow composition
+
+type: workflow
+name: example_composite
+description: "Composite workflow combining pipeline, parallel, and loop patterns"
+workflow_type: pipeline
+
+stages:
+  # Stage 1: Parallel research phase
+  - id: parallel_research
+    runnable:
+      id: nested_parallel_research
+      type: workflow
+      workflow_type: parallel
+      stages:
+        - id: local_info
+          runnable: collector
+          input: |
+            Gather local information:
+            Task: {input}
+            Focus on codebase, files, and local resources.
+        - id: web_info
+          runnable: collector
+          input: |
+            Gather web information:
+            Task: {input}
+            Focus on external resources and documentation.
+      merge_template: |
+        Local Information:
+        {{results}}
+        
+        Note: Current implementation uses {{results}} placeholder for all branch outputs
+    input: "{input}"
+
+  # Stage 2: Analysis phase (sequential)
+  - id: analyze
+    runnable: simple_assistant
+    input: |
+      Analyze the research results:
+      
+      Research Summary: {parallel_research.output}
+      Original Request: {input}
+      
+      Provide a comprehensive analysis with key insights.
+
+  # Stage 3: Iterative improvement loop
+  - id: improve_loop
+    runnable:
+      id: nested_improvement_loop
+      type: workflow
+      workflow_type: loop
+      stages:
+        - id: review
+          runnable: simple_assistant
+          input: |
+            Review the current version:
+            
+            Analysis: {input}
+            Current Content: {loop.last.improve or 'Initial draft'}
+            Iteration: {loop.iteration}
+            
+            Provide feedback: PASS or NEEDS_REVISION
+        
+        - id: improve
+          runnable: simple_assistant
+          input: |
+            Improve based on feedback:
+            
+            Original Analysis: {input}
+            Feedback: {review.output}
+            Previous Version: {loop.last.improve or 'Initial draft'}
+            
+            Make improvements.
+      condition: "{review} contains 'NEEDS_REVISION'"
+      max_iterations: 3
+    input: "{analyze}"
+
+  # Stage 4: Final formatting
+  - id: finalize
+    runnable: simple_assistant
+    input: |
+      Format the final output:
+      
+      Improved Content: {improve_loop.output}
+      Original Request: {input}
+      
+      Create a polished, well-formatted final response.
+
+# Storage
+session_store: mongodb_session_store
+
+enabled: true
+tags:
+  - composite
+  - nested
+  - pipeline
+  - parallel
+  - loop
+  - example

@@ -7,7 +7,7 @@ import { getToolDisplayName, getToolKey } from '../utils/toolHelpers'
 
 interface Agent {
   name?: string
-  system_prompt?: string
+  system_prompt?: string | null
   tools?: Array<any>
 }
 

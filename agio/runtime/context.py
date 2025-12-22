@@ -19,6 +19,9 @@ async def build_context_from_steps(
     session_id: str,
     session_store: "SessionStore",
     system_prompt: str | None = None,
+    run_id: str | None = None,
+    workflow_id: str | None = None,
+    node_id: str | None = None,
 ) -> list[dict]:
     """
     Build LLM context from Steps using StepAdapter.
@@ -27,14 +30,28 @@ async def build_context_from_steps(
         session_id: Session ID
         session_store: Repository to fetch steps from
         system_prompt: Optional system prompt to prepend
+        run_id: Filter by run_id (optional, for isolating agent context)
+        workflow_id: Filter by workflow_id (optional)
+        node_id: Filter by node_id (optional)
 
     Returns:
         list[dict]: Messages in OpenAI format, ready to send to LLM
     """
-    logger.debug("building_context", session_id=session_id)
+    logger.debug(
+        "building_context",
+        session_id=session_id,
+        run_id=run_id,
+        workflow_id=workflow_id,
+        node_id=node_id,
+    )
 
-    # 1. Query steps from session_store
-    steps = await session_store.get_steps(session_id)
+    # 1. Query steps from session_store with optional filters
+    steps = await session_store.get_steps(
+        session_id=session_id,
+        run_id=run_id,
+        workflow_id=workflow_id,
+        node_id=node_id,
+    )
 
     logger.debug("context_steps_loaded", session_id=session_id, count=len(steps))
 
@@ -56,6 +73,9 @@ async def build_context_from_sequence_range(
     start_seq: int | None = None,
     end_seq: int | None = None,
     system_prompt: str | None = None,
+    run_id: str | None = None,
+    workflow_id: str | None = None,
+    node_id: str | None = None,
 ) -> list[dict]:
     """
     Build context from a specific sequence range.
@@ -66,11 +86,21 @@ async def build_context_from_sequence_range(
         start_seq: Start sequence (inclusive), None = from beginning
         end_seq: End sequence (inclusive), None = to end
         system_prompt: Optional system prompt
+        run_id: Filter by run_id (optional)
+        workflow_id: Filter by workflow_id (optional)
+        node_id: Filter by node_id (optional)
 
     Returns:
         list[dict]: Messages in OpenAI format
     """
-    steps = await session_store.get_steps(session_id, start_seq=start_seq, end_seq=end_seq)
+    steps = await session_store.get_steps(
+        session_id=session_id,
+        start_seq=start_seq,
+        end_seq=end_seq,
+        run_id=run_id,
+        workflow_id=workflow_id,
+        node_id=node_id,
+    )
     messages = StepAdapter.steps_to_messages(steps)
 
     if system_prompt:

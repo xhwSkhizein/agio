@@ -84,7 +84,7 @@ class Span(BaseModel):
 
     # === Associations ===
     llm_log_id: str | None = None  # Associated LLMCallLog ID
-    run_id: str | None = None  # Associated AgentRun ID
+    run_id: str | None = None  # Associated Run ID
     step_id: str | None = None  # Associated Step ID
 
     def complete(

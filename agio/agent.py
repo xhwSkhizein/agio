@@ -10,7 +10,6 @@ Wire-based Architecture:
 - All nested executions share the same wire
 """
 
-import uuid
 from typing import TYPE_CHECKING
 
 from agio.domain import AgentSession
@@ -20,7 +19,8 @@ from agio.providers.storage.base import SessionStore
 from agio.providers.tools import BaseTool
 
 if TYPE_CHECKING:
-    from agio.workflow.protocol import RunContext, RunOutput
+    from agio.workflow.protocol import RunOutput
+    from agio.domain import ExecutionContext
     from agio.runtime.wire import Wire
 
 
@@ -45,36 +45,50 @@ class Agent:
         name: str = "agio_agent",
         user_id: str | None = None,
         system_prompt: str | None = None,
+        max_steps: int = 10,
+        enable_termination_summary: bool = False,
+        termination_summary_prompt: str | None = None,
     ):
         self._id = name
         self.model = model
-        self.tools = tools or []
+        self.tools: list[BaseTool] = tools or []
         self.memory = memory
         self.knowledge = knowledge
         self.session_store: SessionStore = session_store
         self.user_id = user_id
         self.system_prompt = system_prompt
+        self.max_steps = max_steps
+        self.enable_termination_summary = enable_termination_summary
+        self.termination_summary_prompt = termination_summary_prompt
 
     @property
     def id(self) -> str:
         """Unique identifier for the agent."""
         return self._id
 
+    @property
+    def runnable_type(self) -> str:
+        """Return runnable type identifier."""
+        return "agent"
+
     async def run(
         self,
         input: str,
         *,
-        context: "RunContext",
+        context: "ExecutionContext",
     ) -> "RunOutput":
         """
-        Execute Agent, writing events to context.wire.
+        Execute Agent, writing Step events to context.wire.
         
-        This is the core execution method. Events are written to wire,
+        This is the core execution method. Step events are written to wire,
         which is created and consumed by the API layer.
+        
+        Note: Run lifecycle events (RUN_STARTED/COMPLETED/FAILED) are handled
+        by RunnableExecutor, not here.
 
         Args:
             input: Input string (user message)
-            context: Execution context with wire (required)
+            context: Execution context with wire and run_id (required)
 
         Returns:
             RunOutput with response and metrics
@@ -82,22 +96,25 @@ class Agent:
         from agio.config import ExecutionConfig
         from agio.runtime import StepRunner
 
-        if not context.wire:
-            raise ValueError("context.wire is required for Agent.run()")
-
-        # Use context session_id if provided, otherwise create new
-        session_id = context.session_id or str(uuid.uuid4())
+        # Use context session_id (ExecutionContext guarantees session_id is present)
+        session_id = context.session_id
         current_user_id = context.user_id or self.user_id
 
         session = AgentSession(session_id=session_id, user_id=current_user_id)
 
+        config = ExecutionConfig(
+            max_steps=self.max_steps,
+            enable_termination_summary=self.enable_termination_summary,
+            termination_summary_prompt=self.termination_summary_prompt,
+        )
+
         runner = StepRunner(
             agent=self,
-            config=ExecutionConfig(),
+            config=config,
             session_store=self.session_store,
         )
 
-        # Execute and write events to wire, return RunOutput
+        # Execute and write Step events to wire, return RunOutput
         return await runner.run(session, input, context.wire, context=context)
 
     async def get_steps(self, session_id: str):
@@ -136,9 +153,15 @@ class Agent:
         if not self.session_store:
             raise ValueError("SessionStore not configured")
 
+        config = ExecutionConfig(
+            max_steps=self.max_steps,
+            enable_termination_summary=self.enable_termination_summary,
+            termination_summary_prompt=self.termination_summary_prompt,
+        )
+
         runner = StepRunner(
             agent=self,
-            config=ExecutionConfig(),
+            config=config,
             session_store=self.session_store,
         )
 

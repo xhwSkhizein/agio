@@ -3,8 +3,9 @@ import time
 import pytest
 
 from agio.domain import ToolResult
-from agio.runtime import ToolExecutor
+from agio.runtime import ToolExecutor, Wire
 from agio.providers.tools import BaseTool
+from agio.domain import ExecutionContext
 
 
 class SuccessTool(BaseTool):
@@ -56,15 +57,20 @@ class FailureTool(BaseTool):
         raise ValueError("Intentional failure")
 
 
+@pytest.fixture
+def mock_context():
+    return ExecutionContext(run_id="test_run", session_id="test_session", wire=Wire())
+
+
 @pytest.mark.asyncio
-async def test_tool_executor_success():
+async def test_tool_executor_success(mock_context):
     """Test successful tool execution"""
     tools = [SuccessTool()]
     executor = ToolExecutor(tools)
 
     tool_call = {"id": "call_123", "function": {"name": "success_tool", "arguments": "{}"}}
 
-    result = await executor.execute(tool_call)
+    result = await executor.execute(tool_call, context=mock_context)
 
     assert isinstance(result, ToolResult)
     assert result.is_success is True
@@ -75,14 +81,14 @@ async def test_tool_executor_success():
 
 
 @pytest.mark.asyncio
-async def test_tool_executor_failure():
+async def test_tool_executor_failure(mock_context):
     """Test tool execution with error"""
     tools = [FailureTool()]
     executor = ToolExecutor(tools)
 
     tool_call = {"id": "call_456", "function": {"name": "failure_tool", "arguments": "{}"}}
 
-    result = await executor.execute(tool_call)
+    result = await executor.execute(tool_call, context=mock_context)
 
     assert isinstance(result, ToolResult)
     assert result.is_success is False
@@ -92,14 +98,14 @@ async def test_tool_executor_failure():
 
 
 @pytest.mark.asyncio
-async def test_tool_executor_not_found():
+async def test_tool_executor_not_found(mock_context):
     """Test tool execution when tool is not found"""
     tools = [SuccessTool()]
     executor = ToolExecutor(tools)
 
     tool_call = {"id": "call_789", "function": {"name": "nonexistent_tool", "arguments": "{}"}}
 
-    result = await executor.execute(tool_call)
+    result = await executor.execute(tool_call, context=mock_context)
 
     assert isinstance(result, ToolResult)
     assert result.is_success is False
@@ -108,7 +114,7 @@ async def test_tool_executor_not_found():
 
 
 @pytest.mark.asyncio
-async def test_tool_executor_batch():
+async def test_tool_executor_batch(mock_context):
     """Test batch execution of multiple tools"""
     tools = [SuccessTool(), FailureTool()]
     executor = ToolExecutor(tools)
@@ -118,7 +124,7 @@ async def test_tool_executor_batch():
         {"id": "call_2", "function": {"name": "failure_tool", "arguments": "{}"}},
     ]
 
-    results = await executor.execute_batch(tool_calls)
+    results = await executor.execute_batch(tool_calls, context=mock_context)
 
     assert len(results) == 2
     assert results[0].is_success is True

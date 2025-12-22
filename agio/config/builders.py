@@ -237,7 +237,7 @@ class KnowledgeBuilder(ComponentBuilder):
 
 
 class SessionStoreBuilder(ComponentBuilder):
-    """Builder for session store components (stores AgentRun and Step data)."""
+    """Builder for session store components (stores Run and Step data)."""
 
     async def build(
         self, config: SessionStoreConfig, dependencies: dict[str, Any]
@@ -291,6 +291,9 @@ class AgentBuilder(ComponentBuilder):
                 "tools": dependencies.get("tools", []),
                 "system_prompt": config.system_prompt,
                 "user_id": config.user_id,
+                "max_steps": config.max_steps,
+                "enable_termination_summary": config.enable_termination_summary,
+                "termination_summary_prompt": config.termination_summary_prompt,
             }
 
             # Add optional dependencies
@@ -302,9 +305,6 @@ class AgentBuilder(ComponentBuilder):
 
             if "session_store" in dependencies:
                 kwargs["session_store"] = dependencies["session_store"]
-
-            if "trace_store" in dependencies:
-                kwargs["trace_store"] = dependencies["trace_store"]
 
             return Agent(**kwargs)
 
@@ -329,11 +329,14 @@ class WorkflowBuilder(ComponentBuilder):
                 LoopWorkflow,
                 ParallelWorkflow,
                 PipelineWorkflow,
-                Stage,
             )
+            from agio.workflow.node import WorkflowNode
 
             # Get all instances as registry (passed from ConfigSystem)
             registry = dependencies.get("_all_instances", {})
+
+            # Get session_store from dependencies (resolved by ConfigSystem)
+            session_store = dependencies.get("session_store")
 
             # Build stages
             stages = []
@@ -342,38 +345,49 @@ class WorkflowBuilder(ComponentBuilder):
                 runnable_ref = stage_config.runnable
                 if isinstance(runnable_ref, dict):
                     # Recursively build nested workflow
+                    # Inherit session_store from parent if not specified
+                    nested_config_dict = dict(runnable_ref)
+                    if "session_store" not in nested_config_dict and config.session_store:
+                        nested_config_dict["session_store"] = config.session_store
+
                     nested_config = WorkflowConfig(
-                        name=runnable_ref.get("id", f"{config.name}_nested"),
-                        **runnable_ref,
+                        name=nested_config_dict.get("id", f"{config.name}_nested"),
+                        **nested_config_dict,
                     )
                     nested_workflow = await self.build(nested_config, dependencies)
                     registry[nested_workflow.id] = nested_workflow
                     runnable_ref = nested_workflow.id
 
                 stages.append(
-                    Stage(
+                    WorkflowNode(
                         id=stage_config.id,
                         runnable=runnable_ref,
-                        input=stage_config.input,
+                        input_template=stage_config.input,
                         condition=stage_config.condition,
                     )
                 )
 
             # Build workflow based on type
             if config.workflow_type == "pipeline":
-                workflow = PipelineWorkflow(id=config.name, stages=stages)
+                workflow = PipelineWorkflow(
+                    id=config.name,
+                    stages=stages,
+                    session_store=session_store,
+                )
             elif config.workflow_type == "loop":
                 workflow = LoopWorkflow(
                     id=config.name,
                     stages=stages,
                     condition=config.condition or "true",
                     max_iterations=config.max_iterations,
+                    session_store=session_store,
                 )
             elif config.workflow_type == "parallel":
                 workflow = ParallelWorkflow(
                     id=config.name,
                     stages=stages,
                     merge_template=config.merge_template,
+                    session_store=session_store,
                 )
             else:
                 raise ComponentBuildError(

@@ -1,0 +1,64 @@
+# Parallel Workflow Example
+# Execute multiple research tasks in parallel and merge results
+
+type: workflow
+name: example_parallel
+description: "Parallel workflow example - concurrent research branches"
+workflow_type: parallel
+
+stages:
+  - id: local_research
+    runnable: collector
+    input: |
+      Research locally using file system tools:
+      
+      Task: {input}
+      
+      Focus on:
+      - Finding relevant files
+      - Reading code/documentation
+      - Analyzing local resources
+
+  - id: web_research
+    runnable: collector
+    input: |
+      Research on the web:
+      
+      Task: {input}
+      
+      Focus on:
+      - Web search for external information
+      - Fetching relevant web pages
+      - Gathering online resources
+
+  - id: analysis
+    runnable: simple_assistant
+    input: |
+      Analyze the request from a theoretical perspective:
+      
+      Task: {input}
+      
+      Provide:
+      - Theoretical framework
+      - Best practices
+      - Conceptual insights
+
+# Merge template combines all branch outputs
+# Note: Current implementation uses {{results}} placeholder
+merge_template: |
+  # Research Summary
+  
+  {{results}}
+  
+  ## Combined Insights
+  Based on the above research, here are the key findings and recommendations.
+
+# Storage
+session_store: mongodb_session_store
+
+enabled: true
+tags:
+  - parallel
+  - concurrent
+  - research
+  - example

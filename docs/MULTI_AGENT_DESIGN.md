@@ -8,6 +8,7 @@
 
 1. [概述与目标](#1-概述与目标)
 2. [核心概念与术语](#2-核心概念与术语)
+   - [2.4 Agent 与 Workflow 的能力差异](#24-agent-与-workflow-的能力差异)
 3. [Runnable 协议](#3-runnable-协议)
 4. [InputMapping 与 OutputStore](#4-inputmapping-与-outputstore)
 5. [Stage 与条件表达式](#5-stage-与条件表达式)
@@ -16,6 +17,7 @@
 8. [执行引擎](#8-执行引擎)
 9. [可观测性设计](#9-可观测性设计)
 10. [API 与 Web 集成](#10-api-与-web-集成)
+   - [10.2 Agent 专用 API（Fork/Resume）](#102-agent-专用-apiforkresume)
 11. [数据模型扩展](#11-数据模型扩展)
 12. [模块结构与实施计划](#12-模块结构与实施计划)
 
@@ -27,6 +29,11 @@
 
 当前 Agio 系统支持单 Agent 与用户交互，具备完整的 Step-based 执行模型、流式输出、Fork/Resume 等能力。为支持更复杂的 AI 应用场景，需要扩展支持多 Agent 协作编排。
 
+**重要说明**：虽然 Agent 和 Workflow 都实现了 Runnable 协议，但它们在基础能力上存在显著差异：
+- **Agent** 支持 Suspend/Resume、Fork Session、从任意 Step 恢复执行等能力
+- **Workflow** 不支持这些能力，因为它基于 Stage 编排模型，不维护 Step 级别的持久化状态
+- 详细差异说明请参见 [2.4 Agent 与 Workflow 的能力差异](#24-agent-与-workflow-的能力差异)
+
 ### 1.2 设计目标
 
 | 目标 | 说明 |
@@ -35,7 +42,8 @@
 | **YAML 配置化** | 通过 YAML 配置构建复杂执行流程，无需编写代码 |
 | **流式输出** | 多 Agent 执行过程实时流式返回，复用现有 SSE 机制 |
 | **基础设施复用** | Workflow 复用 Agent 的 API/Web 基础设施 |
-| **独立 Session** | 每个 Agent 有独立的 Session，便于隔离、Fork/Resume |
+| **独立 Session** | 每个 Agent 有独立的 Session，便于隔离、Fork/Resume（仅 Agent 支持） |
+| **能力差异** | Agent 支持 Suspend/Resume/Fork，Workflow 不支持（详见 2.4 节） |
 | **可观测性** | 预留 Trace/Span 设计空间，后续可无缝添加 |
 
 ### 1.3 设计原则
@@ -152,6 +160,69 @@ API 层从 wire.read() 读取事件并流式返回
 - **共享协议**：都实现 Runnable 接口
 - **复用基础设施**：共享 API 路由、SSE 流、Web UI
 
+### 2.4 Agent 与 Workflow 的能力差异
+
+虽然 Agent 和 Workflow 都实现了 Runnable 协议，但它们在基础建设和实现上存在显著差异：
+
+#### 2.4.1 执行模型差异
+
+| 特性 | Agent | Workflow |
+|------|-------|----------|
+| **执行模型** | Step-based（基于 Step 的对话模型） | Stage-based（基于 Stage 的编排模型） |
+| **状态管理** | 维护完整的 Session 和 Step 历史 | 不维护 Step 级别状态，只管理 Stage 输出 |
+| **持久化** | Steps 持久化到 SessionStore | Stage 输出仅在内存中（OutputStore） |
+| **执行粒度** | 细粒度：每个 LLM 调用、工具调用都是 Step | 粗粒度：每个 Stage 是一个执行单元 |
+
+#### 2.4.2 支持的能力差异
+
+**Agent 支持的能力**：
+- ✅ **Suspend/Resume**：支持暂停执行并在后续恢复
+- ✅ **Fork Session**：可以从任意 Step 节点 Fork 并继续聊天
+- ✅ **Resume from Step**：可以从特定 Step（user/assistant/tool）恢复执行
+- ✅ **Step 历史查询**：可以查询完整的 Step 历史记录
+- ✅ **Session 管理**：完整的 Session 生命周期管理
+
+**Workflow 不支持的能力**：
+- ❌ **Suspend/Resume**：Workflow 不支持暂停和恢复
+- ❌ **Fork Workflow**：无法从 Workflow 层面 Fork
+- ❌ **Resume from Stage**：无法从特定 Stage 恢复执行
+- ❌ **Stage 历史查询**：Workflow 不维护 Stage 级别的历史记录
+
+#### 2.4.3 原因分析
+
+**为什么 Agent 支持这些能力？**
+
+1. **Step-based 模型**：Agent 的执行基于 Step 序列，每个 Step 都有明确的角色（user/assistant/tool）和状态
+2. **Session 持久化**：所有 Steps 都持久化到 SessionStore，可以随时查询和恢复
+3. **细粒度控制**：Step 级别的粒度使得 Fork/Resume 操作更加精确和可控
+
+**为什么 Workflow 不支持这些能力？**
+
+1. **Stage-based 模型**：Workflow 的执行基于 Stage 编排，Stage 输出只在内存中（OutputStore）
+2. **无持久化**：Workflow 的 Stage 输出不持久化，执行完成后即丢失
+3. **粗粒度控制**：Stage 级别的粒度使得 Fork/Resume 操作缺乏必要的状态信息
+
+#### 2.4.4 实际影响
+
+虽然 Workflow 本身不支持 Fork/Resume，但 **Workflow 中的 Agent 仍然可以 Fork/Resume**：
+
+```
+Workflow Execution
+├─ Stage 1: Agent A (Session: sess_001) ✅ 可以 Fork/Resume
+├─ Stage 2: Agent B (Session: sess_002) ✅ 可以 Fork/Resume
+└─ Stage 3: Agent C (Session: sess_003) ✅ 可以 Fork/Resume
+```
+
+**使用场景**：
+- 如果需要 Fork/Resume 功能，应该直接操作 Workflow 中的 Agent Session
+- 可以通过 `trace_id` 关联 Workflow 执行中的所有 Agent Sessions
+- 前端可以通过 Session API 对 Agent 进行 Fork/Resume 操作
+
+**限制**：
+- 无法从 Workflow 层面 Fork 整个执行流程
+- 无法恢复 Workflow 到某个 Stage 的状态
+- Workflow 的 Stage 输出不会持久化，无法查询历史
+
 ---
 
 ## 3. Runnable 协议
@@ -241,6 +312,11 @@ class Runnable(Protocol):
 
 ### 3.2 Agent 实现 Runnable
 
+**重要说明**：Agent 除了实现 Runnable 协议外，还提供了 Workflow 不支持的能力：
+- `resume_from_step()`：从特定 Step 恢复执行
+- `fork_session()`：Fork Session 从指定 Step
+- `get_steps()`：查询 Session 的所有 Steps
+
 ```python
 # agio/agent.py
 
@@ -252,6 +328,7 @@ class Agent:
     1. run() 方法实现 Runnable 协议
     2. 使用 context.wire 写入事件
     3. 返回 RunOutput（response + metrics）
+    4. 提供 Fork/Resume 能力（Workflow 不支持）
     """
     
     def __init__(
@@ -305,6 +382,24 @@ class Agent:
         
         # 执行并写入事件到 wire，返回 RunOutput
         return await runner.run(session, input, context.wire, context=context)
+    
+    async def resume_from_step(
+        self, session_id: str, step: Step, wire: Wire
+    ) -> RunOutput:
+        """
+        Resume 执行（Agent 特有，Workflow 不支持）
+        
+        从特定 Step 恢复执行，支持从 user/assistant/tool step 恢复。
+        """
+        # ... 实现代码 ...
+    
+    async def fork_session(self, session_id: str, sequence: int) -> str:
+        """
+        Fork Session（Agent 特有，Workflow 不支持）
+        
+        从指定 sequence 的 Step Fork Session，创建新的 Session。
+        """
+        # ... 实现代码 ...
 ```
 
 ### 3.3 StepEvent 扩展
@@ -1839,7 +1934,65 @@ class RunRequest(BaseModel):
     user_id: str | None = None
 ```
 
-### 10.2 保留原有 Agent API
+### 10.2 Agent 专用 API（Fork/Resume）
+
+**重要说明**：以下 API 是 **Agent 专用的**，Workflow 不支持这些操作。
+
+#### 10.2.1 Fork Session API
+
+```python
+# agio/api/routes/sessions.py
+
+@router.post("/{session_id}/fork")
+async def fork_session_endpoint(
+    session_id: str,
+    request: ForkRequest,
+    session_store: SessionStore = Depends(get_session_store),
+) -> ForkResponse:
+    """
+    Fork 一个 Session（仅适用于 Agent）
+    
+    从指定的 Step 节点 Fork Session，创建新的 Session 并复制历史 Steps。
+    支持修改 assistant step 的 content 和 tool_calls。
+    
+    注意：此 API 仅适用于 Agent Session，Workflow 不支持 Fork。
+    """
+    # ... 实现代码 ...
+```
+
+#### 10.2.2 Resume Session API
+
+```python
+@router.post("/{session_id}/resume")
+async def resume_session_endpoint(
+    session_id: str,
+    agent_id: str,
+    session_store: SessionStore = Depends(get_session_store),
+    config_sys: ConfigSystem = Depends(get_config_sys),
+):
+    """
+    Resume 一个 Session（仅适用于 Agent）
+    
+    从最后一个 Step 恢复执行，通常用于处理 pending tool_calls。
+    
+    注意：此 API 仅适用于 Agent Session，Workflow 不支持 Resume。
+    """
+    # ... 实现代码 ...
+```
+
+#### 10.2.3 使用场景
+
+**Agent 场景**：
+- ✅ 可以从任意 Step Fork Session
+- ✅ 可以 Resume 有 pending tool_calls 的 Session
+- ✅ 可以修改 assistant step 的 content/tool_calls 后 Fork
+
+**Workflow 场景**：
+- ❌ 无法从 Workflow 层面 Fork
+- ❌ 无法 Resume Workflow 执行
+- ✅ 可以 Fork Workflow 中的 Agent Session（通过 Session API）
+
+### 10.3 保留原有 Agent API
 
 为保持兼容，原有 `/agents/{agent_id}/run` 路由保留：
 
@@ -1977,12 +2130,20 @@ function WorkflowViewer({ runnableId, query }: Props) {
 
 ### 11.1 Step 模型扩展
 
+**重要说明**：Step 和 Session 是 **Agent 特有的数据模型**，Workflow 不维护这些模型。
+
+- **Agent**：每个执行都会创建 Steps，Steps 持久化到 SessionStore
+- **Workflow**：不创建 Steps，只管理 Stage 输出（OutputStore，内存中）
+
 ```python
 # agio/domain/models.py - Step 扩展
 
 class Step(BaseModel):
     """
-    Step - 核心数据单元
+    Step - Agent 的核心数据单元
+    
+    注意：Step 是 Agent 特有的，Workflow 不维护 Step 模型。
+    Workflow 中的 Agent 会创建 Steps，但 Workflow 本身不创建 Steps。
     
     多 Agent 场景扩展字段（所有新字段都有默认值，保持兼容）
     """
@@ -2049,6 +2210,8 @@ class AgentRun(BaseModel):
 
 ### 11.3 Session 隔离设计
 
+**重要说明**：Session 和 Step 是 **Agent 特有的概念**，Workflow 不维护 Session。
+
 每个 Agent 在 Workflow 中执行时使用独立的 Session：
 
 ```
@@ -2056,19 +2219,19 @@ Workflow Run (trace_id = "trace_001")
 │
 ├─► Stage: intent
 │   └─► Agent: intent_agent
-│       └─► Session: sess_001 (独立)
+│       └─► Session: sess_001 (独立) ✅ 可以 Fork/Resume
 │           ├─► Step 1 (user)
 │           └─► Step 2 (assistant)
 │
 ├─► Stage: planner  
 │   └─► Agent: planner_agent
-│       └─► Session: sess_002 (独立)
+│       └─► Session: sess_002 (独立) ✅ 可以 Fork/Resume
 │           ├─► Step 1 (user)
 │           └─► Step 2 (assistant)
 │
 └─► Stage: researcher
     └─► Agent: researcher_agent
-        └─► Session: sess_003 (独立)
+        └─► Session: sess_003 (独立) ✅ 可以 Fork/Resume
             ├─► Step 1 (user)
             ├─► Step 2 (assistant, tool_calls)
             ├─► Step 3 (tool)
@@ -2076,9 +2239,15 @@ Workflow Run (trace_id = "trace_001")
 ```
 
 **优势**：
-- 每个 Agent 的历史独立，便于 Fork/Resume
+- 每个 Agent 的历史独立，便于 Fork/Resume（**仅 Agent 支持**）
 - 便于单独查看某个 Agent 的执行过程
 - 便于单独优化某个 Agent
+- 支持从任意 Step 节点 Fork 并继续聊天
+
+**限制**：
+- **Workflow 本身不支持 Fork/Resume**：无法从 Workflow 层面 Fork 整个执行流程
+- **Workflow 不维护 Session**：Workflow 的 Stage 输出不持久化，无法查询历史
+- **只能操作 Agent Session**：如果需要 Fork/Resume，需要直接操作 Workflow 中的 Agent Session
 
 **关联方式**：
 - 通过 `trace_id` 关联同一 Workflow 执行的所有 Session

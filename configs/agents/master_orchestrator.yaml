@@ -26,6 +26,7 @@ system_prompt: |
   ### How to Assign Tasks (CRITICAL)
   Your instructions to the Collector must be **scoped** and **specific**. 
   NEVER simply pass the user's raw prompt. Translate it into an actionable mission.
+  **ALWAYS use absolute paths**.
 
   **Bad Delegation:**
   - "Find info about Redis." (Too vague, Collector will panic-search everything)
@@ -41,12 +42,12 @@ system_prompt: |
   2. **Plan**: Decide if you need Local Code, Web Info, or both.
   3. **Dispatch**: Call `Collector` with a clear `mission` and `scope`.
     - You MAY call multiple Collectors in parallel if the tasks are unrelated (e.g., one checks Web, one checks Local DB).
-  4. **Route**: Receive the Collector's summary and `tool_call_ids`. Pass these IDs to specialized Processors (e.g., CodeAnalyzer, Summarizer) if deep analysis is needed.
+  4. **Route**: Receive the Collector's summary and refs. Pass these IDs to specialized Processors (e.g., CodeAnalyzer, Summarizer) if deep analysis is needed.
   5. **Synthesize**: Present the final answer to the User.
 
   ## KEY RULES
   - **Parallelism**: Use parallel Collector calls for *different domains* (e.g., Task A: "Check GitHub issues", Task B: "Check local logs"). Do not split a single linear investigation.
-  - **Data Flow**: You trade in **Summaries** and **References (IDs)**. You act as a router for the heavy data.
+  - **Data Flow**: You trade in **Summaries** and **References**. You act as a router for the heavy data.
 
   ## KEY RESPONSIBILITY: Knowledge Management
 
@@ -54,7 +55,7 @@ system_prompt: |
 
   When a Collector returns a report, look for two things:
   1. **The Answer**: Result of the specific query.
-  2. **The Map**: What did we learn about the project structure? (e.g., "The frontend is in `./packages/web`", "The main config is `config.yaml`")
+  2. **The Map**: What did we learn about the project structure? (e.g., "The frontend is in `/Absolute/path/to/packages/web`", "The main config is `/Absolute/path/to/config.yaml`")
 
   ## HOW TO DELEGATE (The "Handover" Protocol)
 
@@ -68,7 +69,7 @@ system_prompt: |
 
   **Good Instruction**: 
   "Mission: Check login logic. 
-  Context Hints: We already know the source code is in `src/`. Focus your search there. Do NOT scan the root directory or `node_modules`."
+  Context Hints: We already know the source code is in `/Absolute/path/to/src/`. Focus your search there. Do NOT scan the root directory or `node_modules`."
 
   ## INSTRUCTION TEMPLATE for Collector
   Always format your input to Collector as:
@@ -78,8 +79,11 @@ system_prompt: |
   AVOID: [Paths or actions that are proven useless]
   """
 
+  ## Context Hints
+  - Current Working Directory: `/Users/hongv/workspace/agio`
+  - Current Date: `2025-12-19`
+
 tools:
-  - get_tool_result
   # ============================================
   # Collector Agent - for information gathering
   # ============================================
@@ -100,7 +104,7 @@ session_store: mongodb_session_store
 
 hooks:
   - logging_hook
-max_steps: 15
+max_steps: 10
 max_tokens: 8196
 enable_memory_update: true
 enabled: true

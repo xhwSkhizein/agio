@@ -26,10 +26,10 @@ class StepEventType(str, Enum):
     RUN_COMPLETED = "run_completed"
     RUN_FAILED = "run_failed"
 
-    # Workflow events (new)
-    STAGE_STARTED = "stage_started"
-    STAGE_COMPLETED = "stage_completed"
-    STAGE_SKIPPED = "stage_skipped"  # Condition not met
+    # Workflow events
+    NODE_STARTED = "node_started"
+    NODE_COMPLETED = "node_completed"
+    NODE_SKIPPED = "node_skipped"  # Condition not met
     ITERATION_STARTED = "iteration_started"  # Loop only
     BRANCH_STARTED = "branch_started"  # Parallel only
     BRANCH_COMPLETED = "branch_completed"  # Parallel only
@@ -80,26 +80,31 @@ class StepEvent(BaseModel):
     data: dict | None = None
 
     # Workflow context - for hierarchical display
-    stage_id: str | None = None
+    node_id: str | None = None  # Node ID
     branch_id: str | None = None
     iteration: int | None = None
-    
+
     # Workflow hierarchy info (for frontend to build tree structure)
     workflow_type: str | None = None  # "pipeline" | "parallel" | "loop"
     workflow_id: str | None = None    # ID of the workflow
     parent_run_id: str | None = None  # Parent run ID for nesting
-    stage_name: str | None = None     # Human-readable stage name
-    stage_index: int | None = None    # 0-based index in sequence
-    total_stages: int | None = None   # Total number of stages
+    node_name: str | None = None      # Human-readable node name
+    node_index: int | None = None     # 0-based index in sequence
+    total_nodes: int | None = None    # Total number of nodes
 
     # Observability reserved
     trace_id: str | None = None
     span_id: str | None = None
     parent_span_id: str | None = None
     depth: int = 0
-    
+
     # Nested execution context
     nested_runnable_id: str | None = None  # ID of nested Agent/Workflow
+
+    # Runnable identity (for unified display)
+    runnable_type: str | None = None   # "agent" | "workflow"
+    runnable_id: str | None = None     # Agent/Workflow config ID
+    nesting_type: str | None = None    # "tool_call" | "workflow_node" | None
 
     def to_sse(self) -> str:
         """
@@ -142,6 +147,9 @@ def create_run_started_event(
     depth: int = 0,
     parent_run_id: str | None = None,
     nested_runnable_id: str | None = None,
+    runnable_type: str | None = None,
+    runnable_id: str | None = None,
+    nesting_type: str | None = None,
 ) -> StepEvent:
     """Create a RUN_STARTED event with optional nested context"""
     return StepEvent(
@@ -151,6 +159,9 @@ def create_run_started_event(
         depth=depth,
         parent_run_id=parent_run_id,
         nested_runnable_id=nested_runnable_id,
+        runnable_type=runnable_type,
+        runnable_id=runnable_id,
+        nesting_type=nesting_type,
     )
 
 
@@ -164,6 +175,9 @@ def create_run_completed_event(
     depth: int = 0,
     parent_run_id: str | None = None,
     nested_runnable_id: str | None = None,
+    runnable_type: str | None = None,
+    runnable_id: str | None = None,
+    nesting_type: str | None = None,
 ) -> StepEvent:
     """Create a RUN_COMPLETED event with optional nested context"""
     data = {"response": response, "metrics": metrics}
@@ -178,6 +192,9 @@ def create_run_completed_event(
         depth=depth,
         parent_run_id=parent_run_id,
         nested_runnable_id=nested_runnable_id,
+        runnable_type=runnable_type,
+        runnable_id=runnable_id,
+        nesting_type=nesting_type,
     )
 
 
@@ -188,6 +205,9 @@ def create_run_failed_event(
     depth: int = 0,
     parent_run_id: str | None = None,
     nested_runnable_id: str | None = None,
+    runnable_type: str | None = None,
+    runnable_id: str | None = None,
+    nesting_type: str | None = None,
 ) -> StepEvent:
     """Create a RUN_FAILED event with optional nested context"""
     return StepEvent(
@@ -197,6 +217,9 @@ def create_run_failed_event(
         depth=depth,
         parent_run_id=parent_run_id,
         nested_runnable_id=nested_runnable_id,
+        runnable_type=runnable_type,
+        runnable_id=runnable_id,
+        nesting_type=nesting_type,
     )
 
 
@@ -208,6 +231,9 @@ def create_step_delta_event(
     depth: int = 0,
     parent_run_id: str | None = None,
     nested_runnable_id: str | None = None,
+    runnable_type: str | None = None,
+    runnable_id: str | None = None,
+    nesting_type: str | None = None,
 ) -> StepEvent:
     """Create a STEP_DELTA event with optional nested context"""
     return StepEvent(
@@ -218,6 +244,9 @@ def create_step_delta_event(
         depth=depth,
         parent_run_id=parent_run_id,
         nested_runnable_id=nested_runnable_id,
+        runnable_type=runnable_type,
+        runnable_id=runnable_id,
+        nesting_type=nesting_type,
     )
 
 
@@ -229,6 +258,9 @@ def create_step_completed_event(
     depth: int = 0,
     parent_run_id: str | None = None,
     nested_runnable_id: str | None = None,
+    runnable_type: str | None = None,
+    runnable_id: str | None = None,
+    nesting_type: str | None = None,
 ) -> StepEvent:
     """Create a STEP_COMPLETED event with optional nested context"""
     return StepEvent(
@@ -239,6 +271,9 @@ def create_step_completed_event(
         depth=depth,
         parent_run_id=parent_run_id,
         nested_runnable_id=nested_runnable_id,
+        runnable_type=runnable_type,
+        runnable_id=runnable_id,
+        nesting_type=nesting_type,
     )
 
 

@@ -3,12 +3,9 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { agentService, sessionService, runnableService } from '../services/api'
 import { parseSSEBuffer } from '../utils/sseParser'
-import { stepsToEvents } from '../utils/stepsToEvents'
-import { generateId, type TimelineEvent } from '../types/chat'
-import type { WorkflowNode } from '../types/workflow'
 import { useScrollManagement } from '../hooks/useScrollManagement'
 import { useAgentSelection } from '../hooks/useAgentSelection'
-import { useSSEStream } from '../hooks/useSSEStream'
+import { useExecutionTree } from '../hooks/useExecutionTree'
 import { ChatHeader } from '../components/ChatHeader'
 import { ChatTimeline } from '../components/ChatTimeline'
 import { ChatInput } from '../components/ChatInput'
@@ -44,35 +41,40 @@ export default function Chat() {
 
   // Session state
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(urlSessionId || null)
-  const [events, setEvents] = useState<TimelineEvent[]>([])
   const [input, setInput] = useState(pendingMessage || '')
   const [isStreaming, setIsStreaming] = useState(false)
   const [showConfigModal, setShowConfigModal] = useState(false)
   const [currentRunId, setCurrentRunId] = useState<string | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
 
-  // Workflow state management
-  const [workflowNodes, setWorkflowNodes] = useState<Map<string, WorkflowNode>>(new Map())
-  const workflowNodesRef = useRef<Map<string, WorkflowNode>>(new Map())
+  // Execution tree state
+  const { 
+    tree: executionTree, 
+    processEvent: processTreeEvent, 
+    addUserMessage: addTreeUserMessage,
+    reset: resetTree,
+  } = useExecutionTree()
 
-  // SSE stream processing
-  const { processSSEEvent, resetTracking } = useSSEStream({
-    onEvent: setEvents,
-    onSessionId: (sessionId) => {
-      if (!currentSessionId) {
-        setCurrentSessionId(sessionId)
-      }
-    },
-    onRunId: setCurrentRunId,
-    onRunCompleted: () => {
-      // Invalidate session cache so Sessions page shows the new session
+  // SSE event processor
+  const handleSSEEvent = (eventType: string, data: any) => {
+    processTreeEvent(eventType, data)
+    
+    // Extract session ID from run_started
+    if (eventType === 'run_started' && data.data?.session_id && !currentSessionId) {
+      setCurrentSessionId(data.data.session_id)
+    }
+    
+    // Update run ID
+    if (eventType === 'run_started' && data.run_id) {
+      setCurrentRunId(data.run_id)
+    }
+    
+    // Clear run ID and invalidate cache on completion
+    if (eventType === 'run_completed' || eventType === 'run_failed') {
+      setCurrentRunId(null)
       queryClient.invalidateQueries({ queryKey: ['session-summaries'] })
-    },
-    onWorkflowNodesUpdate: (nodes) => {
-      setWorkflowNodes(nodes)
-    },
-    workflowNodesRef,
-  })
+    }
+  }
 
   // Fetch all available agents
   const { data: agents } = useQuery({
@@ -116,12 +118,11 @@ export default function Chat() {
     return lastStep.role === 'assistant' && lastStep.tool_calls && lastStep.tool_calls.length > 0
   })()
 
-  // Convert steps to events when loading existing session
+  // TODO: Convert existing steps to execution tree when loading session
   useEffect(() => {
-    if (existingSteps && existingSteps.length > 0 && events.length === 0) {
-      const loadedEvents = stepsToEvents(existingSteps)
-      setEvents(loadedEvents)
+    if (existingSteps && existingSteps.length > 0 && executionTree.executions.length === 0) {
       setCurrentSessionId(urlSessionId!)
+      // Note: stepsToEvents conversion for execution tree would need to be implemented
     }
   }, [existingSteps, urlSessionId])
 
@@ -157,39 +158,27 @@ export default function Chat() {
       scrollToBottom()
       isUserScrolledUpRef.current = false
     }
-  }, [events])
+  }, [executionTree])
 
   const handleCancel = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
       abortControllerRef.current = null
       setIsStreaming(false)
-      setEvents(prev => [...prev, {
-        id: generateId(),
-        type: 'error',
-        content: 'Request cancelled by user',
-        timestamp: Date.now()
-      }])
+      // Add cancel error via tree
+      processTreeEvent('error', { error: 'Request cancelled by user' })
     }
   }
 
   const handleSend = async () => {
     if (!input.trim() || !selectedAgentId) return
 
-    const userEvent: TimelineEvent = {
-      id: generateId(),
-      type: 'user',
-      content: input,
-      timestamp: Date.now(),
-    }
-
-    setEvents((prev) => [...prev, userEvent])
+    addTreeUserMessage(input)
     setInput('')
     setIsStreaming(true)
     // Force scroll to bottom when user sends a message
     isUserScrolledUpRef.current = false
     setTimeout(() => scrollToBottom(true), 100)
-    resetTracking()
 
     const userMessage = input
     abortControllerRef.current = new AbortController()
@@ -237,7 +226,7 @@ export default function Chat() {
 
           try {
             const data = JSON.parse(dataStr)
-            processSSEEvent(eventType, data)
+            handleSSEEvent(eventType, data)
           } catch (e) {
             console.error('Parse error:', e)
           }
@@ -249,12 +238,7 @@ export default function Chat() {
         return
       }
       console.error('Streaming error:', error)
-      setEvents(prev => [...prev, {
-        id: generateId(),
-        type: 'error',
-        content: 'Failed to send message',
-        timestamp: Date.now()
-      }])
+      processTreeEvent('error', { error: 'Failed to send message' })
     } finally {
       setIsStreaming(false)
       setCurrentRunId(null)
@@ -267,7 +251,6 @@ export default function Chat() {
     if (!currentSessionId || !hasPendingToolCalls) return
 
     setIsStreaming(true)
-    resetTracking()
     abortControllerRef.current = new AbortController()
 
     try {
@@ -306,7 +289,7 @@ export default function Chat() {
             if (eventType !== 'step_delta') {
               console.log('Resume SSE Event:', eventType, data)
             }
-            processSSEEvent(eventType, data)
+            handleSSEEvent(eventType, data)
           } catch (e) {
             console.error('Parse error:', e)
           }
@@ -318,7 +301,7 @@ export default function Chat() {
     } catch (error: any) {
       if (error.name === 'AbortError') return
       console.error('Resume error:', error)
-      setEvents(prev => [...prev, { id: generateId(), type: 'error', content: 'Failed to continue', timestamp: Date.now() }])
+      processTreeEvent('error', { error: 'Failed to continue' })
     } finally {
       setIsStreaming(false)
       abortControllerRef.current = null
@@ -327,11 +310,14 @@ export default function Chat() {
 
   // Start new chat
   const handleNewChat = () => {
-    setEvents([])
     setCurrentSessionId(null)
     setCurrentRunId(null)
+    resetTree()
     navigate('/chat')
   }
+
+  // Determine if timeline has content
+  const hasContent = executionTree.messages.length > 0 || executionTree.executions.length > 0
 
   return (
     <div className="flex flex-col h-[calc(100vh-3rem)] max-w-4xl mx-auto">
@@ -351,7 +337,7 @@ export default function Chat() {
       />
 
       {/* Timeline */}
-      {events.length === 0 && !isStreaming ? (
+      {!hasContent && !isStreaming ? (
         <div
           ref={scrollContainerRef}
           className="flex-1 overflow-y-auto pr-4 -mr-4 mb-4"
@@ -360,8 +346,7 @@ export default function Chat() {
         </div>
       ) : (
         <ChatTimeline
-          events={events}
-          workflowNodes={workflowNodes}
+          tree={executionTree}
           isStreaming={isStreaming}
           currentRunId={currentRunId}
           scrollContainerRef={scrollContainerRef}

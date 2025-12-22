@@ -92,12 +92,12 @@ async def get_workflow_structure(
 
     stages = [
         StageInfo(
-            id=stage.id,
-            runnable=stage.runnable if isinstance(stage.runnable, str) else stage.runnable.id,
-            input_template=stage.input,
-            condition=stage.condition,
+            id=node.id,
+            runnable=node.runnable if isinstance(node.runnable, str) else node.runnable.id,
+            input_template=node.input_template,
+            condition=node.condition,
         )
-        for stage in instance.stages
+        for node in instance.nodes
     ]
 
     structure = WorkflowStructure(
@@ -139,11 +139,11 @@ async def get_workflow_dependencies(
 
     dependencies: dict[str, list[str]] = {}
 
-    for stage in instance.stages:
-        deps = stage.get_dependencies()
-        # Filter to only include other stage IDs (not 'query' or 'loop')
-        stage_ids = {s.id for s in instance.stages}
-        stage_deps = [d for d in deps if d in stage_ids]
-        dependencies[stage.id] = stage_deps
+    for node in instance.nodes:
+        deps = node.get_dependencies()
+        # Filter to only include other node IDs (not 'query' or 'loop')
+        node_ids = {n.id for n in instance.nodes}
+        node_deps = [d for d in deps if d in node_ids]
+        dependencies[node.id] = node_deps
 
     return dependencies

@@ -6,7 +6,7 @@ import { ChevronDown, Plus, Settings } from 'lucide-react'
 
 interface Agent {
   name: string
-  system_prompt?: string
+  system_prompt?: string | null
 }
 
 interface Workflow {

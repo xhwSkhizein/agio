@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import Depends, HTTPException
 
 from agio.config import ComponentType, ConfigSystem, get_config_system
+from agio.observability.trace_store import TraceStore
 from agio.providers.storage import SessionStore
 from agio.utils.logging import get_logger
 
@@ -107,3 +108,39 @@ def get_knowledge(
         raise HTTPException(
             status_code=404, detail=f"Knowledge '{name}' not found: {e}"
         )
+
+
+# Singleton InMemoryTraceStore for fallback
+_default_trace_store: TraceStore | None = None
+
+
+def get_trace_store(
+    config_sys: ConfigSystem = Depends(get_config_sys),
+) -> TraceStore | None:
+    """
+    Get TraceStore instance from ConfigSystem.
+
+    Priority:
+    1. Get from ConfigSystem if already built
+    2. Fall back to singleton in-memory TraceStore
+    """
+    global _default_trace_store
+
+    # Try to get trace_store from config system
+    stores = config_sys.list_configs(ComponentType.TRACE_STORE)
+    if stores:
+        for store_config in stores:
+            name = store_config.get("name")
+            if name:
+                try:
+                    store = config_sys.get_or_none(name)
+                    if store is not None:
+                        return store
+                except Exception as e:
+                    logger.warning("get_trace_store_failed", name=name, error=str(e))
+
+    # Fallback: create singleton in-memory TraceStore
+    if _default_trace_store is None:
+        _default_trace_store = TraceStore()
+
+    return _default_trace_store

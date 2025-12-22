@@ -1,0 +1,48 @@
+# Loop Workflow Example
+# Iteratively improves content until quality threshold is met
+
+type: workflow
+name: example_loop
+description: "Iterative quality improvement loop"
+workflow_type: loop
+
+stages:
+  - id: improve
+    runnable: simple_assistant
+    input: |
+      Improve the following content based on review feedback:
+      
+      Original Content:
+      {input}
+      
+      Review Feedback:
+      {review.output}
+      
+      Make specific improvements to address the issues.
+  - id: review
+    runnable: simple_assistant
+    input: |
+      Act as a quality reviewer. Review the following content:
+      
+      {input}
+      
+      Previous feedback (if any): {loop.last.improve}
+      
+      Provide:
+      - Quality score (1-10)
+      - Specific issues found
+      - Verdict: PASS or NEEDS_REVISION
+
+# Continue looping while verdict is NEEDS_REVISION
+condition: "{review} contains 'NEEDS_REVISION'"
+max_iterations: 3
+
+# Storage
+session_store: mongodb_session_store
+
+enabled: true
+tags:
+  - loop
+  - quality
+  - iterative
+  - example

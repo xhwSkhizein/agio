@@ -20,8 +20,9 @@ from agio.workflow.base import BaseWorkflow
 from agio.workflow.loop import LoopWorkflow
 from agio.workflow.parallel import ParallelWorkflow
 from agio.workflow.pipeline import PipelineWorkflow
-from agio.workflow.protocol import Runnable, RunContext, RunOutput
-from agio.workflow.stage import Stage
+from agio.workflow.protocol import Runnable, RunOutput
+from agio.domain import ExecutionContext
+from agio.workflow.node import WorkflowNode
 
 
 class WorkflowEngine:
@@ -106,17 +107,17 @@ class WorkflowEngine:
 
     def _build_pipeline(self, config: dict[str, Any]) -> PipelineWorkflow:
         """Build a PipelineWorkflow."""
-        stages = [self._build_stage(s) for s in config.get("stages", [])]
-        workflow = PipelineWorkflow(id=config["id"], stages=stages)
+        nodes = [self._build_node(n) for n in config.get("nodes", [])]
+        workflow = PipelineWorkflow(id=config["id"], stages=nodes)
         workflow.set_registry(self._registry)
         return workflow
 
     def _build_loop(self, config: dict[str, Any]) -> LoopWorkflow:
         """Build a LoopWorkflow."""
-        stages = [self._build_stage(s) for s in config.get("stages", [])]
+        nodes = [self._build_node(n) for n in config.get("nodes", [])]
         workflow = LoopWorkflow(
             id=config["id"],
-            stages=stages,
+            stages=nodes,
             condition=config.get("condition", "true"),
             max_iterations=config.get("max_iterations", 10),
         )
@@ -125,19 +126,17 @@ class WorkflowEngine:
 
     def _build_parallel(self, config: dict[str, Any]) -> ParallelWorkflow:
         """Build a ParallelWorkflow."""
-        # Parallel can use 'stages' or 'branches'
-        stages_config = config.get("stages") or config.get("branches", [])
-        stages = [self._build_stage(s) for s in stages_config]
+        nodes = [self._build_node(n) for n in config.get("nodes", [])]
         workflow = ParallelWorkflow(
             id=config["id"],
-            stages=stages,
+            stages=nodes,
             merge_template=config.get("merge_template"),
         )
         workflow.set_registry(self._registry)
         return workflow
 
-    def _build_stage(self, config: dict[str, Any]) -> Stage:
-        """Build a Stage from configuration."""
+    def _build_node(self, config: dict[str, Any]) -> WorkflowNode:
+        """Build a WorkflowNode from configuration."""
         runnable_config = config.get("runnable")
 
         # If runnable is a nested workflow config (dict)
@@ -148,10 +147,10 @@ class WorkflowEngine:
         else:
             runnable_ref = runnable_config
 
-        return Stage(
+        return WorkflowNode(
             id=config["id"],
             runnable=runnable_ref,
-            input=config.get("input", "{query}"),
+            input_template=config.get("input", "{query}"),
             condition=config.get("condition"),
         )
 
@@ -159,7 +158,7 @@ class WorkflowEngine:
         self,
         runnable_id: str,
         input: str,
-        context: RunContext,
+        context: ExecutionContext,
     ) -> RunOutput:
         """
         Execute a Runnable (Agent or Workflow).
@@ -196,16 +195,16 @@ class WorkflowEngine:
 
         # Add workflow-specific info
         if isinstance(runnable, BaseWorkflow):
-            info["stages"] = [
+            info["nodes"] = [
                 {
-                    "id": stage.id,
-                    "runnable": stage.runnable
-                    if isinstance(stage.runnable, str)
-                    else stage.runnable.id,
-                    "input_template": stage.input,
-                    "condition": stage.condition,
+                    "id": node.id,
+                    "runnable": (
+                        node.runnable if isinstance(node.runnable, str) else node.runnable.id
+                    ),
+                    "input_template": node.input_template,
+                    "condition": node.condition,
                 }
-                for stage in runnable.stages
+                for node in runnable.nodes
             ]
 
             if isinstance(runnable, LoopWorkflow):

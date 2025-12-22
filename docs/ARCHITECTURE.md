@@ -45,7 +45,7 @@ async for text in agent.arun("Hello"):
 
 | 文件 | 内容 |
 |------|------|
-| `models.py` | Step, AgentRun, AgentSession, StepMetrics |
+| `models.py` | Step, Run, RunMetrics, AgentSession, StepMetrics |
 | `events.py` | StepEvent, StepDelta, ToolResult |
 | `adapters.py` | StepAdapter (Step ↔ LLM Message 转换) |
 
@@ -85,10 +85,10 @@ messages = StepAdapter.steps_to_messages(steps)
 
 | 文件 | 职责 |
 |------|------|
-| `runner.py` | StepRunner - 管理 Run 生命周期 |
+| `runner.py` | StepRunner - 管理 Step 生命周期 |
 | `executor.py` | StepExecutor - LLM 调用循环 |
 | `tool_executor.py` | ToolExecutor - 并行工具执行 |
-| `execution_context.py` | ExecutionContext - 统一执行上下文 |
+| `runnable_executor.py` | RunnableExecutor - 统一 Run 生命周期管理 |
 | `event_factory.py` | EventFactory - 上下文绑定的事件工厂 |
 | `wire.py` | Wire - 事件流通道 |
 | `context.py` | 从 Steps 构建 LLM 上下文 |

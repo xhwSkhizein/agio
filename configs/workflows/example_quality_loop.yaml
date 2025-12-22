@@ -40,6 +40,8 @@ stages:
 condition: "{review} contains 'NEEDS_REVISION'"
 max_iterations: 3
 
+# Storage
+session_store: mongodb_session_store
 
 enabled: true
 tags:

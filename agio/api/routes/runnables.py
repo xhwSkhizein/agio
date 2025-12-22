@@ -19,10 +19,10 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from agio.config import ConfigSystem, get_config_system
+from agio.api.deps import get_session_store, get_trace_store
 from agio.domain import StepEventType
-from agio.runtime import Wire
-from agio.workflow import RunContext
-import json
+from agio.runtime import Wire, RunnableExecutor
+from agio.domain import ExecutionContext
 
 router = APIRouter(prefix="/runnables")
 
@@ -153,40 +153,72 @@ async def run_runnable(
 
     # Non-streaming mode
     if not request.stream:
-        return await _run_non_streaming(instance, query, request.session_id, request.user_id)
+        return await _run_non_streaming(
+            instance,
+            query,
+            request.session_id,
+            request.user_id,
+            config_system,
+        )
 
     # Streaming mode
     async def event_generator():
         # Create Wire at API entry point
         wire = Wire()
+        run_id = str(uuid4())
 
+        # Use runnable_type property from Runnable protocol
+        runnable_type = instance.runnable_type
+        
         # Create context with wire
-        context = RunContext(
+        context = ExecutionContext(
+            run_id=run_id,
             wire=wire,
             session_id=request.session_id or str(uuid4()),
             user_id=request.user_id,
+            runnable_type=runnable_type,
+            runnable_id=instance.id,
         )
 
-        # Start execution in background task
+        # Initialize trace collector
+        from agio.observability.collector import create_collector
+
+        store = get_trace_store(config_sys=config_system)
+        collector = create_collector(store)
+
+        # Get session store from ConfigSystem (no reflection)
+        session_store = get_session_store(config_sys=config_system)
+        executor = RunnableExecutor(store=session_store)
+
+        # Start execution in background task using RunnableExecutor
         async def _run():
             try:
-                await instance.run(query, context=context)
+                await executor.execute(instance, query, context)
             finally:
                 await wire.close()
 
         task = asyncio.create_task(_run())
 
         try:
-            # Consume events from wire
-            async for event in wire.read():
+            # Consume events from wire through collector
+            async for event in collector.wrap_stream(
+                wire.read(),
+                trace_id=None,  # Will be generated
+                workflow_id=instance.id if hasattr(instance, "stages") else None,
+                agent_id=instance.id if not hasattr(instance, "stages") else None,
+                session_id=context.session_id,
+                user_id=context.user_id,
+                input_query=query,
+            ):
                 yield {
                     "event": event.type.value,
                     "data": event.model_dump_json(),
                 }
         except Exception as e:
+            import json
             yield {
                 "event": "error",
-                "data": f'{{"error": "{str(e)}"}}',
+                "data": json.dumps({"error": str(e)}),
             }
         finally:
             # Ensure task is cleaned up
@@ -211,32 +243,62 @@ async def _run_non_streaming(
     query: str,
     session_id: str | None,
     user_id: str | None,
+    config_system: ConfigSystem,
 ) -> dict[str, Any]:
     """Non-streaming execution using Wire."""
     wire = Wire()
-    context = RunContext(
+    run_id = str(uuid4())
+
+    # Use runnable_type property from Runnable protocol
+    runnable_type = instance.runnable_type
+    
+    context = ExecutionContext(
+        run_id=run_id,
         wire=wire,
         session_id=session_id or str(uuid4()),
         user_id=user_id,
+        runnable_type=runnable_type,
+        runnable_id=instance.id,
     )
 
+    # Initialize trace collector
+    from agio.observability.collector import create_collector
+
+    store = get_trace_store(config_sys=config_system)
+    collector = create_collector(store)
+
     response_content = ""
-    run_id = None
-    session_id_final = session_id or str(uuid4())
+    # In ExecutionContext model, run_id is known upfront
+    final_run_id = run_id
+    session_id_final = context.session_id
     metrics = {}
+
+    # Get session store from ConfigSystem (no reflection)
+    session_store = get_session_store(config_sys=config_system)
+    executor = RunnableExecutor(store=session_store)
 
     async def _run():
         try:
-            return await instance.run(query, context=context)
+            return await executor.execute(instance, query, context)
         finally:
             await wire.close()
 
     task = asyncio.create_task(_run())
 
     try:
-        async for event in wire.read():
+        # Wrap the stream with collector to ensure traces are saved
+        async for event in collector.wrap_stream(
+            wire.read(),
+            trace_id=None,
+            workflow_id=instance.id if hasattr(instance, "stages") else None,
+            agent_id=instance.id if not hasattr(instance, "stages") else None,
+            session_id=context.session_id,
+            user_id=context.user_id,
+            input_query=query,
+        ):
             if event.type == StepEventType.RUN_STARTED:
-                run_id = event.run_id
+                # RUN_STARTED event should match our generated run_id
+                pass
 
             elif event.type == StepEventType.STEP_DELTA:
                 if event.delta and event.delta.content:
@@ -260,7 +322,7 @@ async def _run_non_streaming(
                 pass
 
     return {
-        "run_id": run_id or "unknown",
+        "run_id": final_run_id,
         "session_id": session_id_final,
         "response": response_content,
         "metrics": metrics,

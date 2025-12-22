@@ -5,24 +5,24 @@ Repository interface and in-memory implementation.
 from abc import ABC, abstractmethod
 from typing import List, Optional
 
-from agio.domain import AgentRun, Step
+from agio.domain import Run, Step
 
 
 class SessionStore(ABC):
     """
     Session store interface.
-    Responsible for AgentRun and Step persistence and queries.
+    Responsible for Run and Step persistence and queries.
     """
 
     # --- Run Operations ---
 
     @abstractmethod
-    async def save_run(self, run: AgentRun) -> None:
+    async def save_run(self, run: Run) -> None:
         """Save Run"""
         pass
 
     @abstractmethod
-    async def get_run(self, run_id: str) -> Optional[AgentRun]:
+    async def get_run(self, run_id: str) -> Optional[Run]:
         """Get Run"""
         pass
 
@@ -33,7 +33,7 @@ class SessionStore(ABC):
         session_id: Optional[str] = None,
         limit: int = 20,
         offset: int = 0,
-    ) -> List[AgentRun]:
+    ) -> List[Run]:
         """List Runs"""
         pass
 
@@ -60,6 +60,10 @@ class SessionStore(ABC):
         session_id: str,
         start_seq: Optional[int] = None,
         end_seq: Optional[int] = None,
+        run_id: Optional[str] = None,
+        workflow_id: Optional[str] = None,
+        node_id: Optional[str] = None,
+        branch_key: Optional[str] = None,
         limit: int = 1000,
     ) -> List[Step]:
         """
@@ -69,6 +73,10 @@ class SessionStore(ABC):
             session_id: Session ID
             start_seq: Start sequence (inclusive), None = from beginning
             end_seq: End sequence (inclusive), None = to end
+            run_id: Filter by run_id (optional)
+            workflow_id: Filter by workflow_id (optional)
+            node_id: Filter by node_id (optional)
+            branch_key: Filter by branch_key (optional)
             limit: Maximum return count
         """
         pass
@@ -93,6 +101,45 @@ class SessionStore(ABC):
         """Get total Step count for session"""
         pass
 
+    @abstractmethod
+    async def get_max_sequence(self, session_id: str) -> int:
+        """
+        Get the maximum sequence number in the session.
+        
+        Returns:
+            Maximum sequence number, or 0 if no steps exist
+        """
+        pass
+
+    async def get_last_assistant_content(
+        self,
+        session_id: str,
+        node_id: str,
+        workflow_id: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Get the last assistant step content for a specific node.
+
+        Args:
+            session_id: Session ID
+            node_id: Node ID to filter by
+            workflow_id: Workflow ID for isolation (persists across run_id changes)
+
+        Returns:
+            Content of the last assistant step for the node, or None if not found
+        """
+        steps = await self.get_steps(
+            session_id=session_id,
+            workflow_id=workflow_id,
+            node_id=node_id,
+            limit=1000,
+        )
+        # Find last assistant step
+        for step in reversed(steps):
+            if step.role.value == "assistant" and step.content:
+                return step.content
+        return None
+
     # --- Tool Result Query (for cross-agent reference) ---
 
     async def get_step_by_tool_call_id(
@@ -114,13 +161,13 @@ class InMemorySessionStore(SessionStore):
     """
 
     def __init__(self):
-        self.runs: dict[str, AgentRun] = {}
+        self.runs: dict[str, Run] = {}
         self.steps: dict[str, List[Step]] = {}  # session_id -> List[Step]
 
-    async def save_run(self, run: AgentRun) -> None:
+    async def save_run(self, run: Run) -> None:
         self.runs[run.id] = run
 
-    async def get_run(self, run_id: str) -> Optional[AgentRun]:
+    async def get_run(self, run_id: str) -> Optional[Run]:
         return self.runs.get(run_id)
 
     async def list_runs(
@@ -129,7 +176,7 @@ class InMemorySessionStore(SessionStore):
         session_id: Optional[str] = None,
         limit: int = 20,
         offset: int = 0,
-    ) -> List[AgentRun]:
+    ) -> List[Run]:
         runs = list(self.runs.values())
 
         if user_id:
@@ -173,6 +220,10 @@ class InMemorySessionStore(SessionStore):
         session_id: str,
         start_seq: Optional[int] = None,
         end_seq: Optional[int] = None,
+        run_id: Optional[str] = None,
+        workflow_id: Optional[str] = None,
+        node_id: Optional[str] = None,
+        branch_key: Optional[str] = None,
         limit: int = 1000,
     ) -> List[Step]:
         steps = self.steps.get(session_id, [])
@@ -181,6 +232,14 @@ class InMemorySessionStore(SessionStore):
             steps = [s for s in steps if s.sequence >= start_seq]
         if end_seq is not None:
             steps = [s for s in steps if s.sequence <= end_seq]
+        if run_id is not None:
+            steps = [s for s in steps if s.run_id == run_id]
+        if workflow_id is not None:
+            steps = [s for s in steps if s.workflow_id == workflow_id]
+        if node_id is not None:
+            steps = [s for s in steps if s.node_id == node_id]
+        if branch_key is not None:
+            steps = [s for s in steps if s.branch_key == branch_key]
 
         return steps[:limit]
 
@@ -198,6 +257,12 @@ class InMemorySessionStore(SessionStore):
 
     async def get_step_count(self, session_id: str) -> int:
         return len(self.steps.get(session_id, []))
+
+    async def get_max_sequence(self, session_id: str) -> int:
+        steps = self.steps.get(session_id, [])
+        if not steps:
+            return 0
+        return max(s.sequence for s in steps)
 
 
 __all__ = ["SessionStore", "InMemorySessionStore"]

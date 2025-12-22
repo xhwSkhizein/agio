@@ -185,27 +185,27 @@ class TraceCollector:
             span_stack[event.run_id] = span
             return span
 
-        # === STAGE_STARTED ===
-        elif event_type == StepEventType.STAGE_STARTED:
+        # === NODE_STARTED ===
+        elif event_type == StepEventType.NODE_STARTED:
             parent = span_stack.get(event.run_id) or current_span
             span = Span(
                 trace_id=trace.trace_id,
                 parent_span_id=parent.span_id if parent else None,
                 kind=SpanKind.STAGE,
-                name=event.stage_id or "stage",
+                name=event.node_id or "node",
                 depth=(parent.depth + 1) if parent else 1,
                 attributes={
-                    "stage_id": event.stage_id,
+                    "node_id": event.node_id,
                     "iteration": event.iteration,
                 },
             )
             trace.add_span(span)
-            span_stack[f"stage:{event.stage_id}"] = span
+            span_stack[f"node:{event.node_id}"] = span
             return span
 
-        # === STAGE_COMPLETED ===
-        elif event_type == StepEventType.STAGE_COMPLETED:
-            span = span_stack.get(f"stage:{event.stage_id}")
+        # === NODE_COMPLETED ===
+        elif event_type == StepEventType.NODE_COMPLETED:
+            span = span_stack.get(f"node:{event.node_id}")
             if span:
                 output_len = event.data.get("output_length") if event.data else None
                 span.complete(
@@ -214,17 +214,17 @@ class TraceCollector:
                 )
             return span_stack.get(event.run_id) or current_span
 
-        # === STAGE_SKIPPED ===
-        elif event_type == StepEventType.STAGE_SKIPPED:
+        # === NODE_SKIPPED ===
+        elif event_type == StepEventType.NODE_SKIPPED:
             parent = span_stack.get(event.run_id) or current_span
             span = Span(
                 trace_id=trace.trace_id,
                 parent_span_id=parent.span_id if parent else None,
                 kind=SpanKind.STAGE,
-                name=event.stage_id or "stage",
+                name=event.node_id or "node",
                 depth=(parent.depth + 1) if parent else 1,
                 attributes={
-                    "stage_id": event.stage_id,
+                    "node_id": event.node_id,
                     "skipped": True,
                     "condition": event.data.get("condition") if event.data else None,
                 },
@@ -287,7 +287,7 @@ class TraceCollector:
                     trace_id=trace.trace_id,
                     parent_span_id=parent.span_id if parent else None,
                     kind=SpanKind.LLM_CALL,
-                    name=step.metrics.model_name if step.metrics else "llm",
+                    name=(step.metrics.model_name if step.metrics and step.metrics.model_name else "llm"),
                     depth=(parent.depth + 1) if parent else 0,
                     attributes={
                         "model_name": step.metrics.model_name if step.metrics else None,

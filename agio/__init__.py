@@ -11,8 +11,8 @@ from agio.agent import Agent
 from agio.domain import (
     Step,
     StepMetrics,
-    AgentRun,
-    AgentRunMetrics,
+    Run,
+    RunMetrics,
     AgentSession,
     MessageRole,
     RunStatus,
@@ -38,8 +38,8 @@ __all__ = [
     # Domain
     "Step",
     "StepMetrics",
-    "AgentRun",
-    "AgentRunMetrics",
+    "Run",
+    "RunMetrics",
     "AgentSession",
     "MessageRole",
     "RunStatus",

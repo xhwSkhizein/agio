@@ -1,196 +1,205 @@
 """
-ParallelWorkflow - concurrent execution of stages.
+ParallelWorkflow - concurrent execution of nodes.
 
-Executes multiple stages in parallel, each with isolated state,
+Executes multiple nodes in parallel, with idempotency support,
 then merges results.
 
 Wire-based Architecture:
 - Events are written to context.wire
 - Returns RunOutput with response and metrics
+- Uses WorkflowState for output caching and idempotency
 """
 
 import asyncio
 import time
-from uuid import uuid4
+from typing import TYPE_CHECKING, Any
 
-from agio.domain.events import StepEvent, StepEventType
+from agio.runtime.event_factory import EventFactory
+from agio.domain import ExecutionContext
+from agio.workflow.state import WorkflowState
+from agio.workflow.resolver import ContextResolver
+from agio.runtime import RunnableExecutor
 from agio.workflow.base import BaseWorkflow
-from agio.workflow.mapping import InputMapping
-from agio.workflow.protocol import RunContext, RunOutput, RunMetrics
-from agio.workflow.stage import Stage
+from agio.workflow.protocol import RunOutput, RunMetrics
+from agio.workflow.node import WorkflowNode
+
+if TYPE_CHECKING:
+    from agio.providers.storage.base import SessionStore
 
 
 class ParallelWorkflow(BaseWorkflow):
     """
-    Parallel Workflow.
+    Workflow that executes multiple nodes in parallel.
 
-    Executes multiple branches concurrently, each with isolated state,
-    then merges results.
-
-    Features:
-    1. Each branch uses a snapshot of outputs, ensuring isolation
-    2. Results stored by branch ID, accessible via {branch_id}
-    3. Supports custom merge template
+    Used for map-reduce patterns or independent subtasks.
+    Wait for all nodes to complete and aggregates results.
     """
+
+    SEQ_INTERVAL = 100  # Reserved sequence range per branch
 
     def __init__(
         self,
         id: str,
-        stages: list[Stage],  # Each stage as a branch
+        stages: list[WorkflowNode],
         merge_template: str | None = None,
+        session_store: "SessionStore | None" = None,
     ):
-        super().__init__(id, stages)
+        super().__init__(id, stages, session_store)
         self.merge_template = merge_template
 
     async def _execute(
         self,
         input: str,
         *,
-        context: RunContext,
+        context: ExecutionContext,
     ) -> RunOutput:
         start_time = time.time()
-        run_id = str(uuid4())
-        trace_id = context.trace_id or str(uuid4())
+        run_id = context.run_id
         wire = context.wire
-        total_branches = len(self._stages)
-        branch_ids = [stage.id for stage in self._stages]
+        ef = EventFactory(context)
 
-        # Initial output snapshot
-        initial_outputs = {"query": input}
-        
-        # Common workflow context for all events
-        workflow_ctx = {
-            "workflow_type": "parallel",
-            "workflow_id": self._id,
-            "parent_run_id": context.metadata.get("parent_run_id"),
-            "total_stages": total_branches,
-            "depth": context.depth,
-        }
+        # Get SessionStore from constructor injection
+        session_store = self._session_store
+        if session_store is None:
+            raise ValueError(
+                "SessionStore required for workflow execution. "
+                "Pass it via constructor (configure session_store in workflow config)."
+            )
 
-        await wire.write(StepEvent(
-            type=StepEventType.RUN_STARTED,
-            run_id=run_id,
-            trace_id=trace_id,
-            data={
-                "workflow_id": self._id, 
-                "type": "parallel", 
-                "total_branches": total_branches,
-                "branch_ids": branch_ids,
-            },
-            **workflow_ctx,
-        ))
+        # Create WorkflowState for output caching and idempotency
+        state = WorkflowState(
+            session_id=context.session_id,
+            workflow_id=self._id,
+            store=session_store,
+        )
 
-        async def run_branch(stage: Stage, branch_index: int) -> tuple[str, RunOutput]:
-            """Execute a single branch, return output."""
-            branch_ctx = {
-                **workflow_ctx,
-                "branch_id": stage.id,
-                "stage_id": stage.id,
-                "stage_name": stage.id,
-                "stage_index": branch_index,
-            }
-            
-            # Emit BRANCH_STARTED
-            await wire.write(StepEvent(
-                type=StepEventType.BRANCH_STARTED,
-                run_id=run_id,
-                trace_id=trace_id,
-                **branch_ctx,
-            ))
-            
-            branch_input = stage.build_input(initial_outputs)
-            runnable = self._resolve_runnable(stage.runnable)
-            child_context = self._create_child_context(context, stage)
-            child_context.trace_id = trace_id
-            child_context.metadata["parent_run_id"] = run_id
-            child_context.metadata["branch_id"] = stage.id
-            child_context.metadata["branch_index"] = branch_index
+        # Load history for resume scenarios
+        await state.load_from_history()
 
-            # Execute - events written to shared wire
-            result = await runnable.run(branch_input, context=child_context)
-            return stage.id, result, branch_ctx
+        # Create ContextResolver
+        resolver = ContextResolver(
+            session_id=context.session_id,
+            workflow_id=self._id,
+            store=session_store,
+            state=state,
+        )
+        resolver.set_input(input)
+
+        # Get nodes
+        nodes = self.nodes
+        total_branches = len(nodes)
+
+        # Get current max sequence for seq pre-allocation (avoid parallel seq conflicts)
+        current_max_seq = await session_store.get_max_sequence(context.session_id)
+
+        async def execute_branch(index: int, node: WorkflowNode) -> dict[str, Any]:
+            """Execute a single branch with idempotency support."""
+            branch_id = node.id
+            branch_key = f"branch_{branch_id}"  # Unique branch identifier
+
+            try:
+                # Idempotency check: if branch already executed, return cached result
+                if state.has_output(branch_id):
+                    cached_output = state.get_output(branch_id)
+                    await wire.write(
+                        ef.branch_completed(
+                            branch_id=branch_id,
+                            data={"output_length": len(cached_output or ""), "cached": True},
+                            branch_index=index,
+                            total_branches=total_branches,
+                            workflow_type="parallel",
+                            workflow_id=self.id,
+                        )
+                    )
+                    return {
+                        "branch_id": branch_id,
+                        "output": cached_output or "",
+                        "metrics": None,  # Metrics not available for cached results
+                    }
+
+                await wire.write(
+                    ef.branch_started(
+                        branch_id=branch_id,
+                        branch_index=index,
+                        total_branches=total_branches,
+                        workflow_type="parallel",
+                        workflow_id=self.id,
+                    )
+                )
+
+                # Resolve input template
+                node_input = await resolver.resolve_template(node.input_template)
+
+                runnable = self._resolve_runnable(node.runnable)
+
+                # Create child context with branch_key and seq_start in metadata
+                child_context = self._create_child_context(context, node)
+                # Pre-allocate seq range for this branch to avoid conflicts
+                seq_start = current_max_seq + 1 + index * self.SEQ_INTERVAL
+                child_context = child_context.with_metadata(
+                    branch_key=branch_key,
+                    seq_start=seq_start,
+                )
+
+                # Execute via RunnableExecutor - handles Run lifecycle
+                executor = RunnableExecutor(store=session_store)
+                result = await executor.execute(runnable, node_input, child_context)
+                output = result.response or ""
+
+                # Update state cache
+                state.set_output(branch_id, output)
+
+                await wire.write(
+                    ef.branch_completed(
+                        branch_id=branch_id,
+                        data={"output_length": len(output)},
+                        branch_index=index,
+                        total_branches=total_branches,
+                        workflow_type="parallel",
+                        workflow_id=self.id,
+                    )
+                )
+
+                return {
+                    "branch_id": branch_id,
+                    "output": output,
+                    "metrics": result.metrics,
+                }
+            except Exception as e:
+                raise e
 
         try:
-            # Execute all branches in parallel
-            tasks = [run_branch(stage, idx) for idx, stage in enumerate(self._stages)]
+            # Run all branches concurrently with idempotency
+            tasks = [execute_branch(i, node) for i, node in enumerate(nodes)]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            # Process results
-            branch_outputs: dict[str, str] = {}
-            errors: list[tuple[str, Exception]] = []
+            # Aggregate results (handle exceptions)
+            merged_output = []
             total_tokens = 0
-
-            for result in results:
-                if isinstance(result, Exception):
-                    errors.append(("unknown", result))
+            for res in results:
+                if isinstance(res, Exception):
+                    # Handle exception - could log or include error message
                     continue
+                merged_output.append(f"{res['branch_id']}: {res['output']}")
+                if res.get("metrics"):
+                    total_tokens += res["metrics"].total_tokens
 
-                branch_id, run_output, branch_ctx = result
-
-                await wire.write(StepEvent(
-                    type=StepEventType.BRANCH_COMPLETED,
-                    run_id=run_id,
-                    trace_id=trace_id,
-                    data={"output_length": len(run_output.response or "")},
-                    **branch_ctx,
-                ))
-
-                branch_outputs[branch_id] = run_output.response or ""
-                total_tokens += run_output.metrics.total_tokens
-
-            # Check for errors
-            if errors:
-                error_msg = "; ".join(f"{bid}: {str(e)}" for bid, e in errors)
-                await wire.write(StepEvent(
-                    type=StepEventType.RUN_FAILED,
-                    run_id=run_id,
-                    trace_id=trace_id,
-                    data={"error": f"Branch errors: {error_msg}"},
-                    **workflow_ctx,
-                ))
-                raise RuntimeError(f"Parallel execution failed: {error_msg}")
-
-            # Merge outputs
+            final_response = "\n\n".join(merged_output)
             if self.merge_template:
-                merged = InputMapping(self.merge_template).build(branch_outputs)
-            else:
-                merged = "\n\n".join(
-                    f"[{branch_id}]:\n{output}"
-                    for branch_id, output in branch_outputs.items()
-                )
+                final_response = self.merge_template.replace("{{results}}", final_response)
 
             duration = time.time() - start_time
 
-            await wire.write(StepEvent(
-                type=StepEventType.RUN_COMPLETED,
-                run_id=run_id,
-                trace_id=trace_id,
-                data={
-                    "response": merged,
-                    "branch_outputs": {k: len(v) for k, v in branch_outputs.items()},
-                    "branches_completed": len(branch_outputs),
-                },
-                **workflow_ctx,
-            ))
-
             return RunOutput(
-                response=merged,
+                response=final_response,
                 run_id=run_id,
                 workflow_id=self._id,
                 metrics=RunMetrics(
                     duration=duration,
                     total_tokens=total_tokens,
-                    stages_executed=len(branch_outputs),
+                    nodes_executed=total_branches,
                 ),
             )
 
         except Exception as e:
-            if not isinstance(e, RuntimeError) or "Parallel execution failed" not in str(e):
-                await wire.write(StepEvent(
-                    type=StepEventType.RUN_FAILED,
-                    run_id=run_id,
-                    trace_id=trace_id,
-                    data={"error": str(e)},
-                    **workflow_ctx,
-                ))
             raise

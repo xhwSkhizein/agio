@@ -3,7 +3,7 @@ Core domain models for Agio.
 
 This module contains all core data models:
 - Step: Unified step model that maps to LLM messages
-- AgentRun: Run lifecycle and status
+- Run: Run lifecycle and status
 - Metrics: Performance and usage metrics
 - Session: Conversation session
 """
@@ -76,8 +76,12 @@ class StepMetrics(BaseModel):
     tool_exec_end_at: float | None = None
 
 
-class AgentRunMetrics(BaseModel):
-    """Metrics for a single Agent Run (User Query -> Final Response)"""
+class RunMetrics(BaseModel):
+    """
+    Metrics for a single Run (Agent or Workflow).
+    
+    Supports merge for aggregating metrics from child runs.
+    """
 
     start_time: float = 0.0
     end_time: float = 0.0
@@ -93,9 +97,59 @@ class AgentRunMetrics(BaseModel):
     tool_calls_count: int = 0
     tool_errors_count: int = 0
 
+    # Workflow-specific
+    nodes_executed: int = 0
+    branches_executed: int = 0  # ParallelWorkflow
+    iterations: int = 0  # LoopWorkflow
+
     # Latency
-    first_token_timestamp: float | None = None
+    first_token_latency: float | None = None
     response_latency: float | None = None
+
+    def merge(
+        self,
+        other: "RunMetrics",
+        mode: str = "sequential",
+    ) -> None:
+        """
+        Merge another RunMetrics into this one.
+        
+        Args:
+            other: RunMetrics to merge
+            mode: "sequential" or "parallel"
+                - sequential: duration sums, first_token_latency uses first
+                - parallel: duration takes max, first_token_latency takes min
+        """
+        if mode == "parallel":
+            # Parallel: duration is max (wall clock), latency is min (first response)
+            self.duration = max(self.duration, other.duration)
+            if other.first_token_latency is not None:
+                if self.first_token_latency is None:
+                    self.first_token_latency = other.first_token_latency
+                else:
+                    self.first_token_latency = min(
+                        self.first_token_latency, other.first_token_latency
+                    )
+        else:
+            # Sequential: duration sums, keep first latency
+            self.duration += other.duration
+            if self.first_token_latency is None:
+                self.first_token_latency = other.first_token_latency
+
+        # Token usage always sums
+        self.total_tokens += other.total_tokens
+        self.prompt_tokens += other.prompt_tokens
+        self.completion_tokens += other.completion_tokens
+
+        # Execution stats sum
+        self.steps_count += other.steps_count
+        self.tool_calls_count += other.tool_calls_count
+        self.tool_errors_count += other.tool_errors_count
+        self.nodes_executed += other.nodes_executed
+        self.branches_executed += other.branches_executed
+        self.iterations += other.iterations
+
+
 
 
 # ============================================================================
@@ -140,7 +194,12 @@ class Step(BaseModel):
 
     # --- Multi-Agent Context (new) ---
     workflow_id: str | None = None  # Parent workflow ID
-    stage_id: str | None = None  # Parent stage ID
+
+    # --- Workflow Node Tracking (new) ---
+    node_id: str | None = None  # Corresponding WorkflowNode.id
+    parent_run_id: str | None = None  # Parent run ID for nested executions
+    branch_key: str | None = None  # Branch identifier for parallel execution
+    iteration: int | None = None  # Loop iteration number (1-based)
 
     # --- Observability (new) ---
     trace_id: str | None = None  # Trace ID for distributed tracing
@@ -187,9 +246,9 @@ class AgentRunSummary(BaseModel):
     reference: GenerationReference | None = None
 
 
-class AgentRun(BaseModel):
+class Run(BaseModel):
     """
-    Agent run metadata and aggregation.
+    Unified Run metadata for Agent and Workflow.
     
     Run 是轻量级的元数据记录，主要用于：
     1. 快速查询历史记录
@@ -200,7 +259,8 @@ class AgentRun(BaseModel):
     """
 
     id: str = Field(default_factory=lambda: str(uuid4()))
-    agent_id: str
+    runnable_id: str  # Agent or Workflow ID
+    runnable_type: str = "agent"  # "agent" or "workflow"
     session_id: str  # 关联 Steps 的 session_id
     user_id: str | None = None
 
@@ -209,17 +269,19 @@ class AgentRun(BaseModel):
 
     # 聚合的元数据
     response_content: str | None = None  # 最终响应内容（从 Steps 提取）
-    metrics: AgentRunMetrics = Field(default_factory=AgentRunMetrics)
+    metrics: RunMetrics = Field(default_factory=RunMetrics)
 
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
 
-    # --- Multi-Agent Context (new) ---
+    # --- Multi-Agent Context ---
     workflow_id: str | None = None  # Parent workflow ID
-    stage_id: str | None = None  # Parent stage ID
+    parent_run_id: str | None = None  # Parent run ID for nested executions
 
-    # --- Observability (new) ---
+    # --- Observability ---
     trace_id: str | None = None  # Associated trace ID
+
+
 
 
 class AgentSession(BaseModel):

@@ -5,12 +5,14 @@ Trace API routes for observability.
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
+from agio.api.deps import get_trace_store
+from agio.config import ConfigSystem, get_config_system
 from agio.observability.trace import Trace, Span, SpanKind, SpanStatus
-from agio.observability.trace_store import get_trace_store, TraceQuery
+from agio.observability.trace_store import TraceStore, TraceQuery
 
 router = APIRouter(prefix="/traces", tags=["Observability"])
 
@@ -121,6 +123,7 @@ async def list_traces(
     max_duration_ms: float | None = None,
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    config_system: ConfigSystem = Depends(get_config_system),
 ):
     """
     Query trace list.
@@ -128,7 +131,7 @@ async def list_traces(
     Returns:
         Trace summary list (without full span details)
     """
-    store = get_trace_store()
+    store = get_trace_store(config_sys=config_system)
     query = TraceQuery(
         workflow_id=workflow_id,
         agent_id=agent_id,
@@ -146,14 +149,17 @@ async def list_traces(
 
 
 @router.get("/{trace_id}", response_model=TraceDetail)
-async def get_trace(trace_id: str):
+async def get_trace(
+    trace_id: str,
+    config_system: ConfigSystem = Depends(get_config_system),
+):
     """
     Get single trace detail.
 
     Returns:
         Complete trace (with all spans)
     """
-    store = get_trace_store()
+    store = get_trace_store(config_sys=config_system)
     trace = await store.get_trace(trace_id)
     if not trace:
         raise HTTPException(status_code=404, detail="Trace not found")
@@ -161,13 +167,16 @@ async def get_trace(trace_id: str):
 
 
 @router.get("/{trace_id}/waterfall", response_model=WaterfallData)
-async def get_trace_waterfall(trace_id: str):
+async def get_trace_waterfall(
+    trace_id: str,
+    config_system: ConfigSystem = Depends(get_config_system),
+):
     """
     Get trace waterfall chart data.
 
     Returns optimized format for frontend rendering.
     """
-    store = get_trace_store()
+    store = get_trace_store(config_sys=config_system)
     trace = await store.get_trace(trace_id)
     if not trace:
         raise HTTPException(status_code=404, detail="Trace not found")
@@ -175,9 +184,11 @@ async def get_trace_waterfall(trace_id: str):
 
 
 @router.get("/stream")
-async def stream_traces():
+async def stream_traces(
+    config_system: ConfigSystem = Depends(get_config_system),
+):
     """SSE real-time push for new traces"""
-    store = get_trace_store()
+    store = get_trace_store(config_sys=config_system)
     queue = store.subscribe()
 
     async def event_generator():

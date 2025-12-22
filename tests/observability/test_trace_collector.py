@@ -85,14 +85,14 @@ async def test_collector_creates_correct_span_types():
             data={"workflow_id": "test_workflow", "type": "pipeline"},
         ),
         StepEvent(
-            type=StepEventType.STAGE_STARTED,
+            type=StepEventType.NODE_STARTED,
             run_id=run_id,
-            stage_id="stage1",
+            node_id="node1",
         ),
         StepEvent(
-            type=StepEventType.STAGE_COMPLETED,
+            type=StepEventType.NODE_COMPLETED,
             run_id=run_id,
-            stage_id="stage1",
+            node_id="node1",
         ),
         StepEvent(
             type=StepEventType.RUN_COMPLETED,

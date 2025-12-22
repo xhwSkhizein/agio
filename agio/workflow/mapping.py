@@ -1,8 +1,8 @@
 """
-InputMapping for constructing stage inputs from outputs.
+InputMapping for constructing node inputs from outputs.
 
 This module provides template-based input construction using
-variable references like {query}, {stage_id}, {loop.iteration}.
+variable references like {input}, {node_id.output}, {loop.iteration}.
 """
 
 import re
@@ -13,13 +13,13 @@ from typing import Any
 @dataclass
 class InputMapping:
     """
-    Input mapping - defines how to construct a Stage's input.
+    Input mapping - defines how to construct a node's input.
 
-    Template syntax:
-    - {query}              : original user input
-    - {stage_id}           : output of a specific stage
+    Template syntax (aligned with ContextResolver):
+    - {input}              : original workflow input
+    - {node_id.output}     : output of a specific node
     - {loop.iteration}     : current loop iteration number
-    - {loop.last.stage_id} : output of a stage from previous iteration
+    - {loop.last.node_id}  : output of a node from previous iteration
     """
 
     template: str
@@ -32,7 +32,7 @@ class InputMapping:
         Build input string from template and available outputs.
 
         Args:
-            outputs: available outputs {"stage_id": "output_content", ...}
+            outputs: available outputs {"node_id": "output_content", ...}
 
         Returns:
             constructed input string
@@ -51,7 +51,7 @@ class InputMapping:
         return self.VAR_PATTERN.sub(replace_var, self.template)
 
     def _resolve_nested(self, var_path: str, outputs: dict) -> str:
-        """Resolve nested variable like loop.last.retrieve."""
+        """Resolve nested variable like loop.last.node_id or node_id.output."""
         parts = var_path.split(".")
         current: Any = outputs
 
@@ -77,7 +77,31 @@ class InputMapping:
         """
         Get top-level variable names (without nested paths).
 
-        For example, "{loop.last.stage_id}" returns "loop".
+        For example, "{loop.last.node_id}" returns "loop".
         """
         deps = self.get_dependencies()
         return list({d.split(".")[0] for d in deps})
+
+    def get_node_dependencies(self) -> list[str]:
+        """
+        Extract node IDs from template references.
+
+        Handles both {node_id.output} and {loop.last.node_id} patterns.
+        Returns only node IDs, filtering out special variables.
+        """
+        deps = self.get_dependencies()
+        node_ids = set()
+        special_vars = {"input", "loop", "query"}
+
+        for dep in deps:
+            if dep.endswith(".output"):
+                # {node_id.output} -> node_id
+                node_ids.add(dep[:-7])
+            elif dep.startswith("loop.last."):
+                # {loop.last.node_id} -> node_id
+                node_ids.add(dep[10:])
+            elif "." not in dep and dep not in special_vars:
+                # Simple reference like {node_id}
+                node_ids.add(dep)
+
+        return list(node_ids)

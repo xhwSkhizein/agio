@@ -12,7 +12,7 @@ from .tracker import (
 )
 from .trace import Trace, Span, SpanKind, SpanStatus
 from .collector import TraceCollector, create_collector
-from .trace_store import TraceStore, TraceQuery, get_trace_store, initialize_trace_store
+from .trace_store import TraceStore, TraceQuery
 from .otlp_exporter import OTLPExporter, get_otlp_exporter
 
 __all__ = [
@@ -35,8 +35,6 @@ __all__ = [
     "create_collector",
     "TraceStore",
     "TraceQuery",
-    "get_trace_store",
-    "initialize_trace_store",
     "OTLPExporter",
     "get_otlp_exporter",
 ]

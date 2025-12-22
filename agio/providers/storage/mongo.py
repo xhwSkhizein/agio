@@ -7,7 +7,7 @@ from typing import List, Optional
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from agio.providers.storage.base import SessionStore
-from agio.domain import AgentRun, Step
+from agio.domain import Run, Step
 from agio.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -43,7 +43,7 @@ class MongoSessionStore(SessionStore):
     MongoDB implementation of SessionStore.
 
     Collections:
-    - runs: Stores AgentRun documents
+    - runs: Stores Run documents
     - steps: Stores Step documents
     """
 
@@ -79,13 +79,19 @@ class MongoSessionStore(SessionStore):
             await self.steps_collection.create_index(
                 [("session_id", 1), ("sequence", 1)], unique=True
             )
-            await self.steps_collection.create_index("run_id")
-            await self.steps_collection.create_index("tool_call_id")  # For tool result queries
+            # Compound indexes matching common query patterns
+            await self.steps_collection.create_index(
+                [("session_id", 1), ("run_id", 1), ("sequence", 1)]
+            )
+            await self.steps_collection.create_index(
+                [("session_id", 1), ("run_id", 1), ("node_id", 1), ("sequence", 1)]
+            )
+            await self.steps_collection.create_index([("session_id", 1), ("tool_call_id", 1)])
             await self.steps_collection.create_index("created_at")
 
             logger.info("mongodb_connected", uri=self.uri, db_name=self.db_name)
 
-    async def save_run(self, run: AgentRun) -> None:
+    async def save_run(self, run: Run) -> None:
         """Save or update a run."""
         await self._ensure_connection()
 
@@ -98,14 +104,14 @@ class MongoSessionStore(SessionStore):
             logger.error("save_run_failed", error=str(e), run_id=run.id)
             raise
 
-    async def get_run(self, run_id: str) -> Optional[AgentRun]:
+    async def get_run(self, run_id: str) -> Optional[Run]:
         """Get a run by ID."""
         await self._ensure_connection()
 
         try:
             doc = await self.runs_collection.find_one({"id": run_id})
             if doc:
-                return AgentRun.model_validate(doc)
+                return Run.model_validate(doc)
             return None
         except Exception as e:
             logger.error("get_run_failed", error=str(e), run_id=run_id)
@@ -117,7 +123,7 @@ class MongoSessionStore(SessionStore):
         session_id: Optional[str] = None,
         limit: int = 20,
         offset: int = 0,
-    ) -> List[AgentRun]:
+    ) -> List[Run]:
         """List runs with filtering and pagination."""
         await self._ensure_connection()
 
@@ -134,7 +140,7 @@ class MongoSessionStore(SessionStore):
 
             runs = []
             async for doc in cursor:
-                runs.append(AgentRun.model_validate(doc))
+                runs.append(Run.model_validate(doc))
             return runs
         except Exception as e:
             logger.error("list_runs_failed", error=str(e))
@@ -200,9 +206,13 @@ class MongoSessionStore(SessionStore):
         session_id: str,
         start_seq: Optional[int] = None,
         end_seq: Optional[int] = None,
+        run_id: Optional[str] = None,
+        workflow_id: Optional[str] = None,
+        node_id: Optional[str] = None,
+        branch_key: Optional[str] = None,
         limit: int = 1000,
     ) -> List[Step]:
-        """Get steps for a session."""
+        """Get steps for a session with optional filtering."""
         await self._ensure_connection()
 
         try:
@@ -214,6 +224,15 @@ class MongoSessionStore(SessionStore):
                     query["sequence"]["$gte"] = start_seq
                 if end_seq is not None:
                     query["sequence"]["$lte"] = end_seq
+
+            if run_id is not None:
+                query["run_id"] = run_id
+            if workflow_id is not None:
+                query["workflow_id"] = workflow_id
+            if node_id is not None:
+                query["node_id"] = node_id
+            if branch_key is not None:
+                query["branch_key"] = branch_key
 
             cursor = self.steps_collection.find(query).sort("sequence", 1).limit(limit)
 
@@ -262,6 +281,27 @@ class MongoSessionStore(SessionStore):
             return await self.steps_collection.count_documents({"session_id": session_id})
         except Exception as e:
             logger.error("get_step_count_failed", error=str(e), session_id=session_id)
+            raise
+
+    async def get_max_sequence(self, session_id: str) -> int:
+        """
+        Get the maximum sequence number in the session.
+
+        Returns:
+            Maximum sequence number, or 0 if no steps exist
+        """
+        await self._ensure_connection()
+
+        try:
+            cursor = (
+                self.steps_collection.find({"session_id": session_id}).sort("sequence", -1).limit(1)
+            )
+
+            async for doc in cursor:
+                return doc.get("sequence", 0)
+            return 0
+        except Exception as e:
+            logger.error("get_max_sequence_failed", error=str(e), session_id=session_id)
             raise
 
     async def get_step_by_tool_call_id(

@@ -14,8 +14,6 @@ from agio.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Global store instance
-_trace_store: "TraceStore | None" = None
 
 
 class TraceQuery(BaseModel):
@@ -42,6 +40,8 @@ class TraceStore:
     - Async MongoDB operations
     - In-memory ring buffer for real-time access
     - SSE subscriber support
+    
+    Note: TraceStore is managed by ConfigSystem. Use ConfigSystem to get instance.
     """
 
     def __init__(
@@ -241,24 +241,4 @@ class TraceStore:
             self._client.close()
 
 
-def get_trace_store() -> TraceStore:
-    """Get global TraceStore instance"""
-    global _trace_store
-    if _trace_store is None:
-        from agio.config import settings
-
-        _trace_store = TraceStore(
-            mongo_uri=settings.mongo_uri,
-            db_name=settings.mongo_db_name,
-        )
-    return _trace_store
-
-
-async def initialize_trace_store() -> TraceStore:
-    """Initialize and return global store"""
-    store = get_trace_store()
-    await store.initialize()
-    return store
-
-
-__all__ = ["TraceStore", "TraceQuery", "get_trace_store", "initialize_trace_store"]
+__all__ = ["TraceStore", "TraceQuery"]

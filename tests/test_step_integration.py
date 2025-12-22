@@ -10,14 +10,14 @@ Tests the complete flow:
 """
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
 from agio.providers.storage import InMemorySessionStore
 from agio.domain import MessageRole, Step, StepEventType, AgentSession
 from agio.runtime import StepRunner, StepExecutor, Wire
-from agio.workflow import RunContext
+from agio.workflow import ExecutionContext
 from agio.providers.llm import StreamChunk
 from agio.config import ExecutionConfig
 
@@ -25,20 +25,20 @@ from agio.config import ExecutionConfig
 async def run_with_wire(runner, session, query):
     """Helper to run with Wire and collect events."""
     wire = Wire()
-    context = RunContext(wire=wire, session_id=session.session_id)
+    context = ExecutionContext(wire=wire, session_id=session.session_id, run_id="run_123")
     events = []
-    
+
     async def _run():
         try:
             await runner.run(session, query, wire, context=context)
         finally:
             await wire.close()
-    
+
     task = asyncio.create_task(_run())
-    
+
     async for event in wire.read():
         events.append(event)
-    
+
     await task
     return events
 
@@ -95,10 +95,21 @@ async def test_step_executor_creates_steps(mock_model, session_store):
 
     messages = [{"role": "user", "content": "Hello"}]
 
+    from agio.domain import ExecutionContext
+    from agio.runtime import Wire
+
+    wire = Wire()
+    ctx = ExecutionContext(
+        session_id="session_123",
+        run_id="run_456",
+        wire=wire,
+        workflow_id="wf_1",
+        node_id="node_1",
+        parent_run_id="parent_1",
+    )
+
     events = []
-    async for event in executor.execute(
-        session_id="session_123", run_id="run_456", messages=messages, start_sequence=1
-    ):
+    async for event in executor.execute(messages, ctx, start_sequence=1):
         events.append(event)
 
     # Check we got delta and completed events
@@ -117,25 +128,33 @@ async def test_step_executor_creates_steps(mock_model, session_store):
     assert assistant_step.sequence == 1
     assert assistant_step.metrics is not None
     assert assistant_step.metrics.total_tokens == 15
+    # Check metadata fields are set from ExecutionContext
+    assert assistant_step.workflow_id == "wf_1"
+    assert assistant_step.node_id == "node_1"
+    assert assistant_step.parent_run_id == "parent_1"
 
 
 @pytest.mark.asyncio
 async def test_step_runner_end_to_end(mock_agent, session_store, session):
-    """Test complete StepRunner flow"""
+    """Test complete StepRunner flow.
+    
+    Note: StepRunner no longer emits RUN_STARTED/RUN_COMPLETED events.
+    Run lifecycle events are handled by RunnableExecutor.
+    StepRunner only emits Step-level events.
+    """
     runner = StepRunner(
         agent=mock_agent, config=ExecutionConfig(max_steps=5), session_store=session_store
     )
 
     events = await run_with_wire(runner, session, "Hello")
 
-    # Check event types
-    run_started = [e for e in events if e.type == StepEventType.RUN_STARTED]
-    run_completed = [e for e in events if e.type == StepEventType.RUN_COMPLETED]
+    # Check event types - StepRunner only emits Step events (not Run events)
     step_completed = [e for e in events if e.type == StepEventType.STEP_COMPLETED]
+    step_delta = [e for e in events if e.type == StepEventType.STEP_DELTA]
 
-    assert len(run_started) == 1
-    assert len(run_completed) == 1
+    # StepRunner should emit Step events
     assert len(step_completed) >= 1  # At least assistant step
+    assert len(step_delta) >= 0  # May have delta events
 
     # Check steps were saved to session_store
     steps = await session_store.get_steps("session_123")
@@ -206,9 +225,17 @@ async def test_retry_deletes_and_regenerates(mock_agent, session_store, session)
     last_step = await session_store.get_last_step("session_123")
     
     wire = Wire()
+    from uuid import uuid4
+    from agio.domain import ExecutionContext
+    context = ExecutionContext(
+        run_id=str(uuid4()),
+        session_id="session_123",
+        wire=wire,
+    )
+    
     async def _resume():
         try:
-            await runner.resume_from_user_step("session_123", last_step, wire)
+            await runner.resume_from_user_step("session_123", last_step, wire, context)
         finally:
             await wire.close()
     

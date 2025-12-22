@@ -1,143 +1,177 @@
 """
-PipelineWorkflow - sequential execution of stages.
+PipelineWorkflow - sequential execution of nodes.
 
-Executes stages in order, with each stage able to reference
-outputs from all previous stages.
+Executes nodes in order, with each node able to reference
+outputs from all previous nodes.
 
 Wire-based Architecture:
 - Events are written to context.wire
 - Returns RunOutput with response and metrics
+- Uses WorkflowState for output caching and idempotency
 """
 
 import time
-from uuid import uuid4
+from typing import TYPE_CHECKING
 
-from agio.domain.events import StepEvent, StepEventType
+from agio.domain import ExecutionContext
+from agio.workflow.state import WorkflowState
+from agio.workflow.resolver import ContextResolver
+from agio.runtime import RunnableExecutor
 from agio.workflow.base import BaseWorkflow
-from agio.workflow.protocol import RunContext, RunOutput, RunMetrics
-from agio.workflow.stage import Stage
-from agio.workflow.store import OutputStore
+from agio.workflow.protocol import RunOutput, RunMetrics
+from agio.workflow.node import WorkflowNode
+
+if TYPE_CHECKING:
+    from agio.providers.storage.base import SessionStore
 
 
 class PipelineWorkflow(BaseWorkflow):
     """
     Sequential Pipeline Workflow.
 
-    Executes all stages in order:
-    1. Check each stage's condition
+    Executes all nodes in order:
+    1. Check each node's condition
     2. If condition met, execute; otherwise skip
-    3. Each stage can reference outputs from all previous stages
+    3. Each node can reference outputs from all previous nodes
     """
 
-    def __init__(self, id: str, stages: list[Stage]):
-        super().__init__(id, stages)
+    def __init__(
+        self,
+        id: str,
+        stages: list[WorkflowNode],
+        session_store: "SessionStore | None" = None,
+    ):
+        super().__init__(id, stages, session_store)
 
     async def _execute(
         self,
         input: str,
         *,
-        context: RunContext,
+        context: ExecutionContext,
     ) -> RunOutput:
+        from agio.runtime.event_factory import EventFactory
+
         start_time = time.time()
-        run_id = str(uuid4())
-        store = OutputStore()
-        store.set("query", input)
+        run_id = context.run_id
         wire = context.wire
+        ef = EventFactory(context)
 
-        trace_id = context.trace_id or str(uuid4())
-        total_stages = len(self._stages)
-        
-        # Common workflow context for all events
-        workflow_ctx = {
-            "workflow_type": "pipeline",
-            "workflow_id": self._id,
-            "parent_run_id": context.metadata.get("parent_run_id"),
-            "total_stages": total_stages,
-            "depth": context.depth,
-        }
+        # Get SessionStore from constructor injection
+        session_store = self._session_store
+        if session_store is None:
+            raise ValueError(
+                "SessionStore required for workflow execution. "
+                "Pass it via constructor (configure session_store in workflow config)."
+            )
 
-        await wire.write(StepEvent(
-            type=StepEventType.RUN_STARTED,
-            run_id=run_id,
-            trace_id=trace_id,
-            data={"workflow_id": self._id, "type": "pipeline", "total_stages": total_stages},
-            **workflow_ctx,
-        ))
+        # Create WorkflowState for output caching and idempotency
+        state = WorkflowState(
+            session_id=context.session_id,
+            workflow_id=self._id,
+            store=session_store,
+        )
+
+        # Load history for resume scenarios
+        await state.load_from_history()
+
+        # Create ContextResolver for template resolution
+        resolver = ContextResolver(
+            session_id=context.session_id,
+            workflow_id=self._id,
+            store=session_store,
+            state=state,
+        )
+        resolver.set_input(input)
+
+        # Get nodes (convert stages if needed)
+        nodes = self.nodes
+        total_nodes = len(nodes)
 
         final_output = ""
-        stages_executed = 0
+        nodes_executed = 0
         total_tokens = 0
 
         try:
-            for stage_index, stage in enumerate(self._stages):
-                outputs_dict = store.to_dict()
-                
-                # Stage-specific context
-                stage_ctx = {
-                    **workflow_ctx,
-                    "stage_id": stage.id,
-                    "stage_name": stage.id,
-                    "stage_index": stage_index,
-                }
+            for node_index, node in enumerate(nodes):
+                node_id = node.id
 
-                # Check condition
-                if not stage.should_execute(outputs_dict):
-                    await wire.write(StepEvent(
-                        type=StepEventType.STAGE_SKIPPED,
-                        run_id=run_id,
-                        trace_id=trace_id,
-                        data={"condition": stage.condition},
-                        **stage_ctx,
-                    ))
+                # Idempotency check: skip if node already executed
+                if state.has_output(node_id):
+                    await wire.write(
+                        ef.node_skipped(
+                            node_id=node_id,
+                            condition=None,
+                            node_index=node_index,
+                            total_nodes=total_nodes,
+                            workflow_type="pipeline",
+                            workflow_id=self._id,
+                        )
+                    )
                     continue
 
-                await wire.write(StepEvent(
-                    type=StepEventType.STAGE_STARTED,
-                    run_id=run_id,
-                    trace_id=trace_id,
-                    **stage_ctx,
-                ))
+                # Check condition
+                if node.condition:
+                    # Build outputs dict for condition evaluation
+                    outputs_dict = {"input": input}
+                    outputs_dict.update(state.to_dict())
+                    from agio.workflow.condition import ConditionEvaluator
 
-                # Build input
-                stage_input = stage.build_input(outputs_dict)
+                    if not ConditionEvaluator.evaluate(node.condition, outputs_dict):
+                        await wire.write(
+                            ef.node_skipped(
+                                node_id=node_id,
+                                condition=node.condition,
+                                node_index=node_index,
+                                total_nodes=total_nodes,
+                                workflow_type="pipeline",
+                                workflow_id=self._id,
+                            )
+                        )
+                        continue
+
+                await wire.write(
+                    ef.node_started(
+                        node_id=node_id,
+                        node_index=node_index,
+                        total_nodes=total_nodes,
+                        workflow_type="pipeline",
+                        workflow_id=self._id,
+                    )
+                )
+
+                # Resolve input template
+                node_input = await resolver.resolve_template(node.input_template)
 
                 # Get Runnable instance
-                runnable = self._resolve_runnable(stage.runnable)
+                runnable = self._resolve_runnable(node.runnable)
 
-                # Create child context with parent_run_id for nested events
-                child_context = self._create_child_context(context, stage)
-                child_context.trace_id = trace_id
-                child_context.metadata["parent_run_id"] = run_id
-                child_context.metadata["stage_id"] = stage.id
-                child_context.metadata["stage_index"] = stage_index
+                # Create child context
+                child_context = self._create_child_context(context, node)
 
-                # Execute - events written to wire, get RunOutput
-                result = await runnable.run(stage_input, context=child_context)
-                stage_output = result.response or ""
+                # Execute Runnable via RunnableExecutor - handles Run lifecycle
+                executor = RunnableExecutor(store=session_store)
+                result = await executor.execute(runnable, node_input, child_context)
+                node_output = result.response or ""
                 total_tokens += result.metrics.total_tokens
 
-                # Store output
-                store.set(stage.id, stage_output)
-                final_output = stage_output
-                stages_executed += 1
+                # Update state cache
+                state.set_output(node_id, node_output)
 
-                await wire.write(StepEvent(
-                    type=StepEventType.STAGE_COMPLETED,
-                    run_id=run_id,
-                    trace_id=trace_id,
-                    data={"output_length": len(stage_output)},
-                    **stage_ctx,
-                ))
+                final_output = node_output
+                nodes_executed += 1
+
+                await wire.write(
+                    ef.node_completed(
+                        node_id=node_id,
+                        data={"output_length": len(node_output)},
+                        node_index=node_index,
+                        total_nodes=total_nodes,
+                        workflow_type="pipeline",
+                        workflow_id=self._id,
+                    )
+                )
 
             duration = time.time() - start_time
-
-            await wire.write(StepEvent(
-                type=StepEventType.RUN_COMPLETED,
-                run_id=run_id,
-                trace_id=trace_id,
-                data={"response": final_output, "stages_executed": stages_executed},
-                **workflow_ctx,
-            ))
 
             return RunOutput(
                 response=final_output,
@@ -146,16 +180,9 @@ class PipelineWorkflow(BaseWorkflow):
                 metrics=RunMetrics(
                     duration=duration,
                     total_tokens=total_tokens,
-                    stages_executed=stages_executed,
+                    nodes_executed=nodes_executed,
                 ),
             )
 
         except Exception as e:
-            await wire.write(StepEvent(
-                type=StepEventType.RUN_FAILED,
-                run_id=run_id,
-                trace_id=trace_id,
-                data={"error": str(e)},
-                **workflow_ctx,
-            ))
             raise

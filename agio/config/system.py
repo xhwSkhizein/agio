@@ -428,8 +428,11 @@ class ConfigSystem:
             tools = []
             for tool_ref in config.tools:
                 # Pass current agent name for self-reference detection
+                # and session_store for nested RunnableTool execution
                 tool = await self._resolve_tool_reference(
-                    tool_ref, current_component=config.name
+                    tool_ref, 
+                    current_component=config.name,
+                    session_store_name=config.session_store,
                 )
                 tools.append(tool)
             dependencies["tools"] = tools
@@ -444,152 +447,105 @@ class ConfigSystem:
             if config.session_store:
                 dependencies["session_store"] = self.get(config.session_store)
 
-            if config.trace_store:
-                dependencies["trace_store"] = self.get(config.trace_store)
-
         elif isinstance(config, ToolConfig):
             # Tool dependencies (e.g., llm_model)
             for param_name, dep_name in config.effective_dependencies.items():
                 dependencies[param_name] = self.get(dep_name)
 
         elif isinstance(config, WorkflowConfig):
-            # Workflow needs access to all instances (agents, other workflows)
+            # Workflow needs access to all instances for runnable resolution
             dependencies["_all_instances"] = self._instances
 
+            # session_store is guaranteed to exist by topological sort
+            if config.session_store:
+                dependencies["session_store"] = self.get(config.session_store)
+
         return dependencies
-    
+
     async def _resolve_tool_reference(
         self, 
         tool_ref: str | dict | RunnableToolConfig,
         current_component: str | None = None,
+        session_store_name: str | None = None,
     ) -> Any:
         """
         Resolve a tool reference to a tool instance.
         
         Supports:
-        1. String: tool name (built-in or configured)
-        2. RunnableToolConfig: Pydantic-parsed agent_tool/workflow_tool config
-        3. Dict with type="agent_tool": wrap an Agent as Tool
-        4. Dict with type="workflow_tool": wrap a Workflow as Tool
+        - String: tool name (built-in or configured)
+        - RunnableToolConfig or Dict: agent_tool/workflow_tool wrapper
         
         Args:
-            tool_ref: Tool reference (string, RunnableToolConfig, or dict)
-            current_component: Name of the component being built (for self-reference detection)
-            
-        Returns:
-            Tool instance (BaseTool or RunnableTool)
+            tool_ref: Tool reference (string, dict, or RunnableToolConfig)
+            current_component: Current component name for self-reference detection
+            session_store_name: Session store name for RunnableTool nested execution
         """
-        # Case 1: String reference - use existing logic
+        # String reference -> built-in or configured tool
         if isinstance(tool_ref, str):
             return await self._get_or_create_tool(tool_ref)
-        
-        # Case 2: RunnableToolConfig (Pydantic auto-converted from dict)
+
+        # Parse to unified format
+        from agio.config.tool_reference import parse_tool_reference
         if isinstance(tool_ref, RunnableToolConfig):
-            config_dict = tool_ref.model_dump()
-            if tool_ref.type == "agent_tool":
-                return await self._create_agent_tool(config_dict, current_component)
-            elif tool_ref.type == "workflow_tool":
-                return await self._create_workflow_tool(config_dict, current_component)
-        
-        # Case 3: Dict-based configuration (use unified parser)
-        if isinstance(tool_ref, dict):
-            from agio.config.tool_reference import parse_tool_reference
+            parsed = parse_tool_reference(tool_ref.model_dump())
+        elif isinstance(tool_ref, dict):
             parsed = parse_tool_reference(tool_ref)
-            
-            if parsed.type == "agent_tool":
-                return await self._create_agent_tool(parsed.raw, current_component)
-            elif parsed.type == "workflow_tool":
-                return await self._create_workflow_tool(parsed.raw, current_component)
-            else:
-                raise ComponentBuildError(
-                    f"Unknown tool reference format: {tool_ref}. "
-                    f"Expected string (tool name) or dict with type='agent_tool'/'workflow_tool'"
-                )
+        else:
+            raise ComponentBuildError(f"Invalid tool reference type: {type(tool_ref)}")
+
+        # Create RunnableTool wrapper
+        if parsed.type in ("agent_tool", "workflow_tool"):
+            return await self._create_runnable_tool(
+                parsed.type, parsed.raw, current_component, session_store_name
+            )
         
-        raise ComponentBuildError(f"Invalid tool reference type: {type(tool_ref)}")
-    
-    async def _create_agent_tool(
+        raise ComponentBuildError(
+            f"Unknown tool reference format: {tool_ref}. "
+            f"Expected string or dict with type='agent_tool'/'workflow_tool'"
+        )
+
+    async def _create_runnable_tool(
         self, 
+        tool_type: str,
         config: dict, 
         current_component: str | None = None,
+        session_store_name: str | None = None,
     ) -> Any:
         """
-        Create a RunnableTool wrapping an Agent.
+        Create a RunnableTool wrapping an Agent or Workflow.
         
         Args:
-            config: Dict with 'agent', 'description', 'name' keys
-            current_component: Name of the component being built (for self-reference detection)
-            
-        Returns:
-            RunnableTool instance
-            
-        Raises:
-            ComponentBuildError: If self-reference detected or agent not found
+            tool_type: 'agent_tool' or 'workflow_tool'
+            config: Dict with runnable reference, description, name
+            current_component: For self-reference detection
+            session_store_name: Name of session_store to use for nested execution
         """
         from agio.workflow import as_tool
-        
-        agent_id = config.get("agent")
-        if not agent_id:
-            raise ComponentBuildError("agent_tool config missing 'agent' field")
-        
+
+        # Get runnable ID based on type
+        id_field = "agent" if tool_type == "agent_tool" else "workflow"
+        runnable_id = config.get(id_field)
+        if not runnable_id:
+            raise ComponentBuildError(f"{tool_type} config missing '{id_field}' field")
+
         # Safety check: Detect self-reference
-        if current_component and agent_id == current_component:
+        if current_component and runnable_id == current_component:
             raise ComponentBuildError(
-                f"Self-reference detected: Agent '{current_component}' cannot use itself as a tool. "
-                f"This would cause infinite recursion."
+                f"Self-reference detected: '{current_component}' cannot use itself as a tool."
             )
-        
-        # Get the agent instance
-        agent = self.get(agent_id)
-        
-        # Create RunnableTool
-        description = config.get("description")
-        name = config.get("name")
-        
-        tool = as_tool(agent, description=description, name=name)
-        logger.info(f"Created agent_tool: {tool.get_name()} (wrapping {agent_id})")
-        return tool
-    
-    async def _create_workflow_tool(
-        self, 
-        config: dict,
-        current_component: str | None = None,
-    ) -> Any:
-        """
-        Create a RunnableTool wrapping a Workflow.
-        
-        Args:
-            config: Dict with 'workflow', 'description', 'name' keys
-            current_component: Name of the component being built (for self-reference detection)
-            
-        Returns:
-            RunnableTool instance
-            
-        Raises:
-            ComponentBuildError: If self-reference detected or workflow not found
-        """
-        from agio.workflow import as_tool
-        
-        workflow_id = config.get("workflow")
-        if not workflow_id:
-            raise ComponentBuildError("workflow_tool config missing 'workflow' field")
-        
-        # Safety check: Detect self-reference
-        if current_component and workflow_id == current_component:
-            raise ComponentBuildError(
-                f"Self-reference detected: Workflow '{current_component}' cannot use itself as a tool. "
-                f"This would cause infinite recursion."
-            )
-        
-        # Get the workflow instance
-        workflow = self.get(workflow_id)
-        
-        # Create RunnableTool
-        description = config.get("description")
-        name = config.get("name")
-        
-        tool = as_tool(workflow, description=description, name=name)
-        logger.info(f"Created workflow_tool: {tool.get_name()} (wrapping {workflow_id})")
+
+        # Get session_store for nested execution (ensures RUN_STARTED events are emitted)
+        session_store = self.get_or_none(session_store_name) if session_store_name else None
+
+        # Get the runnable instance and wrap as tool
+        runnable = self.get(runnable_id)
+        tool = as_tool(
+            runnable, 
+            description=config.get("description"), 
+            name=config.get("name"),
+            session_store=session_store,
+        )
+        logger.info(f"Created {tool_type}: {tool.get_name()} (wrapping {runnable_id})")
         return tool
 
     async def _get_or_create_tool(self, tool_name: str) -> Any:
@@ -604,23 +560,23 @@ class ConfigSystem:
         # 1. Check if already built
         if tool_name in self._instances:
             return self._instances[tool_name]
-        
+
         # 2. Check if config exists -> build it
         tool_config = self.get_config(ComponentType.TOOL, tool_name)
         if tool_config:
             return await self._build_component(ComponentType.TOOL, tool_name)
-        
+
         # 3. Try to create from registry (built-in tools)
         from agio.providers.tools import get_tool_registry
         registry = get_tool_registry()
-        
+
         if registry.is_registered(tool_name):
             tool = registry.create(tool_name)
             # Cache the instance
             self._instances[tool_name] = tool
             logger.info(f"Created built-in tool: {tool_name}")
             return tool
-        
+
         raise ComponentNotFoundError(
             f"Tool '{tool_name}' not found. "
             f"Available: configs={[n for (t, n) in self._configs.keys() if t == ComponentType.TOOL]}, "
@@ -661,16 +617,16 @@ class ConfigSystem:
         """
         from collections import deque
         from agio.config.tool_reference import parse_tool_reference
-        
+
         # 先收集所有组件名称
         all_names = {name for (_, name) in self._configs.keys()}
-        
+
         # 构建依赖图
         dependencies: dict[str, set[str]] = {}
-        
+
         for (component_type, name), config in self._configs.items():
             deps: set[str] = set()
-            
+
             # Agent 依赖
             if component_type == ComponentType.AGENT:
                 if "model" in config and config["model"] in all_names:
@@ -691,41 +647,42 @@ class ConfigSystem:
                     deps.add(config["knowledge"])
                 if "session_store" in config:
                     deps.add(config["session_store"])
-                if "trace_store" in config:
-                    deps.add(config["trace_store"])
-            
+
             # Workflow 依赖
             elif component_type == ComponentType.WORKFLOW:
                 if "stages" in config:
                     self._extract_workflow_deps(config["stages"], deps)
-            
+                # session_store 依赖
+                if "session_store" in config and config["session_store"]:
+                    deps.add(config["session_store"])
+
             # Tool 依赖
             elif component_type == ComponentType.TOOL:
                 if "dependencies" in config:
                     for dep_name in config["dependencies"].values():
                         deps.add(dep_name)
-            
+
             dependencies[name] = deps
-        
+
         # 过滤掉不存在的依赖（built-in tools 等）
         for name in dependencies:
             dependencies[name] = dependencies[name] & all_names
-        
+
         # 拓扑排序（Kahn's algorithm）
         in_degree = {name: len(deps) for name, deps in dependencies.items()}
         queue = deque([name for name, degree in in_degree.items() if degree == 0])
         sorted_names: list[str] = []
-        
+
         while queue:
             name = queue.popleft()
             sorted_names.append(name)
-            
+
             for other_name, deps in dependencies.items():
                 if name in deps:
                     in_degree[other_name] -= 1
                     if in_degree[other_name] == 0:
                         queue.append(other_name)
-        
+
         # 检测循环依赖
         if len(sorted_names) < len(all_names):
             unresolved = all_names - set(sorted_names)
@@ -740,17 +697,10 @@ class ConfigSystem:
                 ),
             ):
                 sorted_names.append(name)
-        
-        # 构建返回结果
-        result = []
-        name_to_key = {name: key for key in self._configs.keys() for _, name in [key]}
-        for name in sorted_names:
-            for key, config in self._configs.items():
-                if key[1] == name:
-                    result.append((key, config))
-                    break
-        
-        return result
+
+        # 构建返回结果: 按排序后的名称查找对应配置
+        name_to_config = {name: (key, config) for key, config in self._configs.items() for _, name in [key]}
+        return [name_to_config[name] for name in sorted_names if name in name_to_config]
 
     def _get_affected_components(self, name: str) -> list[str]:
         """
@@ -769,15 +719,6 @@ class ConfigSystem:
                     queue.append(comp_name)
 
         return affected
-
-    def _parse_config(
-        self, component_type: ComponentType, config_data: dict
-    ) -> ComponentConfig:
-        """解析配置数据为配置对象"""
-        config_class = self.CONFIG_CLASSES.get(component_type)
-        if not config_class:
-            raise ComponentBuildError(f"Unknown component type: {component_type}")
-        return config_class(**config_data)
 
     # ========================================================================
     # 状态查询

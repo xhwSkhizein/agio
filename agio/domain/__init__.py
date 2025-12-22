@@ -7,17 +7,23 @@ This module contains all core data models, events, and adapters.
 # Models
 from .models import (
     AgentMemoriedContent,
-    AgentRun,
-    AgentRunMetrics,
     AgentRunSummary,
     AgentSession,
     GenerationReference,
     MemoryCategory,
     MessageRole,
+    Run,
+    RunMetrics,
     RunStatus,
     Step,
     StepMetrics,
 )
+
+# Protocol
+from .protocol import Runnable, RunOutput
+
+# Execution Context
+from .execution_context import ExecutionContext
 
 # Events
 from .events import (
@@ -40,8 +46,8 @@ __all__ = [
     # Models
     "Step",
     "StepMetrics",
-    "AgentRun",
-    "AgentRunMetrics",
+    "Run",
+    "RunMetrics",
     "AgentRunSummary",
     "AgentSession",
     "GenerationReference",
@@ -49,6 +55,11 @@ __all__ = [
     "RunStatus",
     "MemoryCategory",
     "AgentMemoriedContent",
+    # Protocol
+    "Runnable",
+    "RunOutput",
+    # Execution Context
+    "ExecutionContext",
     # Events
     "StepEvent",
     "StepEventType",

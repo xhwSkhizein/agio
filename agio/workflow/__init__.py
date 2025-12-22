@@ -6,18 +6,22 @@ This module provides:
 - Workflow types: Pipeline, Loop, Parallel
 - InputMapping for input construction
 - ConditionEvaluator for conditional execution
+- WorkflowState for node output caching
+- ContextResolver for template variable resolution
 """
 
-from agio.workflow.protocol import Runnable, RunContext, RunOutput, RunMetrics
+from agio.workflow.protocol import Runnable, RunOutput, RunMetrics
+from agio.domain import ExecutionContext
 from agio.workflow.mapping import InputMapping
-from agio.workflow.store import OutputStore
 from agio.workflow.condition import ConditionEvaluator
-from agio.workflow.stage import Stage
+from agio.workflow.node import WorkflowNode
 from agio.workflow.base import BaseWorkflow
 from agio.workflow.pipeline import PipelineWorkflow
 from agio.workflow.loop import LoopWorkflow
 from agio.workflow.parallel import ParallelWorkflow
 from agio.workflow.engine import WorkflowEngine
+from agio.workflow.state import WorkflowState
+from agio.workflow.resolver import ContextResolver
 from agio.workflow.runnable_tool import (
     RunnableTool,
     as_tool,
@@ -29,14 +33,16 @@ from agio.workflow.runnable_tool import (
 __all__ = [
     # Protocol
     "Runnable",
-    "RunContext",
+    "ExecutionContext",
     "RunOutput",
     "RunMetrics",
     # Core
     "InputMapping",
-    "OutputStore",
     "ConditionEvaluator",
-    "Stage",
+    "WorkflowNode",
+    # State management
+    "WorkflowState",
+    "ContextResolver",
     # Workflow types
     "BaseWorkflow",
     "PipelineWorkflow",

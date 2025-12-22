@@ -1,52 +1,57 @@
 """
-LoopWorkflow - iterative execution of stages.
+LoopWorkflow - iterative execution of nodes.
 
-Repeats execution of stages until condition is not met
+Repeats execution of nodes until condition is not met
 or max iterations is reached.
 
 Wire-based Architecture:
 - Events are written to context.wire
 - Returns RunOutput with response and metrics
+- Uses WorkflowState for output caching and idempotency
 """
 
 import time
 from typing import TYPE_CHECKING
-from uuid import uuid4
 
-from agio.domain.events import StepEvent, StepEventType
+from agio.runtime.event_factory import EventFactory
+from agio.domain import ExecutionContext
+from agio.workflow.state import WorkflowState
+from agio.workflow.resolver import ContextResolver
+from agio.runtime import RunnableExecutor
 from agio.workflow.base import BaseWorkflow
 from agio.workflow.condition import ConditionEvaluator
-from agio.workflow.protocol import RunContext, RunOutput, RunMetrics
-from agio.workflow.stage import Stage
-from agio.workflow.store import OutputStore
+from agio.workflow.protocol import RunOutput, RunMetrics
+from agio.workflow.node import WorkflowNode
 
 if TYPE_CHECKING:
     from agio.providers.llm import Model
+    from agio.providers.storage.base import SessionStore
 
 
 class LoopWorkflow(BaseWorkflow):
     """
     Loop Workflow.
 
-    Repeats execution of stages until condition is not met
+    Repeats execution of nodes until condition is not met
     or max iterations is reached.
 
     Special variables:
     - {loop.iteration}: current iteration number (from 1)
-    - {loop.last.stage_id}: output of a stage from previous iteration
+    - {loop.last.node_id}: output of a node from previous iteration
     """
 
     def __init__(
         self,
         id: str,
-        stages: list[Stage],
+        stages: list[WorkflowNode],
         condition: str = "true",
         max_iterations: int = 10,
         enable_termination_summary: bool = False,
         summary_model: "Model | None" = None,
         termination_summary_prompt: str | None = None,
+        session_store: "SessionStore | None" = None,
     ):
-        super().__init__(id, stages)
+        super().__init__(id, stages, session_store)
         self.condition = condition
         self.max_iterations = max_iterations
         self.enable_termination_summary = enable_termination_summary
@@ -57,91 +62,143 @@ class LoopWorkflow(BaseWorkflow):
         self,
         input: str,
         *,
-        context: RunContext,
+        context: ExecutionContext,
     ) -> RunOutput:
         start_time = time.time()
-        run_id = str(uuid4())
-        store = OutputStore()
-        store.set("query", input)
+        run_id = context.run_id
         wire = context.wire
+        ef = EventFactory(context)
 
-        trace_id = context.trace_id or str(uuid4())
+        # Get SessionStore from constructor injection
+        session_store = self._session_store
+        if session_store is None:
+            raise ValueError(
+                "SessionStore required for workflow execution. "
+                "Pass it via constructor (configure session_store in workflow config)."
+            )
 
-        await wire.write(StepEvent(
-            type=StepEventType.RUN_STARTED,
-            run_id=run_id,
-            trace_id=trace_id,
-            data={
-                "workflow_id": self._id,
-                "type": "loop",
-                "max_iterations": self.max_iterations,
-            },
-        ))
+        # Create WorkflowState for output caching and idempotency
+        state = WorkflowState(
+            session_id=context.session_id,
+            workflow_id=self._id,
+            store=session_store,
+        )
+
+        # Load history for resume scenarios
+        await state.load_from_history()
+
+        # Create ContextResolver for template resolution
+        resolver = ContextResolver(
+            session_id=context.session_id,
+            workflow_id=self._id,
+            store=session_store,
+            state=state,
+        )
+        resolver.set_input(input)
 
         final_output = ""
         iteration = 0
         total_tokens = 0
-        stages_executed = 0
+        nodes_executed = 0
+        last_iteration_outputs: dict[str, str] = {}  # Track outputs from previous iteration
 
         try:
+            # Get nodes
+            nodes = self.nodes
+
             while iteration < self.max_iterations:
                 iteration += 1
-                store.start_iteration()
+                current_iteration_outputs: dict[str, str] = {}
 
-                await wire.write(StepEvent(
-                    type=StepEventType.ITERATION_STARTED,
-                    run_id=run_id,
-                    iteration=iteration,
-                    trace_id=trace_id,
-                    data={"max_iterations": self.max_iterations},
-                ))
-
-                # Execute all stages
-                for stage in self._stages:
-                    outputs_dict = store.to_dict()
-
-                    if not stage.should_execute(outputs_dict):
-                        await wire.write(StepEvent(
-                            type=StepEventType.STAGE_SKIPPED,
-                            run_id=run_id,
-                            stage_id=stage.id,
-                            iteration=iteration,
-                            trace_id=trace_id,
-                        ))
-                        continue
-
-                    await wire.write(StepEvent(
-                        type=StepEventType.STAGE_STARTED,
-                        run_id=run_id,
-                        stage_id=stage.id,
+                await wire.write(
+                    ef.iteration_started(
                         iteration=iteration,
-                        trace_id=trace_id,
-                    ))
+                        max_iterations=self.max_iterations,
+                        workflow_type="loop",
+                        workflow_id=self._id,
+                    )
+                )
 
-                    stage_input = stage.build_input(outputs_dict)
-                    runnable = self._resolve_runnable(stage.runnable)
-                    child_context = self._create_child_context(context, stage)
-                    child_context.trace_id = trace_id
+                # Update loop context in resolver
+                resolver.set_loop_context(iteration, last_iteration_outputs)
 
-                    # Execute - events written to wire, get RunOutput
-                    result = await runnable.run(stage_input, context=child_context)
-                    stage_output = result.response or ""
+                # Execute all nodes
+                for node in nodes:
+                    node_id = node.id
+
+                    # Build outputs dict for condition evaluation
+                    outputs_dict = {"input": input}
+                    outputs_dict.update(state.to_dict())
+                    # Add loop context
+                    outputs_dict["loop"] = {
+                        "iteration": iteration,
+                        "last": last_iteration_outputs,
+                    }
+
+                    # Check condition
+                    if node.condition:
+                        if not ConditionEvaluator.evaluate(node.condition, outputs_dict):
+                            await wire.write(
+                                ef.node_skipped(
+                                    node_id=node_id,
+                                    iteration=iteration,
+                                    workflow_type="loop",
+                                    workflow_id=self._id,
+                                )
+                            )
+                            continue
+
+                    await wire.write(
+                        ef.node_started(
+                            node_id=node_id,
+                            iteration=iteration,
+                            workflow_type="loop",
+                            workflow_id=self._id,
+                        )
+                    )
+
+                    # Resolve input template
+                    node_input = await resolver.resolve_template(node.input_template)
+
+                    runnable = self._resolve_runnable(node.runnable)
+                    child_context = self._create_child_context(context, node)
+                    # Set iteration in context for Step tracking
+                    child_context = child_context.with_iteration(iteration)
+
+                    # Execute via RunnableExecutor - handles Run lifecycle
+                    executor = RunnableExecutor(store=session_store)
+                    result = await executor.execute(runnable, node_input, child_context)
+                    node_output = result.response or ""
                     total_tokens += result.metrics.total_tokens
 
-                    store.set(stage.id, stage_output)
-                    final_output = stage_output
-                    stages_executed += 1
+                    # Update state cache
+                    state.set_output(node_id, node_output)
 
-                    await wire.write(StepEvent(
-                        type=StepEventType.STAGE_COMPLETED,
-                        run_id=run_id,
-                        stage_id=stage.id,
-                        iteration=iteration,
-                        trace_id=trace_id,
-                    ))
+                    current_iteration_outputs[node_id] = node_output
+                    final_output = node_output
+                    nodes_executed += 1
+
+                    await wire.write(
+                        ef.node_completed(
+                            node_id=node_id,
+                            data={"output_length": len(node_output)},
+                            iteration=iteration,
+                            workflow_type="loop",
+                            workflow_id=self._id,
+                        )
+                    )
+
+                # Update last iteration outputs for next iteration
+                last_iteration_outputs = current_iteration_outputs
 
                 # Check exit condition
-                if not ConditionEvaluator.evaluate(self.condition, store.to_dict()):
+                condition_dict = {"input": input}
+                condition_dict.update(state.to_dict())
+                condition_dict["loop"] = {
+                    "iteration": iteration,
+                    "last": last_iteration_outputs,
+                }
+                if not ConditionEvaluator.evaluate(self.condition, condition_dict):
                     break
 
             duration = time.time() - start_time
@@ -150,19 +207,8 @@ class LoopWorkflow(BaseWorkflow):
             # Generate termination summary if configured
             if termination_reason and self.enable_termination_summary:
                 final_output = await self._generate_termination_summary(
-                    store, termination_reason, iteration
+                    state, termination_reason, iteration, input
                 )
-
-            await wire.write(StepEvent(
-                type=StepEventType.RUN_COMPLETED,
-                run_id=run_id,
-                trace_id=trace_id,
-                data={
-                    "response": final_output,
-                    "iterations": iteration,
-                    "termination_reason": termination_reason,
-                },
-            ))
 
             return RunOutput(
                 response=final_output,
@@ -172,106 +218,97 @@ class LoopWorkflow(BaseWorkflow):
                     duration=duration,
                     total_tokens=total_tokens,
                     iterations=iteration,
-                    stages_executed=stages_executed,
+                    nodes_executed=nodes_executed,
                 ),
                 termination_reason=termination_reason,
             )
 
         except Exception as e:
-            await wire.write(StepEvent(
-                type=StepEventType.RUN_FAILED,
-                run_id=run_id,
-                trace_id=trace_id,
-                data={"error": str(e), "iteration": iteration},
-            ))
             raise
 
     async def _generate_termination_summary(
         self,
-        store: OutputStore,
+        state: WorkflowState | None,
         termination_reason: str,
         iteration: int,
+        input: str,
     ) -> str:
         """
         Generate summary when workflow is terminated.
-        
+
         Args:
-            store: Output store with all stage outputs
+            state: WorkflowState with all node outputs
             termination_reason: Reason for termination
             iteration: Current iteration number
-            
+            input: Original workflow input
+
         Returns:
             Summary text
         """
         # If no summary model configured, generate simple text summary
         if not self.summary_model:
-            return self._generate_simple_summary(store, termination_reason, iteration)
-        
-        # Build messages from store outputs
-        messages = self._build_messages_from_store(store)
-        
+            return self._generate_simple_summary(state, termination_reason, iteration, input)
+
+        # Build messages from state outputs
+        messages = self._build_messages_from_state(state, input)
+
         # Use the model directly to generate summary
         # Note: For workflows, we use a simpler approach without step tracking
         from agio.runtime.summarizer import DEFAULT_TERMINATION_USER_PROMPT, _format_termination_reason
-        
+
         prompt_template = self.termination_summary_prompt or DEFAULT_TERMINATION_USER_PROMPT
         user_prompt = prompt_template.format(
             termination_reason=_format_termination_reason(termination_reason),
         )
-        
+
         summary_messages = list(messages)
         summary_messages.append({"role": "user", "content": user_prompt})
-        
+
         try:
             response = await self.summary_model.arun(summary_messages)
             return response.content if response.content else ""
-        except Exception as e:
+        except Exception:
             # Fallback to simple summary
-            return self._generate_simple_summary(store, termination_reason, iteration)
-    
+            return self._generate_simple_summary(state, termination_reason, iteration, input)
+
     def _generate_simple_summary(
         self,
-        store: OutputStore,
+        state: WorkflowState | None,
         termination_reason: str,
         iteration: int,
+        input: str,
     ) -> str:
         """Generate a simple text summary without LLM."""
-        outputs = store.to_dict()
-        query = outputs.get("query", "Unknown query")
-        
         summary_parts = [
             f"Workflow terminated due to reaching {termination_reason}.",
             f"Completed {iteration} iterations.",
-            f"Original query: {query}",
+            f"Original query: {input}",
             "",
-            "Stage outputs:",
+            "Node outputs:",
         ]
-        
-        for key, value in outputs.items():
-            if key not in ("query", "loop"):
+
+        if state:
+            outputs = state.to_dict()
+            for node_id, value in outputs.items():
                 # Truncate long outputs
                 output_text = str(value)[:500]
                 if len(str(value)) > 500:
                     output_text += "... [truncated]"
-                summary_parts.append(f"- {key}: {output_text}")
-        
+                summary_parts.append(f"- {node_id}: {output_text}")
+
         return "\n".join(summary_parts)
-    
-    def _build_messages_from_store(self, store: OutputStore) -> list[dict]:
-        """Build OpenAI format messages from store for summarizer."""
-        outputs = store.to_dict()
+
+    def _build_messages_from_state(self, state: WorkflowState | None, input: str) -> list[dict]:
+        """Build OpenAI format messages from state for summarizer."""
         messages = []
-        
+
         # Add original query as user message
-        if "query" in outputs:
-            messages.append({"role": "user", "content": outputs["query"]})
-        
-        # Add stage outputs as assistant messages
-        for key, value in outputs.items():
-            if key not in ("query", "loop"):
-                messages.append({
-                    "role": "assistant",
-                    "content": f"[Stage {key}]: {value}"
-                })
-        
+        messages.append({"role": "user", "content": input})
+
+        # Add node outputs as assistant messages
+        if state:
+            outputs = state.to_dict()
+            for node_id, value in outputs.items():
+                messages.append({"role": "assistant", "content": f"[Node {node_id}]: {value}"})
+
         return messages

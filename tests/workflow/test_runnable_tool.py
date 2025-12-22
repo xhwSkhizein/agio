@@ -13,6 +13,19 @@ from agio.workflow.runnable_tool import (
 )
 
 
+class MockWire:
+    """Mock Wire for testing - collects events."""
+
+    def __init__(self):
+        self.events = []
+
+    async def write(self, event: StepEvent):
+        self.events.append(event)
+
+    async def complete(self):
+        pass
+
+
 class MockRunnable:
     """Mock Runnable for testing - Wire-based API, returns RunOutput."""
 
@@ -24,6 +37,10 @@ class MockRunnable:
     @property
     def id(self) -> str:
         return self._id
+
+    @property
+    def runnable_type(self) -> str:
+        return "agent"
 
     async def run(self, input: str, *, context) -> RunOutput:
         """Execute and write events to context.wire, return RunOutput."""
@@ -57,13 +74,18 @@ class TestRunnableTool:
         """Test basic tool execution returns correct output."""
         mock_runnable = MockRunnable(output="Hello from mock")
         tool = as_tool(mock_runnable, "Test tool")
+        mock_wire = MockWire()
 
-        result = await tool.execute({"task": "Do something"})
+        result = await tool.execute({"task": "Do something", "_wire": mock_wire})
 
         assert result.is_success
         assert result.content == "Hello from mock"
         assert result.tool_name == "call_mock_agent"
         assert result.error is None
+        # Verify RUN_STARTED and RUN_COMPLETED events were emitted
+        event_types = [e.type for e in mock_wire.events]
+        assert StepEventType.RUN_STARTED in event_types
+        assert StepEventType.RUN_COMPLETED in event_types
 
     @pytest.mark.asyncio
     async def test_custom_name(self):
@@ -102,10 +124,12 @@ class TestRunnableTool:
         """Test task execution with additional context."""
         mock_runnable = MockRunnable()
         tool = as_tool(mock_runnable)
+        mock_wire = MockWire()
 
         result = await tool.execute({
             "task": "Do something",
             "context": "Additional context here",
+            "_wire": mock_wire,
         })
 
         assert result.is_success
@@ -117,8 +141,9 @@ class TestRunnableTool:
         """Test error handling when runnable fails."""
         mock_runnable = MockRunnable(should_fail=True)
         tool = as_tool(mock_runnable)
+        mock_wire = MockWire()
 
-        result = await tool.execute({"task": "This will fail"})
+        result = await tool.execute({"task": "This will fail", "_wire": mock_wire})
 
         assert not result.is_success
         assert result.error is not None
@@ -151,8 +176,9 @@ class TestRunnableTool:
         """Test that execution duration is tracked."""
         mock_runnable = MockRunnable()
         tool = as_tool(mock_runnable)
+        mock_wire = MockWire()
 
-        result = await tool.execute({"task": "Test"})
+        result = await tool.execute({"task": "Test", "_wire": mock_wire})
 
         assert result.duration > 0
         assert result.start_time < result.end_time
@@ -232,9 +258,10 @@ class TestSafetyFeatures:
         """Test that call stack is properly passed to nested executions."""
         mock_runnable = MockRunnable()
         tool = as_tool(mock_runnable)
+        mock_wire = MockWire()
 
         # First call - no call stack yet
-        result = await tool.execute({"task": "Test"})
+        result = await tool.execute({"task": "Test", "_wire": mock_wire})
         assert result.is_success
 
     @pytest.mark.asyncio

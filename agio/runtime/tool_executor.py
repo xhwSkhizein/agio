@@ -14,7 +14,7 @@ from agio.utils.logging import get_logger
 if TYPE_CHECKING:
     from agio.providers.tools import BaseTool
     from agio.runtime.control import AbortSignal
-    from agio.runtime.wire import Wire
+    from agio.domain import ExecutionContext
     from agio.runtime.tool_cache import ToolResultCache
 
 logger = get_logger(__name__)
@@ -41,21 +41,17 @@ class ToolExecutor:
     async def execute(
         self,
         tool_call: dict[str, Any],
+        context: "ExecutionContext",
         abort_signal: "AbortSignal | None" = None,
-        wire: "Wire | None" = None,
-        session_id: str | None = None,
-        parent_run_id: str | None = None,
     ) -> ToolResult:
         """
         Execute a single tool call.
-        
+
         Args:
             tool_call: OpenAI format tool call
+            context: Execution context
             abort_signal: Abort signal
-            wire: Wire for nested RunnableTool event streaming
-            session_id: Session ID for caching
-            parent_run_id: Parent run ID for nested RunnableTool execution
-            
+
         Returns:
             ToolResult: Tool execution result
         """
@@ -95,14 +91,19 @@ class ToolExecutor:
             )
 
         args["tool_call_id"] = call_id
-        
-        # Pass wire and parent_run_id to tool for nested RunnableTool execution
-        if wire is not None:
-            args["_wire"] = wire
-        if parent_run_id is not None:
-            args["_parent_run_id"] = parent_run_id
+
+        # Inject context information for RunnableTool and other context-aware tools
+        # We pass individual fields for compatibility with RunnableTool's current expectations
+        # and the full object for future use.
+        args["_wire"] = context.wire
+        args["_parent_run_id"] = context.run_id
+        args["_trace_id"] = context.trace_id
+        args["_parent_span_id"] = context.span_id
+        args["_depth"] = context.depth
+        args["_execution_context"] = context
 
         # Check cache for cacheable tools
+        session_id = context.session_id
         if session_id and tool.cacheable:
             cached = self._cache.get(session_id, fn_name, args)
             if cached is not None:
@@ -129,13 +130,13 @@ class ToolExecutor:
                 success=result.is_success,
                 duration=result.duration,
             )
-            
+
             # Cache successful results for cacheable tools
             if session_id and tool.cacheable and result.is_success:
                 self._cache.set(session_id, fn_name, args, result)
-            
+
             return result
-        
+
         except asyncio.CancelledError:
             logger.info("tool_execution_cancelled", tool_name=fn_name)
             return self._create_error_result(
@@ -144,7 +145,7 @@ class ToolExecutor:
                 error="Tool execution was cancelled",
                 start_time=start_time,
             )
-        
+
         except Exception as e:
             logger.error(
                 "tool_execution_exception",
@@ -158,30 +159,26 @@ class ToolExecutor:
                 error=f"Tool execution failed: {e}",
                 start_time=start_time,
             )
-    
+
     async def execute_batch(
         self,
         tool_calls: list[dict[str, Any]],
+        context: "ExecutionContext",
         abort_signal: "AbortSignal | None" = None,
-        wire: "Wire | None" = None,
-        session_id: str | None = None,
-        parent_run_id: str | None = None,
     ) -> list[ToolResult]:
         """
         Execute multiple tool calls in parallel.
-        
+
         Args:
             tool_calls: List of tool calls
+            context: Execution context
             abort_signal: Abort signal
-            wire: Wire for nested RunnableTool event streaming
-            session_id: Session ID for caching
-            parent_run_id: Parent run ID for nested RunnableTool execution
-            
+
         Returns:
             list[ToolResult]: List of tool execution results
         """
         tasks = [
-            self.execute(tc, abort_signal=abort_signal, wire=wire, session_id=session_id, parent_run_id=parent_run_id)
+            self.execute(tc, context=context, abort_signal=abort_signal)
             for tc in tool_calls
         ]
         return await asyncio.gather(*tasks)

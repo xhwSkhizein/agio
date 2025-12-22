@@ -158,7 +158,7 @@ class KnowledgeConfig(ComponentConfig):
 
 
 class SessionStoreConfig(ComponentConfig):
-    """Configuration for session store components (stores AgentRun and Step data)"""
+    """Configuration for session store components (stores Run and Step data)"""
 
     type: Literal["session_store"] = "session_store"
     store_type: str  # "mongodb", "inmemory", "postgres"
@@ -209,13 +209,22 @@ class AgentConfig(ComponentConfig):
     memory: str | None = None
     knowledge: str | None = None
     session_store: str | None = None
-    trace_store: str | None = None
 
     system_prompt: str | None = None
     max_steps: int = 10
     enable_memory_update: bool = False
     user_id: str | None = None
     tags: list[str] = Field(default_factory=list)
+
+    # Termination summary configuration
+    enable_termination_summary: bool = Field(
+        default=False,
+        description="Generate summary when execution reaches max_steps limit"
+    )
+    termination_summary_prompt: str | None = Field(
+        default=None,
+        description="Custom prompt for termination summary"
+    )
 
 
 class StageConfig(BaseModel):
@@ -243,8 +252,8 @@ class WorkflowConfig(ComponentConfig):
     # Parallel specific
     merge_template: str | None = None  # Template for merging branch outputs
 
-    # Observability
-    trace_store: str | None = None  # Reference to TraceStore for tracing
+    # Storage
+    session_store: str | None = None  # Reference to SessionStore for state management
 
     tags: list[str] = Field(default_factory=list)
 

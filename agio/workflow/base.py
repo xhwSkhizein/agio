@@ -12,10 +12,15 @@ Wire-based Architecture:
 """
 
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from agio.workflow.protocol import Runnable, RunContext, RunOutput
-from agio.workflow.stage import Stage
+from agio.domain import ExecutionContext
+from agio.workflow.protocol import Runnable, RunOutput
+from agio.workflow.node import WorkflowNode
+
+if TYPE_CHECKING:
+    from agio.providers.storage.base import SessionStore
 
 
 class BaseWorkflow(ABC):
@@ -28,9 +33,15 @@ class BaseWorkflow(ABC):
     - Used as tools (WorkflowAsTool)
     """
 
-    def __init__(self, id: str, stages: list[Stage]):
+    def __init__(
+        self,
+        id: str,
+        stages: list[WorkflowNode],
+        session_store: "SessionStore | None" = None,
+    ):
         self._id = id
-        self._stages = stages
+        self._nodes = stages
+        self._session_store = session_store
         self._registry: dict[str, Runnable] = {}
 
     @property
@@ -38,9 +49,15 @@ class BaseWorkflow(ABC):
         return self._id
 
     @property
-    def stages(self) -> list[Stage]:
-        """Get the list of stages."""
-        return self._stages
+    def runnable_type(self) -> str:
+        """Return runnable type identifier."""
+        return "workflow"
+
+    @property
+    def nodes(self) -> list[WorkflowNode]:
+        """Get the list of nodes."""
+        return self._nodes
+
 
     def set_registry(self, registry: dict[str, Runnable]):
         """Set the runnable registry for resolving references."""
@@ -50,10 +67,13 @@ class BaseWorkflow(ABC):
         self,
         input: str,
         *,
-        context: RunContext,
+        context: ExecutionContext,
     ) -> RunOutput:
         """
         Execute the workflow, writing events to context.wire.
+        
+        Note: Run lifecycle events (RUN_STARTED/COMPLETED/FAILED) are handled
+        by RunnableExecutor, not here.
         
         Args:
             input: Input string
@@ -64,7 +84,7 @@ class BaseWorkflow(ABC):
         """
         if not context.wire:
             raise ValueError("context.wire is required for workflow execution")
-        
+
         return await self._execute(input, context=context)
 
     @abstractmethod
@@ -72,31 +92,38 @@ class BaseWorkflow(ABC):
         self,
         input: str,
         *,
-        context: RunContext,
+        context: ExecutionContext,
     ) -> RunOutput:
         """Subclass implementation of workflow execution logic."""
         ...
 
     def _create_child_context(
         self,
-        context: RunContext,
-        stage: Stage,
-    ) -> RunContext:
+        context: ExecutionContext,
+        node: WorkflowNode,
+    ) -> ExecutionContext:
         """
         Create execution context for child Runnable.
 
-        Each Agent gets an independent session for isolation.
+        Unified Session: All nested executions share the same session_id.
+        Each child gets a new run_id for isolation at run level.
         Wire is shared across all nested executions.
         """
-        return RunContext(
-            wire=context.wire,  # Share wire for event streaming
-            session_id=str(uuid4()),  # Independent session per Agent
-            user_id=context.user_id,
-            workflow_id=self._id,  # Pass workflow ID for session grouping
-            trace_id=context.trace_id or str(uuid4()),
-            parent_span_id=context.parent_span_id,
-            parent_stage_id=stage.id,
-            depth=context.depth + 1,
+        # Generate new run_id for the child runnable
+        new_run_id = str(uuid4())
+
+        node_id = node.id
+        runnable_id = node.runnable if isinstance(node.runnable, str) else node.runnable.id
+
+        # Unified Session: use parent's session_id (no new session)
+        # This allows all Steps to be stored in the same session
+        return context.child(
+            run_id=new_run_id,
+            session_id=context.session_id,  # Unified session - no new session_id
+            nested_runnable_id=runnable_id,
+            workflow_id=self._id,  # Pass current workflow ID
+            node_id=node_id,  # node_id for WorkflowNode tracking
+            nesting_type="workflow_node",  # Mark as workflow internal node
         )
 
     def _resolve_runnable(self, ref: Runnable | str) -> Runnable:
@@ -119,4 +146,4 @@ class BaseWorkflow(ABC):
         return ref
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(id={self._id!r}, stages={len(self._stages)})"
+        return f"{self.__class__.__name__}(id={self._id!r}, nodes={len(self._nodes)})"
