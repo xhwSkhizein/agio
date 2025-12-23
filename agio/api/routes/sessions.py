@@ -4,6 +4,7 @@ Session management routes.
 
 import asyncio
 import json
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -12,7 +13,7 @@ from sse_starlette.sse import EventSourceResponse
 from agio.agent import Agent
 from agio.api.deps import get_config_sys, get_session_store
 from agio.config import ConfigSystem
-from agio.domain import MessageRole
+from agio.domain import MessageRole, ExecutionContext
 from agio.domain.models import Step
 from agio.providers.storage import SessionStore
 from agio.runtime import Wire, fork_session
@@ -371,62 +372,56 @@ async def fork_session_endpoint(
 
 
 # ============================================================================
-# Resume Session (Continue from pending tool_calls)
+# Resume Session (Unified for Agent and Workflow)
 # ============================================================================
+
+class ResumeRequest(BaseModel):
+    """Request to resume a session."""
+    runnable_id: str | None = None  # Optional - auto-inferred from Steps if not provided
+
 
 @router.post("/{session_id}/resume")
 async def resume_session_endpoint(
     session_id: str,
-    agent_id: str,
+    request: ResumeRequest = ResumeRequest(),
     session_store: SessionStore = Depends(get_session_store),
     config_sys: ConfigSystem = Depends(get_config_sys),
 ):
     """
-    Resume a session that has pending tool_calls.
+    Resume a session with unified logic for Agent and Workflow.
     
-    This is used after forking a session that ends with an assistant step
-    containing tool_calls. It executes the tool_calls and continues the
-    LLM conversation loop.
+    Automatically infers runnable_id from Steps if not provided.
+    Handles both:
+    - Agent: continues from pending tool_calls
+    - Workflow: idempotent re-execution (skips completed nodes)
     
     Args:
         session_id: Session ID to resume
-        agent_id: Agent ID to use for execution
+        request: Optional runnable_id (auto-inferred if not provided)
     
     Returns SSE stream of step events.
     """
-    # 1. Get the last step
-    steps: list[Step] = await session_store.get_steps(session_id, limit=100)
+    from agio.runtime import ResumeExecutor
+    
+    # Validate session exists
+    steps = await session_store.get_steps(session_id, limit=1)
     if not steps:
         raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
     
-    last_step = steps[-1]
+    # Create ResumeExecutor
+    executor = ResumeExecutor(store=session_store, config_system=config_sys)
     
-    # 2. Validate it's an assistant step with tool_calls
-    if last_step.role != MessageRole.ASSISTANT:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Last step must be an assistant step, got: {last_step.role.value}"
-        )
-    
-    if not last_step.tool_calls or len(last_step.tool_calls) == 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Last assistant step has no pending tool_calls"
-        )
-    
-    # 3. Get the agent
-    try:
-        agent = config_sys.get(agent_id)
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found: {e}")
-    
-    # 4. Resume execution via SSE stream with Wire
+    # Resume execution via SSE stream
     async def event_generator():
         wire = Wire()
         
         async def _run():
             try:
-                await agent.resume_from_step(session_id, last_step, wire)
+                await executor.resume_session(
+                    session_id=session_id,
+                    runnable_id=request.runnable_id,
+                    wire=wire,
+                )
             finally:
                 await wire.close()
         

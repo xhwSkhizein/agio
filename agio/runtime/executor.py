@@ -192,6 +192,9 @@ class StepExecutor:
                 content="",
                 tool_calls=None,
                 metrics=StepMetrics(),
+                # Runnable binding
+                runnable_id=ctx.runnable_id,
+                runnable_type=ctx.runnable_type,
                 # Extract metadata from ExecutionContext
                 workflow_id=ctx.workflow_id,
                 node_id=ctx.node_id,
@@ -332,6 +335,9 @@ class StepExecutor:
                     duration_ms=result.duration * 1000 if result.duration else None,
                     tool_exec_time_ms=result.duration * 1000 if result.duration else None,
                 ),
+                # Runnable binding
+                runnable_id=ctx.runnable_id,
+                runnable_type=ctx.runnable_type,
                 # Extract metadata from ExecutionContext
                 workflow_id=ctx.workflow_id,
                 node_id=ctx.node_id,

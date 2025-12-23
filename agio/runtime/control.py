@@ -3,20 +3,18 @@ Control flow utilities for agent execution.
 
 This module consolidates:
 - AbortSignal: Graceful cancellation mechanism
-- retry_from_sequence: Retry from a specific point
 - fork_session: Create session branches
 """
 
 import asyncio
-from typing import TYPE_CHECKING, AsyncIterator, List, Optional
+from typing import TYPE_CHECKING, List, Optional
 from uuid import uuid4
 
-from agio.domain import Step, StepEvent, MessageRole
+from agio.domain import Step, MessageRole
 from agio.utils.logging import get_logger
 
 if TYPE_CHECKING:
     from agio.providers.storage import SessionStore
-    from agio.runtime.runner import StepRunner
 
 logger = get_logger(__name__)
 
@@ -29,121 +27,52 @@ logger = get_logger(__name__)
 class AbortSignal:
     """
     Abort signal for graceful cancellation of long-running operations.
-    
+
     Based on asyncio.Event, supports:
     - Synchronous abort status check
     - Async wait for abort signal
     - Recording abort reason
-    
+
     Examples:
         >>> signal = AbortSignal()
-        >>> 
+        >>>
         >>> # Trigger abort in another task
         >>> signal.abort("User cancelled")
-        >>> 
+        >>>
         >>> # Check in tool execution
         >>> if signal.is_aborted():
         >>>     return  # Early exit
-        >>> 
+        >>>
         >>> # Or async wait
         >>> await signal.wait()
     """
-    
+
     def __init__(self):
         self._event = asyncio.Event()
         self._reason: str | None = None
-    
+
     def abort(self, reason: str = "Operation cancelled"):
         """Trigger abort signal."""
         self._reason = reason
         self._event.set()
-    
+
     def is_aborted(self) -> bool:
         """Check if abort has been triggered."""
         return self._event.is_set()
-    
+
     async def wait(self):
         """Async wait for abort signal."""
         await self._event.wait()
-    
+
     @property
     def reason(self) -> str | None:
         """Get abort reason."""
         return self._reason
-    
+
     def reset(self):
         """Reset abort signal for reuse."""
         self._event.clear()
         self._reason = None
-
-
-# ============================================================================
-# Retry
-# ============================================================================
-
-
-async def retry_from_sequence(
-    session_id: str,
-    sequence: int,
-    session_store: "SessionStore",
-    runner: "StepRunner",
-) -> AsyncIterator[StepEvent]:
-    """
-    Retry from a specific sequence.
-
-    Deletes all steps with sequence >= N and resumes execution
-    from the last remaining step.
-
-    Args:
-        session_id: Session ID to retry
-        sequence: Sequence number to retry from (inclusive)
-        session_store: SessionStore for step operations
-        runner: Agent runner to resume execution
-
-    Yields:
-        StepEvent: Events from the resumed execution
-    """
-    logger.info("retry_started", session_id=session_id, sequence=sequence)
-
-    # 1. Delete steps with sequence >= N
-    deleted_count = await session_store.delete_steps(session_id, start_seq=sequence)
-    logger.info("retry_steps_deleted", session_id=session_id, deleted_count=deleted_count)
-
-    # 2. Get the last remaining step
-    last_step = await session_store.get_last_step(session_id)
-
-    if not last_step:
-        raise ValueError("No steps remaining after deletion. Cannot retry.")
-
-    logger.info(
-        "retry_resuming_from",
-        session_id=session_id,
-        last_step_sequence=last_step.sequence,
-        last_step_role=last_step.role,
-    )
-
-    # 3. Determine what to do based on the last step's role
-    if last_step.is_user_step():
-        async for event in runner.resume_from_user_step(session_id, last_step):
-            yield event
-
-    elif last_step.is_tool_step():
-        async for event in runner.resume_from_tool_step(session_id, last_step):
-            yield event
-
-    elif last_step.is_assistant_step():
-        if last_step.has_tool_calls():
-            async for event in runner.resume_from_assistant_with_tools(session_id, last_step):
-                yield event
-        else:
-            # Delete this assistant step too and retry from previous
-            await session_store.delete_steps(session_id, start_seq=last_step.sequence)
-            async for event in retry_from_sequence(
-                session_id, last_step.sequence, session_store, runner
-            ):
-                yield event
-    else:
-        raise ValueError(f"Cannot retry from step with role: {last_step.role}")
 
 
 # ============================================================================
@@ -164,7 +93,7 @@ async def fork_session(
 
     Creates a new session with a copy of all steps up to and including
     the specified sequence. Target can be assistant or user step.
-    
+
     For assistant steps:
         - Can modify content and/or tool_calls
     For user steps:
@@ -182,7 +111,9 @@ async def fork_session(
     Returns:
         tuple[str, int, Optional[str]]: (new_session_id, last_step_sequence, pending_user_message)
     """
-    logger.info("fork_started", original_session_id=original_session_id, sequence=sequence)
+    logger.info(
+        "fork_started", original_session_id=original_session_id, sequence=sequence
+    )
 
     # 1. Get steps up to sequence
     steps = await session_store.get_steps(original_session_id, end_seq=sequence)
@@ -202,7 +133,7 @@ async def fork_session(
             exclude_last = True
         pending_user_message = target_step.content
         steps = steps[:-1]  # Remove user step
-        
+
         if not steps:
             raise ValueError("Cannot fork from first user message - no prior context")
 
@@ -222,19 +153,21 @@ async def fork_session(
     new_steps: List[Step] = []
     for i, step in enumerate(steps):
         is_last = i == len(steps) - 1
-        
+
         update_fields = {
             "id": str(uuid4()),
             "session_id": new_session_id,
         }
-        
+
         # Modify the last assistant step if modifications provided
         if is_last and step.role == MessageRole.ASSISTANT:
             if modified_content is not None:
                 update_fields["content"] = modified_content
             if modified_tool_calls is not None:
-                update_fields["tool_calls"] = modified_tool_calls if modified_tool_calls else None
-        
+                update_fields["tool_calls"] = (
+                    modified_tool_calls if modified_tool_calls else None
+                )
+
         new_step = step.model_copy(update=update_fields)
         new_steps.append(new_step)
 
@@ -255,4 +188,4 @@ async def fork_session(
     return new_session_id, last_sequence, pending_user_message
 
 
-__all__ = ["AbortSignal", "retry_from_sequence", "fork_session"]
+__all__ = ["AbortSignal", "fork_session"]

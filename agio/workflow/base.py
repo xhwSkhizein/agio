@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from agio.domain import ExecutionContext
-from agio.workflow.protocol import Runnable, RunOutput
+from agio.domain.protocol import Runnable, RunOutput
 from agio.workflow.node import WorkflowNode
 
 if TYPE_CHECKING:

@@ -22,7 +22,7 @@ from uuid import uuid4
 from agio.domain import ToolResult
 from agio.providers.tools import BaseTool
 from agio.domain import ExecutionContext
-from agio.workflow.protocol import Runnable
+from agio.domain.protocol import Runnable
 
 if TYPE_CHECKING:
     from agio.runtime.control import AbortSignal

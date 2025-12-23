@@ -6,7 +6,7 @@ import pytest
 from unittest.mock import MagicMock, AsyncMock
 
 from agio.providers.storage import InMemorySessionStore
-from agio.domain import ExecutionContext
+from agio.domain import ExecutionContext, RunOutput, RunMetrics
 from agio.runtime.wire import Wire
 from agio.workflow.pipeline import PipelineWorkflow
 from agio.workflow.node import WorkflowNode
@@ -25,7 +25,6 @@ def mock_runnable():
     runnable.runnable_type = "agent"  # Required for RunnableExecutor
     
     async def mock_run(input, *, context, emit_run_events=True):
-        from agio.workflow.protocol import RunOutput, RunMetrics
         return RunOutput(
             response=f"Response to: {input}",
             run_id=context.run_id,
@@ -122,7 +121,6 @@ async def test_pipeline_workflow_unified_session(mock_runnable, session_store, w
     from uuid import uuid4
     
     async def mock_run_with_steps(input, *, context, emit_run_events=True):
-        from agio.workflow.protocol import RunOutput, RunMetrics
         
         # Create Steps to simulate what Agent would do
         user_step = Step(

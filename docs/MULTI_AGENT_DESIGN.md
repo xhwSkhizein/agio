@@ -914,7 +914,7 @@ class PipelineWorkflow(BaseWorkflow):
         context: ExecutionContext,
     ) -> RunOutput:
         from agio.workflow.store import OutputStore
-        from agio.workflow.protocol import RunOutput, RunMetrics
+        from agio.domain.protocol import RunOutput, RunMetrics
         from agio.runtime.event_factory import EventFactory
         
         store = OutputStore()
@@ -1512,7 +1512,7 @@ stages:
 # agio/workflow/engine.py
 
 import yaml
-from agio.workflow.protocol import Runnable, RunContext, RunOutput
+from agio.domain.protocol import Runnable, RunContext, RunOutput
 from agio.workflow.base import BaseWorkflow
 
 class WorkflowEngine:

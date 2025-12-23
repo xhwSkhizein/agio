@@ -10,7 +10,6 @@ This module contains all core data models:
 
 from datetime import datetime
 from enum import Enum
-from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -150,8 +149,6 @@ class RunMetrics(BaseModel):
         self.iterations += other.iterations
 
 
-
-
 # ============================================================================
 # Core Models
 # ============================================================================
@@ -175,6 +172,10 @@ class Step(BaseModel):
     session_id: str
     run_id: str  # Logical grouping for a single user query → response cycle
     sequence: int  # Global sequence within session (1, 2, 3, ...)
+
+    # --- Runnable Binding (for unified Fork/Resume) ---
+    runnable_id: str | None = None  # Agent ID or Workflow ID that created this step
+    runnable_type: str | None = None  # "agent" or "workflow"
 
     # --- Core Content (Standard LLM Message) ---
     role: MessageRole
@@ -280,8 +281,6 @@ class Run(BaseModel):
 
     # --- Observability ---
     trace_id: str | None = None  # Associated trace ID
-
-
 
 
 class AgentSession(BaseModel):

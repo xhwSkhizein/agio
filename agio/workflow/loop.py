@@ -20,7 +20,8 @@ from agio.workflow.resolver import ContextResolver
 from agio.runtime import RunnableExecutor
 from agio.workflow.base import BaseWorkflow
 from agio.workflow.condition import ConditionEvaluator
-from agio.workflow.protocol import RunOutput, RunMetrics
+from agio.domain.protocol import RunOutput
+from agio.domain.models import RunMetrics
 from agio.workflow.node import WorkflowNode
 
 if TYPE_CHECKING:

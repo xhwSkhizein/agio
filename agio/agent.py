@@ -13,15 +13,13 @@ Wire-based Architecture:
 from typing import TYPE_CHECKING
 
 from agio.domain import AgentSession
-from agio.domain.models import Step
 from agio.providers.llm import Model
 from agio.providers.storage.base import SessionStore
 from agio.providers.tools import BaseTool
 
 if TYPE_CHECKING:
-    from agio.workflow.protocol import RunOutput
+    from agio.domain.protocol import RunOutput
     from agio.domain import ExecutionContext
-    from agio.runtime.wire import Wire
 
 
 class Agent:
@@ -132,47 +130,6 @@ class Agent:
             raise ValueError("SessionStore not configured")
 
         return await fork_session(session_id, sequence, self.session_store)
-
-    async def resume_from_step(
-        self, session_id: str, step: Step, wire: "Wire"
-    ) -> "RunOutput":
-        """
-        Resume execution from a specific step.
-        
-        Args:
-            session_id: Session ID
-            step: Step to resume from
-            wire: Wire for event streaming
-            
-        Returns:
-            RunOutput with response and metrics
-        """
-        from agio.config import ExecutionConfig
-        from agio.runtime import StepRunner
-
-        if not self.session_store:
-            raise ValueError("SessionStore not configured")
-
-        config = ExecutionConfig(
-            max_steps=self.max_steps,
-            enable_termination_summary=self.enable_termination_summary,
-            termination_summary_prompt=self.termination_summary_prompt,
-        )
-
-        runner = StepRunner(
-            agent=self,
-            config=config,
-            session_store=self.session_store,
-        )
-
-        if step.role.value == "assistant" and step.tool_calls:
-            return await runner.resume_from_assistant_with_tools(session_id, step, wire)
-        elif step.role.value == "user":
-            return await runner.resume_from_user_step(session_id, step, wire)
-        elif step.role.value == "tool":
-            return await runner.resume_from_tool_step(session_id, step, wire)
-        else:
-            raise ValueError(f"Cannot resume from step with role: {step.role.value}")
 
     async def list_runs(
         self, user_id: str | None = None, limit: int = 20, offset: int = 0

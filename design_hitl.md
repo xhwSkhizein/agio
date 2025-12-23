@@ -647,7 +647,7 @@ async def resume_from_interaction(
     4. 继续后续执行流程
     """
     from agio.domain import RunStatus
-    from agio.workflow.protocol import RunOutput, RunMetrics
+    from agio.domain.protocol import RunOutput, RunMetrics
     from agio.domain import ExecutionContext
     from agio.domain.interaction import InteractionType
     

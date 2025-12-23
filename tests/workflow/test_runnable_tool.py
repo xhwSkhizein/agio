@@ -3,13 +3,12 @@
 import pytest
 
 from agio.domain import StepEvent, StepEventType
-from agio.workflow.protocol import RunOutput, RunMetrics
+from agio.domain.protocol import RunOutput
+from agio.domain.models import RunMetrics
 from agio.workflow.runnable_tool import (
     RunnableTool,
     as_tool,
     DEFAULT_MAX_DEPTH,
-    CircularReferenceError,
-    MaxDepthExceededError,
 )
 
 

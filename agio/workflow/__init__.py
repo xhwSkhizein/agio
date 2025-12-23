@@ -10,7 +10,8 @@ This module provides:
 - ContextResolver for template variable resolution
 """
 
-from agio.workflow.protocol import Runnable, RunOutput, RunMetrics
+from agio.domain.protocol import Runnable, RunOutput
+from agio.domain.models import RunMetrics
 from agio.domain import ExecutionContext
 from agio.workflow.mapping import InputMapping
 from agio.workflow.condition import ConditionEvaluator
@@ -19,7 +20,6 @@ from agio.workflow.base import BaseWorkflow
 from agio.workflow.pipeline import PipelineWorkflow
 from agio.workflow.loop import LoopWorkflow
 from agio.workflow.parallel import ParallelWorkflow
-from agio.workflow.engine import WorkflowEngine
 from agio.workflow.state import WorkflowState
 from agio.workflow.resolver import ContextResolver
 from agio.workflow.runnable_tool import (
@@ -48,8 +48,6 @@ __all__ = [
     "PipelineWorkflow",
     "LoopWorkflow",
     "ParallelWorkflow",
-    # Engine
-    "WorkflowEngine",
     # Runnable as Tool
     "RunnableTool",
     "as_tool",

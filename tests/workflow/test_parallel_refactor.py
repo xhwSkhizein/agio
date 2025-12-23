@@ -6,7 +6,7 @@ import pytest
 from unittest.mock import MagicMock, AsyncMock
 
 from agio.providers.storage import InMemorySessionStore
-from agio.domain import ExecutionContext
+from agio.domain import ExecutionContext,RunOutput, RunMetrics
 from agio.runtime.wire import Wire
 from agio.workflow.parallel import ParallelWorkflow
 from agio.workflow.node import WorkflowNode
@@ -25,7 +25,6 @@ def mock_runnable():
     runnable.runnable_type = "agent"  # Required for RunnableExecutor
     
     async def mock_run(input, *, context, emit_run_events=True):
-        from agio.workflow.protocol import RunOutput, RunMetrics
         return RunOutput(
             response=f"Branch response: {input}",
             run_id=context.run_id,

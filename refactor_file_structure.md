@@ -2,7 +2,18 @@
 
 ## 一、重构目标
 
-### 1.1 问题分析
+### 1.1 当前代码状态
+
+**已完成：**
+- ✅ 新增 `ResumeExecutor`：统一的Session恢复执行器（`agio/runtime/resume_executor.py`）
+- ✅ `control.py` 已简化：移除了 `retry_from_sequence`，功能由 `ResumeExecutor` 统一处理
+
+**待重构：**
+- ⏳ Agent相关代码仍分散在 `agio/runtime/` 和 `agio/agent.py` 中
+- ⏳ 工具相关代码仍在 `agio/runtime/` 中
+- ⏳ 模块边界不清晰
+
+### 1.2 问题分析
 
 当前代码组织存在以下问题：
 
@@ -10,6 +21,7 @@
 2. **模块边界不清晰**：`agio/runtime/` 混合了不同抽象层次的组件
 3. **命名不一致**：Runner vs Executor 的使用不统一
 4. **依赖关系复杂**：跨模块依赖较多，难以追踪
+5. **ResumeExecutor位置**：`ResumeExecutor` 是通用功能，应该保留在 `runtime/` 中
 
 ### 1.2 重构目标
 
@@ -35,7 +47,8 @@ agio/
 │
 ├── runtime/                   # 通用运行时基础设施
 │   ├── __init__.py            # 更新导出
-│   ├── executor.py            # RunnableExecutor（保持，重命名类）
+│   ├── executor.py            # RunnableExecutor（保持）
+│   ├── resume_executor.py     # ResumeExecutor（保持，统一恢复执行器）
 │   ├── wire.py                # 事件通道（保持）
 │   └── event_factory.py       # 事件工厂（保持）
 │
@@ -187,27 +200,23 @@ self.tool_executor = ToolExecutor(tools)
 
 **操作：**
 1. 复制 `agio/runtime/control.py` 内容到 `agio/agent/control.py`
-2. 更新导入路径：
-   - `from agio.runtime.runner import StepRunner` → `from agio.agent.runner import AgentRunner`
+2. **注意**：`retry_from_sequence` 功能已被 `ResumeExecutor` 替代，`control.py` 中只保留 `AbortSignal` 和 `fork_session`
+3. 更新导入路径（如果有）
 
 **修改点：**
 ```python
-# 原代码 (runtime/control.py:89)
-async def retry_from_sequence(
-    session_id: str,
-    sequence: int,
-    session_store: "SessionStore",
-    runner: "StepRunner",
-) -> AsyncIterator[StepEvent]:
+# 原代码 (runtime/control.py)
+# 包含：AbortSignal, retry_from_sequence, fork_session
 
 # 修改后 (agent/control.py)
-async def retry_from_sequence(
-    session_id: str,
-    sequence: int,
-    session_store: "SessionStore",
-    runner: "AgentRunner",
-) -> AsyncIterator[StepEvent]:
+# 只包含：AbortSignal, fork_session
+# retry_from_sequence 功能已由 ResumeExecutor 统一处理
 ```
+
+**重要说明：**
+- `retry_from_sequence` 功能已被 `ResumeExecutor.resume_session()` 替代
+- `ResumeExecutor` 是通用功能，保留在 `agio/runtime/` 中
+- `control.py` 迁移后只包含 Agent 专用的控制流功能
 
 ### 3.3 第三阶段：迁移工具相关代码
 
@@ -261,7 +270,7 @@ from .summarizer import (
     DEFAULT_TERMINATION_USER_PROMPT,
     _format_termination_reason,
 )
-from .control import AbortSignal, retry_from_sequence, fork_session
+from .control import AbortSignal, fork_session  # retry_from_sequence已由ResumeExecutor替代
 
 __all__ = [
     "Agent",
@@ -274,7 +283,6 @@ __all__ = [
     "DEFAULT_TERMINATION_USER_PROMPT",
     "_format_termination_reason",
     "AbortSignal",
-    "retry_from_sequence",
     "fork_session",
 ]
 ```
@@ -310,17 +318,20 @@ Runtime module - Common runtime infrastructure.
 
 This module contains:
 - RunnableExecutor: Unified Run lifecycle management for all Runnable types
+- ResumeExecutor: Unified Session Resume mechanism for Agent and Workflow
 - Wire: Event streaming channel
 - EventFactory: Context-bound event factory
 """
 
-from .executor import RunnableExecutor
+from .runnable_executor import RunnableExecutor
+from .resume_executor import ResumeExecutor
 from .wire import Wire
 from .event_factory import EventFactory
 from agio.domain import ExecutionContext
 
 __all__ = [
     "RunnableExecutor",
+    "ResumeExecutor",
     "Wire",
     "ExecutionContext",
     "EventFactory",
@@ -387,11 +398,11 @@ from agio.runtime import Wire, RunnableExecutor
 ```python
 # 原代码
 from agio.agent import Agent
-from agio.runtime import Wire, fork_session
+from agio.runtime import Wire, fork_session, ResumeExecutor
 
 # 修改后
 from agio.agent import Agent, fork_session
-from agio.runtime import Wire
+from agio.runtime import Wire, ResumeExecutor  # ResumeExecutor保留在runtime中
 ```
 
 #### 步骤5.3：更新测试文件中的导入
@@ -453,9 +464,15 @@ __all__ = ["StepExecutor"]  # 仅导出别名
 - `agio/runtime/executor.py`（已迁移到 `agio/agent/executor.py`）
 - `agio/runtime/context.py`（已迁移到 `agio/agent/context.py`）
 - `agio/runtime/summarizer.py`（已迁移到 `agio/agent/summarizer.py`）
-- `agio/runtime/control.py`（已迁移到 `agio/agent/control.py`）
+- `agio/runtime/control.py`（已迁移到 `agio/agent/control.py`，但只保留 `AbortSignal` 和 `fork_session`）
 - `agio/runtime/tool_executor.py`（已迁移到 `agio/tools/executor.py`）
 - `agio/runtime/tool_cache.py`（已迁移到 `agio/tools/cache.py`）
+
+**保留在 `agio/runtime/` 的文件：**
+- `agio/runtime/runnable_executor.py`（通用Run生命周期管理）
+- `agio/runtime/resume_executor.py`（通用恢复执行器）
+- `agio/runtime/wire.py`（事件通道）
+- `agio/runtime/event_factory.py`（事件工厂）
 
 **注意：** 如果使用了向后兼容别名，这些文件可以保留一段时间后再删除。
 
@@ -472,6 +489,8 @@ __all__ = ["StepExecutor"]  # 仅导出别名
 | `from agio.runtime.summarizer import ...` | `from agio.agent import ...` |
 | `from agio.runtime.control import AbortSignal` | `from agio.agent import AbortSignal` |
 | `from agio.runtime.control import fork_session` | `from agio.agent import fork_session` |
+| `from agio.runtime import ResumeExecutor` | `from agio.runtime import ResumeExecutor`（保持不变） |
+| `from agio.runtime.control import retry_from_sequence` | 已废弃，使用 `ResumeExecutor.resume_session()` 替代 |
 
 ### 4.2 工具相关导入变更
 
@@ -485,6 +504,7 @@ __all__ = ["StepExecutor"]  # 仅导出别名
 | 原导入路径 | 新导入路径 |
 |-----------|-----------|
 | `from agio.runtime import RunnableExecutor` | `from agio.runtime import RunnableExecutor`（保持不变） |
+| `from agio.runtime import ResumeExecutor` | `from agio.runtime import ResumeExecutor`（保持不变） |
 | `from agio.runtime import Wire` | `from agio.runtime import Wire`（保持不变） |
 | `from agio.runtime import ExecutionContext` | `from agio.domain import ExecutionContext`（保持不变） |
 
@@ -496,7 +516,8 @@ __all__ = ["StepExecutor"]  # 仅导出别名
 |--------|--------|------|
 | `StepRunner` | `AgentRunner` | `agio/agent/runner.py` |
 | `StepExecutor` | `AgentExecutor` | `agio/agent/executor.py` |
-| `RunnableExecutor` | `RunnableExecutor` | `agio/runtime/executor.py`（保持不变） |
+| `RunnableExecutor` | `RunnableExecutor` | `agio/runtime/runnable_executor.py`（保持不变） |
+| `ResumeExecutor` | `ResumeExecutor` | `agio/runtime/resume_executor.py`（保持不变） |
 | `ToolExecutor` | `ToolExecutor` | `agio/tools/executor.py`（保持不变） |
 
 ### 5.2 向后兼容别名
@@ -573,7 +594,35 @@ __all__ = ["StepExecutor"]
 - ✅ 导入路径更清晰
 - ✅ 代码结构更直观
 
-## 九、详细代码修改示例
+## 九、ResumeExecutor 说明
+
+### 9.1 ResumeExecutor 的作用
+
+`ResumeExecutor` 是一个新增的统一恢复执行器，位于 `agio/runtime/resume_executor.py`。
+
+**功能：**
+- 统一的Session恢复机制，支持Agent和Workflow
+- 自动从Steps推断 `runnable_id`
+- 分析执行状态（已完成、待处理工具等）
+- 支持幂等性恢复执行
+
+**设计决策：**
+- `ResumeExecutor` 是通用功能，**保留在 `agio/runtime/` 中**，不迁移到 `agio/agent/`
+- 替代了原来分散在 `StepRunner` 中的 `retry_from_sequence` 等方法
+- 通过 `RunnableExecutor` 执行恢复，确保Run生命周期管理的一致性
+
+### 9.2 ResumeExecutor 在重构中的处理
+
+**保持不变：**
+- `agio/runtime/resume_executor.py` 位置不变
+- 导入路径不变：`from agio.runtime import ResumeExecutor`
+- 功能不变，继续作为通用运行时基础设施
+
+**相关变更：**
+- `control.py` 中的 `retry_from_sequence` 已被 `ResumeExecutor` 替代，迁移时不再包含此功能
+- API层（`agio/api/routes/sessions.py`）已使用 `ResumeExecutor`，无需修改
+
+## 十、详细代码修改示例
 
 ### 9.1 Agent类迁移示例
 
@@ -766,7 +815,7 @@ def test_step_execution():
     signal = AbortSignal()
 ```
 
-## 十、常见问题与解决方案
+## 十一、常见问题与解决方案
 
 ### 10.1 循环依赖问题
 
@@ -846,7 +895,7 @@ def update_imports(file_path):
         f.write(content)
 ```
 
-## 十一、迁移检查清单
+## 十二、迁移检查清单
 
 ### 11.1 代码迁移检查
 
@@ -877,7 +926,7 @@ def update_imports(file_path):
 - [ ] 代码格式已统一
 - [ ] Git提交已完成
 
-## 十二、回滚方案
+## 十三、回滚方案
 
 ### 12.1 回滚步骤
 
@@ -910,7 +959,7 @@ git checkout HEAD~1 -- agio/__init__.py
 2. **恢复旧文件：** 恢复 `agio/runtime/` 中的旧文件
 3. **使用别名：** 通过别名保持兼容性
 
-## 十三、后续优化建议
+## 十四、后续优化建议
 
 ### 13.1 进一步优化
 
@@ -930,7 +979,67 @@ git checkout HEAD~1 -- agio/__init__.py
 
 ---
 
-**文档版本：** 1.0  
+## 十五、当前重构状态
+
+### 15.1 已完成的工作
+
+- ✅ **ResumeExecutor 统一恢复机制**
+  - 新增 `agio/runtime/resume_executor.py`
+  - 统一了Agent和Workflow的恢复逻辑
+  - 替代了原来分散的 `retry_from_sequence` 方法
+  - API层已集成使用
+
+- ✅ **control.py 简化**
+  - 移除了 `retry_from_sequence`（由 `ResumeExecutor` 替代）
+  - 保留了 `AbortSignal` 和 `fork_session`
+
+### 15.2 待完成的工作
+
+- ⏳ **创建新目录结构**
+  - 创建 `agio/agent/` 目录
+  - 创建 `agio/tools/` 目录
+
+- ⏳ **迁移Agent相关代码**
+  - 迁移 `agio/agent.py` → `agio/agent/agent.py`
+  - 迁移 `agio/runtime/runner.py` → `agio/agent/runner.py`（重命名为 `AgentRunner`）
+  - 迁移 `agio/runtime/executor.py` → `agio/agent/executor.py`（重命名为 `AgentExecutor`）
+  - 迁移 `agio/runtime/context.py` → `agio/agent/context.py`
+  - 迁移 `agio/runtime/summarizer.py` → `agio/agent/summarizer.py`
+  - 迁移 `agio/runtime/control.py` → `agio/agent/control.py`（只保留 `AbortSignal` 和 `fork_session`）
+
+- ⏳ **迁移工具相关代码**
+  - 迁移 `agio/runtime/tool_executor.py` → `agio/tools/executor.py`
+  - 迁移 `agio/runtime/tool_cache.py` → `agio/tools/cache.py`
+
+- ⏳ **更新模块导出和导入**
+  - 更新所有 `__init__.py` 文件
+  - 更新所有导入引用
+
+- ⏳ **测试和验证**
+  - 运行所有测试确保通过
+  - 验证向后兼容性
+
+### 15.3 重构进度
+
+```
+[████░░░░░░░░░░░░░░] 10% 完成
+
+已完成：
+- ResumeExecutor 统一恢复机制
+- control.py 简化
+
+待完成：
+- 目录结构创建
+- Agent代码迁移
+- 工具代码迁移
+- 导入路径更新
+- 测试验证
+```
+
+---
+
+**文档版本：** 1.1  
 **最后更新：** 2024  
-**维护者：** Agio Team
+**维护者：** Agio Team  
+**更新说明：** 添加了 ResumeExecutor 说明和当前重构状态
 

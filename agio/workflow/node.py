@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Union, Any
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
-    from agio.workflow.protocol import Runnable
+    from agio.domain.protocol import Runnable
 
 
 class WorkflowNode(BaseModel):

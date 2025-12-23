@@ -1386,7 +1386,7 @@ async def resume_from_interaction(
         RunOutput: 执行结果
     """
     from agio.domain.interaction import InteractionRequest, InteractionType
-    from agio.workflow.protocol import RunOutput, RunMetrics
+    from agio.domain.protocol import RunOutput, RunMetrics
     from agio.domain import RunStatus
     
     # 1. 加载交互请求

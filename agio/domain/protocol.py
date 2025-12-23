@@ -6,7 +6,7 @@ This module defines the core abstractions for executable units:
 - RunOutput: execution result with response and metrics
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:

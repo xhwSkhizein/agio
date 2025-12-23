@@ -5,7 +5,7 @@ Tests for Workflow resume functionality using WorkflowState idempotency.
 import pytest
 from unittest.mock import MagicMock, AsyncMock
 
-from agio.domain import MessageRole, Step
+from agio.domain import MessageRole, Step,RunOutput, RunMetrics
 from agio.providers.storage import InMemorySessionStore
 from agio.domain import ExecutionContext
 from agio.runtime.wire import Wire
@@ -26,7 +26,6 @@ def mock_runnable():
     runnable.runnable_type = "agent"  # Required for RunnableExecutor
     
     async def mock_run(input, *, context, emit_run_events=True):
-        from agio.workflow.protocol import RunOutput, RunMetrics
         return RunOutput(
             response=f"Response: {input}",
             run_id=context.run_id,
