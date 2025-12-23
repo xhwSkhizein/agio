@@ -8,14 +8,14 @@ import time
 from typing import Any, TYPE_CHECKING
 
 from agio.domain import ToolResult
-from agio.runtime.tool_cache import get_tool_cache
+from agio.tools.cache import get_tool_cache
 from agio.utils.logging import get_logger
 
 if TYPE_CHECKING:
     from agio.providers.tools import BaseTool
-    from agio.runtime.control import AbortSignal
+    from agio.agent.control import AbortSignal
     from agio.domain import ExecutionContext
-    from agio.runtime.tool_cache import ToolResultCache
+    from agio.tools.cache import ToolResultCache
 
 logger = get_logger(__name__)
 
@@ -207,3 +207,4 @@ class ToolExecutor:
 
 
 __all__ = ["ToolExecutor"]
+

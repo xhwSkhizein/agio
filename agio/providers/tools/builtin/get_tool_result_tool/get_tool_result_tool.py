@@ -15,7 +15,7 @@ from agio.domain import ToolResult
 from agio.utils.logging import get_logger
 
 if TYPE_CHECKING:
-    from agio.runtime.control import AbortSignal
+    from agio.agent.control import AbortSignal
     from agio.providers.storage.base import SessionStore
 
 logger = get_logger(__name__)

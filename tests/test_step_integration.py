@@ -2,8 +2,8 @@
 Integration test for Step-based execution flow.
 
 Tests the complete flow:
-1. StepRunner creates Steps
-2. StepExecutor emits StepEvents
+1. AgentRunner creates Steps
+2. AgentExecutor emits StepEvents
 3. Steps are saved to session_store
 4. Context is built from Steps
 5. Retry works correctly
@@ -16,7 +16,8 @@ import pytest
 
 from agio.providers.storage import InMemorySessionStore
 from agio.domain import MessageRole, Step, StepEventType, AgentSession
-from agio.runtime import StepRunner, StepExecutor, Wire
+from agio.agent import AgentRunner, AgentExecutor
+from agio.runtime import Wire
 from agio.workflow import ExecutionContext
 from agio.providers.llm import StreamChunk
 from agio.config import ExecutionConfig
@@ -90,8 +91,8 @@ def session():
 
 @pytest.mark.asyncio
 async def test_step_executor_creates_steps(mock_model, session_store):
-    """Test that StepExecutor creates proper Steps"""
-    executor = StepExecutor(model=mock_model, tools=[])
+    """Test that AgentExecutor creates proper Steps"""
+    executor = AgentExecutor(model=mock_model, tools=[])
 
     messages = [{"role": "user", "content": "Hello"}]
 
@@ -136,23 +137,23 @@ async def test_step_executor_creates_steps(mock_model, session_store):
 
 @pytest.mark.asyncio
 async def test_step_runner_end_to_end(mock_agent, session_store, session):
-    """Test complete StepRunner flow.
+    """Test complete AgentRunner flow.
     
-    Note: StepRunner no longer emits RUN_STARTED/RUN_COMPLETED events.
+    Note: AgentRunner no longer emits RUN_STARTED/RUN_COMPLETED events.
     Run lifecycle events are handled by RunnableExecutor.
-    StepRunner only emits Step-level events.
+    AgentRunner only emits Step-level events.
     """
-    runner = StepRunner(
+    runner = AgentRunner(
         agent=mock_agent, config=ExecutionConfig(max_steps=5), session_store=session_store
     )
 
     events = await run_with_wire(runner, session, "Hello")
 
-    # Check event types - StepRunner only emits Step events (not Run events)
+    # Check event types - AgentRunner only emits Step events (not Run events)
     step_completed = [e for e in events if e.type == StepEventType.STEP_COMPLETED]
     step_delta = [e for e in events if e.type == StepEventType.STEP_DELTA]
 
-    # StepRunner should emit Step events
+    # AgentRunner should emit Step events
     assert len(step_completed) >= 1  # At least assistant step
     assert len(step_delta) >= 0  # May have delta events
 
@@ -178,9 +179,9 @@ async def test_step_runner_end_to_end(mock_agent, session_store, session):
 @pytest.mark.asyncio
 async def test_context_building_from_steps(mock_agent, session_store, session):
     """Test that context is correctly built from saved steps"""
-    from agio.runtime import build_context_from_steps
+    from agio.agent import build_context_from_steps
 
-    runner = StepRunner(agent=mock_agent, session_store=session_store)
+    runner = AgentRunner(agent=mock_agent, session_store=session_store)
 
     # Run first conversation
     await run_with_wire(runner, session, "Hello")
@@ -203,7 +204,7 @@ async def test_context_building_from_steps(mock_agent, session_store, session):
 @pytest.mark.asyncio
 async def test_retry_deletes_and_regenerates(mock_agent, session_store, session):
     """Test retry functionality"""
-    runner = StepRunner(agent=mock_agent, session_store=session_store)
+    runner = AgentRunner(agent=mock_agent, session_store=session_store)
 
     # Run initial conversation
     await run_with_wire(runner, session, "Hello")
@@ -229,7 +230,7 @@ async def test_retry_deletes_and_regenerates(mock_agent, session_store, session)
 @pytest.mark.asyncio
 async def test_fork_creates_new_session(session_store):
     """Test fork functionality"""
-    from agio.runtime import fork_session
+    from agio.agent import fork_session
 
     # Create some steps
     steps = [
@@ -284,7 +285,7 @@ async def test_fork_creates_new_session(session_store):
 @pytest.mark.asyncio
 async def test_step_metrics_tracking(mock_agent, session_store, session):
     """Test that metrics are properly tracked"""
-    runner = StepRunner(agent=mock_agent, session_store=session_store)
+    runner = AgentRunner(agent=mock_agent, session_store=session_store)
 
     await run_with_wire(runner, session, "Hello")
 

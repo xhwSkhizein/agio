@@ -4,7 +4,7 @@ import pytest
 from pathlib import Path
 
 from agio.providers.tools.builtin.glob_tool import GlobTool
-from agio.runtime import AbortSignal
+from agio.agent import AbortSignal
 
 
 class TestGlobTool:

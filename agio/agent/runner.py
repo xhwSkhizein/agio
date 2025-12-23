@@ -1,9 +1,9 @@
 """
-StepRunner - Step-based Agent Runner
+AgentRunner - Step-based Agent Runner
 
 Responsibilities:
 - Manage Step lifecycle (NOT Run lifecycle - handled by RunnableExecutor)
-- Use StepExecutor for execution
+- Use AgentExecutor for execution
 - Write Step events to Wire (event streaming channel)
 - Save Steps to repository
 - Return RunOutput with metrics
@@ -14,7 +14,7 @@ Wire-based Architecture:
 - Nested executions share the same Wire
 
 Note: Run lifecycle (create/save Run, emit RUN_STARTED/COMPLETED events)
-is handled by RunnableExecutor, not StepRunner.
+is handled by RunnableExecutor, not AgentRunner.
 """
 
 import asyncio
@@ -26,24 +26,27 @@ from agio.domain import (
     AgentSession,
     MessageRole,
     Step,
+    StepEvent,
     StepEventType,
+    StepMetrics,
+    RunOutput,
+    RunMetrics,
+    StepAdapter,
+    ExecutionContext,
 )
-from agio.domain import RunOutput, RunMetrics
-from agio.domain.adapters import StepAdapter
+
 from agio.observability.tracker import set_tracking_context, clear_tracking_context
-from agio.runtime.control import AbortSignal
-from agio.runtime.context import build_context_from_steps
-from agio.domain import ExecutionContext
+from agio.agent.control import AbortSignal
+from agio.agent.context import build_context_from_steps
+from agio.agent.executor import AgentExecutor
 from agio.runtime.event_factory import EventFactory
-from agio.runtime.executor import StepExecutor
 from agio.runtime.wire import Wire
 from agio.utils.logging import get_logger
+from agio.config import ExecutionConfig
 
 if TYPE_CHECKING:
     from agio.agent import Agent
     from agio.providers.storage import SessionStore
-    from agio.config import ExecutionConfig
-    from agio.domain.protocol import RunOutput
 
 
 logger = get_logger(__name__)
@@ -58,12 +61,12 @@ class TerminationSummaryResult(NamedTuple):
     completion_tokens_used: int
 
 
-class StepRunner:
+class AgentRunner:
     """
     Step-based Agent Runner.
 
     Key improvements:
-    1. Uses StepExecutor instead of AgentExecutor
+    1. Uses AgentExecutor instead of StepExecutor
     2. Saves Steps to repository
     3. Uses build_context_from_steps for context building
     4. Provides resume methods for retry
@@ -85,10 +88,6 @@ class StepRunner:
         """
         self.agent = agent
         self.session_store = session_store
-
-        # Import here to avoid circular dependency
-        from agio.config import ExecutionConfig
-
         self.config = config or ExecutionConfig()
 
     async def run(
@@ -181,8 +180,8 @@ class StepRunner:
                 messages.append({"role": "system", "content": self.agent.system_prompt})
             messages.append(StepAdapter.to_llm_message(user_step))
 
-        # 3. Create StepExecutor with Wire
-        executor = StepExecutor(
+        # 3. Create AgentExecutor with Wire
+        executor = AgentExecutor(
             model=self.agent.model,
             tools=self.agent.tools or [],
             config=self.config,
@@ -310,15 +309,17 @@ class StepRunner:
         finally:
             clear_tracking_context()
 
-    async def _get_next_sequence(self, session_id: str, context: ExecutionContext | None = None) -> int:
+    async def _get_next_sequence(
+        self, session_id: str, context: ExecutionContext | None = None
+    ) -> int:
         """
         Get next sequence number.
-        
+
         Args:
             session_id: Session ID
             context: Execution context (optional). If provided and contains seq_start in metadata,
                     uses the pre-allocated sequence for parallel workflow branches.
-        
+
         Returns:
             Next sequence number
         """
@@ -326,7 +327,7 @@ class StepRunner:
             seq_start = context.metadata["seq_start"]
             context.metadata.pop("seq_start")
             return seq_start
-        
+
         if not self.session_store:
             return 1
 
@@ -363,9 +364,6 @@ class StepRunner:
         Returns:
             TerminationSummaryResult with summary and metrics
         """
-        from agio.domain.models import Step, MessageRole, StepMetrics
-        from agio.domain.events import StepEvent, StepEventType
-
         next_sequence = current_sequence + 1
         tokens_used = 0
         prompt_tokens_used = 0
@@ -404,7 +402,7 @@ class StepRunner:
                 next_sequence += 1
 
         # 2. Add user message requesting summary
-        from agio.runtime.summarizer import (
+        from agio.agent.summarizer import (
             DEFAULT_TERMINATION_USER_PROMPT,
             _format_termination_reason,
         )
@@ -472,7 +470,9 @@ class StepRunner:
 
         try:
             # Call LLM via streaming and collect full response
-            tool_schemas = [t.to_openai_schema() for t in self.agent.tools] if self.agent.tools else None
+            tool_schemas = (
+                [t.to_openai_schema() for t in self.agent.tools] if self.agent.tools else None
+            )
             summary = ""
             usage_data = None
 
@@ -548,5 +548,4 @@ class StepRunner:
         )
 
 
-
-__all__ = ["StepRunner"]
+__all__ = ["AgentRunner", "TerminationSummaryResult"]

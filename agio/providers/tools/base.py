@@ -7,9 +7,10 @@ from typing import Any, TYPE_CHECKING
 
 from pydantic import BaseModel
 
+from agio.domain import ToolResult
+
 if TYPE_CHECKING:
-    from agio.runtime.control import AbortSignal
-    from agio.domain import ToolResult
+    from agio.agent.control import AbortSignal
 
 
 class RiskLevel(str, Enum):
@@ -46,7 +47,7 @@ class ToolDefinition(BaseModel):
 
 class BaseTool(ABC):
     """Common interface that every concrete tool must implement."""
-    
+
     # Override to enable caching for expensive operations
     # Cached results are reused within the same session for identical arguments
     cacheable: bool = False
@@ -79,11 +80,11 @@ class BaseTool(ABC):
     ) -> "ToolResult":
         """
         Execute the tool and return ToolResult directly.
-        
+
         Args:
             parameters: Tool parameters
             abort_signal: Optional abort signal for cancellation
-            
+
         Returns:
             ToolResult: Tool execution result
         """
@@ -111,7 +112,7 @@ class BaseTool(ABC):
                 "parameters": self.get_parameters(),
             },
         }
-    
+
     def _create_error_result(
         self,
         parameters: dict,
@@ -119,8 +120,7 @@ class BaseTool(ABC):
         start_time: float,
     ) -> "ToolResult":
         """Create error result helper method."""
-        from agio.domain import ToolResult
-        
+
         return ToolResult(
             tool_name=self.name,
             tool_call_id=parameters.get("tool_call_id", ""),
@@ -133,15 +133,14 @@ class BaseTool(ABC):
             duration=time.time() - start_time,
             is_success=False,
         )
-    
+
     def _create_abort_result(
         self,
         parameters: dict,
         start_time: float,
     ) -> "ToolResult":
         """Create abort result helper method."""
-        from agio.domain import ToolResult
-        
+
         return ToolResult(
             tool_name=self.name,
             tool_call_id=parameters.get("tool_call_id", ""),

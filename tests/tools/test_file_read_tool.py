@@ -4,7 +4,7 @@ import pytest
 from pathlib import Path
 
 from agio.providers.tools.builtin.file_read_tool import FileReadTool
-from agio.runtime import AbortSignal
+from agio.agent import AbortSignal
 
 
 class TestFileReadTool:

@@ -239,7 +239,7 @@ async def test_step_metrics():
 @pytest.mark.asyncio
 async def test_context_building():
     """Test building context from steps"""
-    from agio.runtime import build_context_from_steps
+    from agio.agent import build_context_from_steps
 
     store = InMemorySessionStore()
 

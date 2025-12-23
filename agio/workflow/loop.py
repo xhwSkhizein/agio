@@ -255,7 +255,7 @@ class LoopWorkflow(BaseWorkflow):
 
         # Use the model directly to generate summary
         # Note: For workflows, we use a simpler approach without step tracking
-        from agio.runtime.summarizer import DEFAULT_TERMINATION_USER_PROMPT, _format_termination_reason
+        from agio.agent.summarizer import DEFAULT_TERMINATION_USER_PROMPT, _format_termination_reason
 
         prompt_template = self.termination_summary_prompt or DEFAULT_TERMINATION_USER_PROMPT
         user_prompt = prompt_template.format(

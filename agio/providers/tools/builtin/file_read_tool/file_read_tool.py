@@ -17,7 +17,7 @@ from agio.providers.tools.builtin.common.file_operation_base import FileOperatio
 from agio.domain import ToolResult
 
 if TYPE_CHECKING:
-    from agio.runtime.control import AbortSignal
+    from agio.agent.control import AbortSignal
 
 try:
     import io

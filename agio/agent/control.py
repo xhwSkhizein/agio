@@ -110,6 +110,9 @@ async def fork_session(
 
     Returns:
         tuple[str, int, Optional[str]]: (new_session_id, last_step_sequence, pending_user_message)
+            - str: 新创建的 session_id
+            - int: 最后一个 step 的 sequence 号
+            - Optional[str]: 如果是 user step fork，返回待处理的 user message；否则为 None
     """
     logger.info(
         "fork_started", original_session_id=original_session_id, sequence=sequence
@@ -189,3 +192,4 @@ async def fork_session(
 
 
 __all__ = ["AbortSignal", "fork_session"]
+

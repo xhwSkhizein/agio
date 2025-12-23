@@ -4,7 +4,7 @@ import pytest
 from pathlib import Path
 
 from agio.providers.tools.builtin.file_edit_tool import FileEditTool
-from agio.runtime import AbortSignal
+from agio.agent import AbortSignal
 
 
 class TestFileEditTool:

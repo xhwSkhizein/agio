@@ -394,6 +394,12 @@ function LogDetailPanel({ log }: { log: LLMCallLog }) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(['response'])
   )
+  const [expandedMessages, setExpandedMessages] = useState<Set<number>>(
+    new Set()
+  )
+  const [expandedContent, setExpandedContent] = useState<Set<string>>(
+    new Set()
+  )
 
   const toggleSection = (section: string) => {
     setExpandedSections((prev) => {
@@ -407,10 +413,34 @@ function LogDetailPanel({ log }: { log: LLMCallLog }) {
     })
   }
 
+  const toggleMessage = (index: number) => {
+    setExpandedMessages((prev) => {
+      const next = new Set(prev)
+      if (next.has(index)) {
+        next.delete(index)
+      } else {
+        next.add(index)
+      }
+      return next
+    })
+  }
+
+  const toggleContent = (contentId: string) => {
+    setExpandedContent((prev) => {
+      const next = new Set(prev)
+      if (next.has(contentId)) {
+        next.delete(contentId)
+      } else {
+        next.add(contentId)
+      }
+      return next
+    })
+  }
+
   return (
-    <div className="border-t border-border bg-surface/50">
+    <div className="border-t border-border bg-surface/50 max-w-full overflow-hidden">
       {/* Quick Info Bar */}
-      <div className="px-4 py-3 border-b border-border/50 flex flex-wrap gap-x-6 gap-y-2 text-xs">
+      <div className="px-4 py-3 border-b border-border/50 flex flex-wrap gap-x-6 gap-y-2 text-xs max-w-full">
         <InfoItem label="ID" value={log.id} mono />
         <InfoItem label="Status" value={<StatusBadge status={log.status} />} />
         {log.session_id && <InfoItem label="Session" value={log.session_id} mono />}
@@ -422,71 +452,108 @@ function LogDetailPanel({ log }: { log: LLMCallLog }) {
       </div>
 
       {/* Collapsible Sections */}
-      <div className="divide-y divide-border/50">
+      <div className="divide-y divide-border/50 max-w-full overflow-hidden">
         {/* Request Messages */}
         <DetailSection
           title={`Request Messages (${log.messages.length})`}
           isExpanded={expandedSections.has('request')}
           onToggle={() => toggleSection('request')}
         >
-          <div className="space-y-3">
-            {log.messages.map((msg, idx) => (
-              <div key={idx} className="bg-background rounded-lg p-3 border border-border/50">
-                <div className="flex items-center gap-2 mb-2">
-                  <span
-                    className={`text-xs font-medium px-2 py-0.5 rounded ${
-                      msg.role === 'user'
-                        ? 'bg-blue-900/30 text-blue-400'
-                        : msg.role === 'assistant'
-                        ? 'bg-green-900/30 text-green-400'
-                        : msg.role === 'system'
-                        ? 'bg-purple-900/30 text-purple-400'
-                        : msg.role === 'tool'
-                        ? 'bg-orange-900/30 text-orange-400'
-                        : 'bg-gray-900/30 text-gray-400'
-                    }`}
-                  >
-                    {msg.role}
-                  </span>
-                  {msg.tool_call_id && (
-                    <span className="text-xs font-mono text-gray-500">
-                      {msg.tool_call_id}
-                    </span>
+          <div className="space-y-3 max-w-full">
+            {log.messages.map((msg, idx) => {
+              const isMessageExpanded = expandedMessages.has(idx)
+              const msgContent = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content, null, 2)
+              const reasoningContent = msg.reasoning_content || (typeof msg.reasoning_content === 'string' ? msg.reasoning_content : null)
+              const hasLongContent = (msgContent?.length || 0) > 300 || (reasoningContent?.length || 0) > 0 || (msg.tool_calls?.length || 0) > 0
+              
+              return (
+                <div key={idx} className="bg-background rounded-lg p-3 border border-border/50 max-w-full overflow-hidden">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-xs font-medium px-2 py-0.5 rounded ${
+                          msg.role === 'user'
+                            ? 'bg-blue-900/30 text-blue-400'
+                            : msg.role === 'assistant'
+                            ? 'bg-green-900/30 text-green-400'
+                            : msg.role === 'system'
+                            ? 'bg-purple-900/30 text-purple-400'
+                            : msg.role === 'tool'
+                            ? 'bg-orange-900/30 text-orange-400'
+                            : 'bg-gray-900/30 text-gray-400'
+                        }`}
+                      >
+                        {msg.role}
+                      </span>
+                      {msg.tool_call_id && (
+                        <span className="text-xs font-mono text-gray-500">
+                          {msg.tool_call_id}
+                        </span>
+                      )}
+                    </div>
+                    {hasLongContent && (
+                      <button
+                        onClick={() => toggleMessage(idx)}
+                        className="text-xs text-gray-400 hover:text-white transition-colors"
+                      >
+                        {isMessageExpanded ? 'Collapse' : 'Expand'}
+                      </button>
+                    )}
+                  </div>
+                  {/* Reasoning content */}
+                  {reasoningContent && (
+                    <div className={`mb-2 p-2 bg-purple-900/10 border border-purple-500/20 rounded text-xs text-purple-300 ${
+                      !isMessageExpanded ? 'max-h-24 overflow-hidden' : ''
+                    }`}>
+                      <div className="font-medium mb-1">Reasoning:</div>
+                      <pre className="whitespace-pre-wrap break-words max-w-full overflow-x-auto">{reasoningContent}</pre>
+                    </div>
+                  )}
+                  {/* Message content */}
+                  {msgContent && (
+                    <div className={!isMessageExpanded ? 'max-h-32 overflow-hidden' : 'max-w-full'}>
+                      <pre className="text-sm text-gray-300 whitespace-pre-wrap break-words max-w-full overflow-x-auto">
+                        {msgContent}
+                      </pre>
+                    </div>
+                  )}
+                  {/* Tool calls for assistant messages */}
+                  {msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0 && (
+                    <div className={`mt-2 space-y-2 ${!isMessageExpanded ? 'max-h-32 overflow-hidden' : ''}`}>
+                      <div className="text-xs font-medium text-gray-400">Tool Calls ({msg.tool_calls.length}):</div>
+                      {msg.tool_calls.map((tc: any, tcIdx: number) => (
+                        <div key={tcIdx} className="bg-surfaceHighlight rounded p-2 border border-border/30">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs font-medium text-orange-400">
+                              {tc.function?.name || tc.name || 'unknown'}
+                            </span>
+                            {tc.id && (
+                              <span className="text-xs font-mono text-gray-500">{tc.id}</span>
+                            )}
+                          </div>
+                          <pre className="text-xs text-gray-400 whitespace-pre-wrap break-words max-w-full overflow-x-auto">
+                            {tc.function?.arguments 
+                              ? (typeof tc.function.arguments === 'string' 
+                                  ? tc.function.arguments 
+                                  : JSON.stringify(tc.function.arguments, null, 2))
+                              : JSON.stringify(tc, null, 2)}
+                          </pre>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* Show expand hint when collapsed */}
+                  {!isMessageExpanded && hasLongContent && (
+                    <button
+                      onClick={() => toggleMessage(idx)}
+                      className="mt-2 text-xs text-gray-500 hover:text-primary-400 transition-colors"
+                    >
+                      Click to expand...
+                    </button>
                   )}
                 </div>
-                {/* Message content */}
-                {msg.content && (
-                  <pre className="text-sm text-gray-300 whitespace-pre-wrap break-words overflow-x-auto">
-                    {typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content, null, 2)}
-                  </pre>
-                )}
-                {/* Tool calls for assistant messages */}
-                {msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0 && (
-                  <div className="mt-2 space-y-2">
-                    <div className="text-xs font-medium text-gray-400">Tool Calls ({msg.tool_calls.length}):</div>
-                    {msg.tool_calls.map((tc: any, tcIdx: number) => (
-                      <div key={tcIdx} className="bg-surfaceHighlight rounded p-2 border border-border/30">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-medium text-orange-400">
-                            {tc.function?.name || tc.name || 'unknown'}
-                          </span>
-                          {tc.id && (
-                            <span className="text-xs font-mono text-gray-500">{tc.id}</span>
-                          )}
-                        </div>
-                        <pre className="text-xs text-gray-400 whitespace-pre-wrap break-words overflow-x-auto">
-                          {tc.function?.arguments 
-                            ? (typeof tc.function.arguments === 'string' 
-                                ? tc.function.arguments 
-                                : JSON.stringify(tc.function.arguments, null, 2))
-                            : JSON.stringify(tc, null, 2)}
-                        </pre>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+              )
+            })}
           </div>
         </DetailSection>
 
@@ -497,9 +564,29 @@ function LogDetailPanel({ log }: { log: LLMCallLog }) {
             isExpanded={expandedSections.has('tools')}
             onToggle={() => toggleSection('tools')}
           >
-            <pre className="text-sm text-gray-300 bg-background rounded-lg p-3 border border-border/50 overflow-x-auto">
-              {JSON.stringify(log.tools, null, 2)}
-            </pre>
+            {expandedSections.has('tools') && (() => {
+              const toolsContent = JSON.stringify(log.tools, null, 2)
+              const isContentExpanded = expandedContent.has('tools')
+              const hasLongContent = toolsContent.length > 300
+              
+              return (
+                <div className="max-w-full">
+                  <div className={!isContentExpanded ? 'max-h-32 overflow-hidden' : 'max-h-[75vh] overflow-y-auto max-w-full'}>
+                    <pre className="text-sm text-gray-300 bg-background rounded-lg p-3 border border-border/50 max-w-full overflow-x-auto break-words whitespace-pre-wrap">
+                      {toolsContent}
+                    </pre>
+                  </div>
+                  {hasLongContent && (
+                    <button
+                      onClick={() => toggleContent('tools')}
+                      className="mt-2 text-xs text-gray-500 hover:text-primary-400 transition-colors"
+                    >
+                      {isContentExpanded ? 'Click to collapse...' : 'Click to expand...'}
+                    </button>
+                  )}
+                </div>
+              )
+            })()}
           </DetailSection>
         )}
 
@@ -509,27 +596,67 @@ function LogDetailPanel({ log }: { log: LLMCallLog }) {
           isExpanded={expandedSections.has('response')}
           onToggle={() => toggleSection('response')}
         >
-          {log.error ? (
-            <div className="bg-red-900/20 border border-red-900/50 rounded-lg p-4">
-              <p className="text-sm text-red-400 font-mono">{log.error}</p>
-            </div>
-          ) : log.response_content ? (
-            <pre className="text-sm text-gray-300 whitespace-pre-wrap break-words bg-background rounded-lg p-4 border border-border/50">
-              {log.response_content}
-            </pre>
-          ) : log.status === 'running' ? (
-            <div className="flex items-center gap-2 text-gray-400 py-4">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span className="text-sm">Waiting for response...</span>
-            </div>
-          ) : log.status === 'cancelled' ? (
-            <div className="flex items-center gap-2 text-yellow-400 py-4">
-              <StopCircle className="w-4 h-4" />
-              <span className="text-sm">Request cancelled</span>
-            </div>
-          ) : (
-            <p className="text-sm text-gray-500 py-4">No response content</p>
-          )}
+          {expandedSections.has('response') && (() => {
+            const isContentExpanded = expandedContent.has('response')
+            
+            if (log.error) {
+              const hasLongContent = log.error.length > 300
+              return (
+                <div className="max-w-full">
+                  <div className={!isContentExpanded ? 'max-h-32 overflow-hidden' : 'max-h-[75vh] overflow-y-auto max-w-full'}>
+                    <div className="bg-red-900/20 border border-red-900/50 rounded-lg p-4 max-w-full">
+                      <p className="text-sm text-red-400 font-mono break-words max-w-full overflow-x-auto">{log.error}</p>
+                    </div>
+                  </div>
+                  {hasLongContent && (
+                    <button
+                      onClick={() => toggleContent('response')}
+                      className="mt-2 text-xs text-gray-500 hover:text-primary-400 transition-colors"
+                    >
+                      {isContentExpanded ? 'Click to collapse...' : 'Click to expand...'}
+                    </button>
+                  )}
+                </div>
+              )
+            } else if (log.response_content) {
+              const hasLongContent = log.response_content.length > 300
+              return (
+                <div className="max-w-full">
+                  <div className={!isContentExpanded ? 'max-h-32 overflow-hidden' : 'max-h-[75vh] overflow-y-auto max-w-full'}>
+                    <pre className="text-sm text-gray-300 whitespace-pre-wrap break-words bg-background rounded-lg p-4 border border-border/50 max-w-full overflow-x-auto">
+                      {log.response_content}
+                    </pre>
+                  </div>
+                  {hasLongContent && (
+                    <button
+                      onClick={() => toggleContent('response')}
+                      className="mt-2 text-xs text-gray-500 hover:text-primary-400 transition-colors"
+                    >
+                      {isContentExpanded ? 'Click to collapse...' : 'Click to expand...'}
+                    </button>
+                  )}
+                </div>
+              )
+            } else if (log.status === 'running') {
+              return (
+                <div className="flex items-center gap-2 text-gray-400 py-4">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-sm">Waiting for response...</span>
+                </div>
+              )
+            } else if (log.status === 'cancelled') {
+              return (
+                <div className="flex items-center gap-2 text-yellow-400 py-4">
+                  <StopCircle className="w-4 h-4" />
+                  <span className="text-sm">Request cancelled</span>
+                </div>
+              )
+            } else {
+              return (
+                <p className="text-sm text-gray-500 py-4">No response content</p>
+              )
+            }
+          })()}
         </DetailSection>
 
         {/* Tool Calls */}
@@ -539,9 +666,29 @@ function LogDetailPanel({ log }: { log: LLMCallLog }) {
             isExpanded={expandedSections.has('tool_calls')}
             onToggle={() => toggleSection('tool_calls')}
           >
-            <pre className="text-sm text-gray-300 bg-background rounded-lg p-3 border border-border/50 overflow-x-auto">
-              {JSON.stringify(log.response_tool_calls, null, 2)}
-            </pre>
+            {expandedSections.has('tool_calls') && (() => {
+              const toolCallsContent = JSON.stringify(log.response_tool_calls, null, 2)
+              const isContentExpanded = expandedContent.has('tool_calls')
+              const hasLongContent = toolCallsContent.length > 300
+              
+              return (
+                <div className="max-w-full">
+                  <div className={!isContentExpanded ? 'max-h-32 overflow-hidden' : 'max-h-[75vh] overflow-y-auto max-w-full'}>
+                    <pre className="text-sm text-gray-300 bg-background rounded-lg p-3 border border-border/50 max-w-full overflow-x-auto break-words whitespace-pre-wrap">
+                      {toolCallsContent}
+                    </pre>
+                  </div>
+                  {hasLongContent && (
+                    <button
+                      onClick={() => toggleContent('tool_calls')}
+                      className="mt-2 text-xs text-gray-500 hover:text-primary-400 transition-colors"
+                    >
+                      {isContentExpanded ? 'Click to collapse...' : 'Click to expand...'}
+                    </button>
+                  )}
+                </div>
+              )
+            })()}
           </DetailSection>
         )}
 
@@ -551,9 +698,11 @@ function LogDetailPanel({ log }: { log: LLMCallLog }) {
           isExpanded={expandedSections.has('params')}
           onToggle={() => toggleSection('params')}
         >
-          <pre className="text-sm text-gray-300 bg-background rounded-lg p-3 border border-border/50 overflow-x-auto">
-            {JSON.stringify(log.request, null, 2)}
-          </pre>
+          <div className="max-w-full">
+            <pre className="text-sm text-gray-300 bg-background rounded-lg p-3 border border-border/50 max-w-full overflow-x-auto break-words whitespace-pre-wrap">
+              {JSON.stringify(log.request, null, 2)}
+            </pre>
+          </div>
         </DetailSection>
       </div>
     </div>
@@ -581,15 +730,15 @@ function DetailSection({
   children: React.ReactNode
 }) {
   return (
-    <div>
+    <div className="max-w-full overflow-hidden">
       <button
         onClick={onToggle}
         className="w-full px-4 py-2.5 flex items-center justify-between text-sm font-medium text-gray-400 hover:text-white transition-colors"
       >
-        <span>{title}</span>
-        {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+        <span className="truncate">{title}</span>
+        {isExpanded ? <ChevronDown className="w-4 h-4 flex-shrink-0" /> : <ChevronRight className="w-4 h-4 flex-shrink-0" />}
       </button>
-      {isExpanded && <div className="px-4 pb-4">{children}</div>}
+      {isExpanded && <div className="px-4 pb-4 max-w-full overflow-hidden">{children}</div>}
     </div>
   )
 }

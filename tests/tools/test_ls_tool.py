@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 from agio.providers.tools.builtin.ls_tool import LSTool
-from agio.runtime import AbortSignal
+from agio.agent import AbortSignal
 
 
 class TestLSTool:

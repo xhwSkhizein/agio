@@ -3,7 +3,8 @@ import time
 import pytest
 
 from agio.domain import ToolResult
-from agio.runtime import ToolExecutor, Wire
+from agio.tools import ToolExecutor
+from agio.runtime import Wire
 from agio.providers.tools import BaseTool
 from agio.domain import ExecutionContext
 

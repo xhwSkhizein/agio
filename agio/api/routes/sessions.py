@@ -10,13 +10,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from agio.agent import Agent
+from agio.agent import Agent, fork_session
 from agio.api.deps import get_config_sys, get_session_store
 from agio.config import ConfigSystem
 from agio.domain import MessageRole, ExecutionContext
 from agio.domain.models import Step
 from agio.providers.storage import SessionStore
-from agio.runtime import Wire, fork_session
+from agio.runtime import Wire
 
 router = APIRouter(prefix="/sessions")
 
@@ -39,7 +39,7 @@ class StepResponse(BaseModel):
     
     Different roles have different fields populated:
     - user: content only
-    - assistant: content and/or tool_calls
+    - assistant: content and/or tool_calls, reasoning_content
     - tool: name, tool_call_id, and content (tool result)
     """
     id: str
@@ -47,6 +47,7 @@ class StepResponse(BaseModel):
     sequence: int
     role: str
     content: str | None
+    reasoning_content: str | None = None  # Reasoning content (e.g., DeepSeek thinking mode)
     # Assistant step: list of tool calls to execute
     tool_calls: list[dict] | None = None
     # Tool step: name of the tool that was called
@@ -287,6 +288,7 @@ async def get_session_steps(
             sequence=step.sequence,
             role=step.role.value,
             content=step.content,
+            reasoning_content=step.reasoning_content,
             tool_calls=step.tool_calls,
             name=step.name,
             tool_call_id=step.tool_call_id,

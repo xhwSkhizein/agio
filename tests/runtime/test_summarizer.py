@@ -5,7 +5,7 @@ Tests for termination summary functions.
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from agio.runtime.summarizer import (
+from agio.agent.summarizer import (
     build_termination_messages,
     DEFAULT_TERMINATION_USER_PROMPT,
     _format_termination_reason,

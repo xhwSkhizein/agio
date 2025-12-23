@@ -5,7 +5,7 @@ Top-level exports for easy access to core functionality.
 """
 
 # Top-level Agent class
-from agio.agent import Agent
+from agio.agent.agent import Agent
 
 # Domain models
 from agio.domain import (

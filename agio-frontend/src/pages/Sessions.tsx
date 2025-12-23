@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { sessionService, SessionSummary } from '../services/api'
-import { History, Trash2, ChevronRight, ChevronDown, Loader2, MessageSquare, GitBranch, X, Maximize2, Minimize2 } from 'lucide-react'
+import { History, Trash2, ChevronRight, Loader2, MessageSquare, GitBranch, X, Maximize2, Minimize2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface ForkModalState {
@@ -14,48 +14,12 @@ interface ForkModalState {
   agentId: string
 }
 
-// Group sessions by workflow_id
-interface SessionGroup {
-  workflow_id: string | null
-  sessions: SessionSummary[]
-}
-
-function groupSessionsByWorkflow(sessions: SessionSummary[]): SessionGroup[] {
-  const groups = new Map<string, SessionSummary[]>()
-  const standalones: SessionSummary[] = []
-
-  for (const session of sessions) {
-    if (session.workflow_id) {
-      if (!groups.has(session.workflow_id)) {
-        groups.set(session.workflow_id, [])
-      }
-      groups.get(session.workflow_id)!.push(session)
-    } else {
-      standalones.push(session)
-    }
-  }
-
-  const result: SessionGroup[] = []
-  
-  // Add workflow groups first
-  for (const [workflow_id, groupSessions] of groups) {
-    result.push({ workflow_id, sessions: groupSessions })
-  }
-  
-  // Add standalone sessions
-  for (const session of standalones) {
-    result.push({ workflow_id: null, sessions: [session] })
-  }
-
-  return result
-}
 
 export default function Sessions() {
   const [selectedSession, setSelectedSession] = useState<string | null>(null)
   const [forkModal, setForkModal] = useState<ForkModalState | null>(null)
   const [forkContent, setForkContent] = useState('')
   const [forkToolCalls, setForkToolCalls] = useState('')
-  const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set())
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set())
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -145,20 +109,6 @@ export default function Sessions() {
     return date.toLocaleString()
   }
 
-  // Toggle session tree expansion
-  const toggleSessionExpand = (sessionId: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    setExpandedSessions(prev => {
-      const next = new Set(prev)
-      if (next.has(sessionId)) {
-        next.delete(sessionId)
-      } else {
-        next.add(sessionId)
-      }
-      return next
-    })
-  }
-
   // Toggle step content expansion
   const toggleStepExpand = (stepId: string) => {
     setExpandedSteps(prev => {
@@ -171,9 +121,6 @@ export default function Sessions() {
       return next
     })
   }
-
-  // Group sessions by workflow
-  const sessionGroups = sessions ? groupSessionsByWorkflow(sessions.items) : []
 
   // Render a single session item
   const renderSessionItem = (session: SessionSummary) => (
@@ -215,47 +162,6 @@ export default function Sessions() {
     </div>
   )
 
-  // Render a workflow group
-  const renderSessionGroup = (group: SessionGroup) => {
-    if (!group.workflow_id) {
-      // Standalone session
-      return renderSessionItem(group.sessions[0])
-    }
-
-    const isExpanded = expandedSessions.has(group.workflow_id)
-    
-    return (
-      <div key={group.workflow_id} className="space-y-2">
-        {/* Workflow group header */}
-        <div
-          onClick={(e) => toggleSessionExpand(group.workflow_id!, e)}
-          className="flex items-center gap-2 px-2 py-1.5 bg-purple-900/20 border border-purple-500/30 rounded-lg cursor-pointer hover:bg-purple-900/30 transition-colors"
-        >
-          <button className="p-0.5 text-purple-400">
-            {isExpanded ? (
-              <ChevronDown className="w-3 h-3" />
-            ) : (
-              <ChevronRight className="w-3 h-3" />
-            )}
-          </button>
-          <GitBranch className="w-3 h-3 text-purple-400" />
-          <span className="text-xs font-medium text-purple-300">
-            {group.workflow_id}
-          </span>
-          <span className="text-[10px] text-purple-400/70 ml-auto">
-            {group.sessions.length} sessions
-          </span>
-        </div>
-        
-        {/* Grouped sessions */}
-        {isExpanded && (
-          <div className="ml-4 space-y-2 border-l-2 border-purple-500/20 pl-3">
-            {group.sessions.map(session => renderSessionItem(session))}
-          </div>
-        )}
-      </div>
-    )
-  }
 
   return (
     <div className="max-w-5xl">
@@ -279,11 +185,7 @@ export default function Sessions() {
               Recent Sessions
             </h2>
             <div className="space-y-2">
-              {sessionGroups.map((group, idx) => (
-                <div key={group.workflow_id || `standalone-${idx}`}>
-                  {renderSessionGroup(group)}
-                </div>
-              ))}
+              {sessions.items.map((session) => renderSessionItem(session))}
             </div>
           </div>
 
@@ -332,7 +234,9 @@ export default function Sessions() {
                   <div className="space-y-2">
                     {sessionSteps.map((step) => {
                       const isExpanded = expandedSteps.has(step.id)
-                      const hasLongContent = (step.content?.length || 0) > 500 || (step.tool_calls?.length || 0) > 0
+                      // Check if content is long enough to need expansion (considering max-h-32 ≈ 8 lines)
+                      const contentLength = (step.content?.length || 0) + (step.reasoning_content?.length || 0)
+                      const hasLongContent = contentLength > 200 || (step.tool_calls?.length || 0) > 0
                       
                       return (
                         <div
@@ -404,6 +308,12 @@ export default function Sessions() {
                                 : 'max-h-32 overflow-hidden'
                             }`}
                           >
+                            {step.reasoning_content && (
+                              <div className="mb-2 p-2 bg-purple-900/10 border border-purple-500/20 rounded text-xs text-purple-300">
+                                <div className="font-medium mb-1">Reasoning:</div>
+                                <pre className="whitespace-pre-wrap break-words">{step.reasoning_content}</pre>
+                              </div>
+                            )}
                             {step.content && (
                               <p className="text-sm text-gray-300 whitespace-pre-wrap">
                                 {step.content}

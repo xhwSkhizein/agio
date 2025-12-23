@@ -1,5 +1,5 @@
 """
-StepExecutor - Step-based LLM Call Loop
+AgentExecutor - Step-based LLM Call Loop
 
 Responsibilities:
 - Implement LLM ↔ Tool loop logic
@@ -23,17 +23,18 @@ from agio.domain import (
     StepDelta,
     StepEvent,
     StepMetrics,
+    ExecutionContext,
+    StepAdapter
 )
-from agio.domain.adapters import StepAdapter
-from agio.runtime.tool_executor import ToolExecutor
+from agio.tools.executor import ToolExecutor
 from agio.utils.logging import get_logger
+from agio.runtime.event_factory import EventFactory
+from agio.config import ExecutionConfig
 
 if TYPE_CHECKING:
     from agio.providers.llm import Model
     from agio.providers.tools import BaseTool
-    from agio.runtime.control import AbortSignal
-    from agio.domain import ExecutionContext
-    from agio.config import ExecutionConfig
+    from agio.agent.control import AbortSignal
 
 logger = get_logger(__name__)
 
@@ -84,7 +85,7 @@ class ToolCallAccumulator:
         self._calls.clear()
 
 
-class StepExecutor:
+class AgentExecutor:
     """
     Step-based LLM Call Loop executor.
 
@@ -111,9 +112,6 @@ class StepExecutor:
         self.model = model
         self.tools = tools
         self.tool_executor = ToolExecutor(tools)
-
-        # Import here to avoid circular dependency
-        from agio.config import ExecutionConfig
         self.config = config or ExecutionConfig()
 
     async def execute(
@@ -138,7 +136,7 @@ class StepExecutor:
         Yields:
             StepEvent: Step event stream
         """
-        from agio.runtime.event_factory import EventFactory
+        
 
         ef = EventFactory(ctx)
         current_step = 0
@@ -310,8 +308,6 @@ class StepExecutor:
         Yields:
             tuple[StepEvent, int]: (step_completed_event, updated_sequence)
         """
-        from agio.runtime.event_factory import EventFactory
-
         ef = EventFactory(ctx)
 
         results = await self.tool_executor.execute_batch(
@@ -355,4 +351,4 @@ class StepExecutor:
         return [tool.to_openai_schema() for tool in self.tools]
 
 
-__all__ = ["StepExecutor", "ToolCallAccumulator"]
+__all__ = ["AgentExecutor", "ToolCallAccumulator"]

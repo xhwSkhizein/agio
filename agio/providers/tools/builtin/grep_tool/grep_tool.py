@@ -15,7 +15,7 @@ from agio.providers.tools.builtin.adapter import AppSettings, SettingsRegistry, 
 from agio.domain import ToolResult
 
 if TYPE_CHECKING:
-    from agio.runtime.control import AbortSignal
+    from agio.agent.control import AbortSignal
 
 
 class GrepToolOutput(BaseModel):

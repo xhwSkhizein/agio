@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from agio.providers.tools.builtin.common.citation import (
         CitationSourceRepository,
     )
-    from agio.runtime.control import AbortSignal
+    from agio.agent.control import AbortSignal
 
 logger = get_logger(__name__)
 

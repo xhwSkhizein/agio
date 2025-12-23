@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 if TYPE_CHECKING:
     from agio.providers.llm.base import Model
-    from agio.runtime.control import AbortSignal
+    from agio.agent.control import AbortSignal
 
 from agio.utils.logging import get_logger
 

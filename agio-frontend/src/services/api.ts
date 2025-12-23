@@ -147,6 +147,27 @@ export interface SessionSummary {
   status: string
 }
 
+export interface SessionStep {
+  id: string
+  session_id: string
+  sequence: number
+  role: 'user' | 'assistant' | 'tool'
+  content: string | null
+  reasoning_content?: string | null
+  tool_calls?: Array<{
+    id: string
+    type: string
+    function: {
+      name: string
+      arguments: string
+    }
+    index?: number
+  }>
+  name?: string
+  tool_call_id?: string
+  created_at: string
+}
+
 export const sessionService = {
   async listSessions(params?: {
     user_id?: string
@@ -175,7 +196,7 @@ export const sessionService = {
     await api.delete(`/sessions/${sessionId}`)
   },
 
-  async getSessionSteps(sessionId: string): Promise<any[]> {
+  async getSessionSteps(sessionId: string): Promise<SessionStep[]> {
     const response = await api.get(`/sessions/${sessionId}/steps`)
     return response.data
   },

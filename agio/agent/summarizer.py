@@ -8,12 +8,7 @@ Design Philosophy:
 - Never truncates or discards existing context
 """
 
-from typing import TYPE_CHECKING
-
 from agio.utils.logging import get_logger
-
-if TYPE_CHECKING:
-    from agio.providers.llm import Model
 
 logger = get_logger(__name__)
 
@@ -43,46 +38,50 @@ def build_termination_messages(
 ) -> list[dict]:
     """
     Build messages for termination summary LLM call.
-    
+
     This function prepares the message list for generating a termination summary
     by appending appropriate messages based on the termination position.
-    
+
     Args:
         messages: Current conversation history (OpenAI format)
         termination_reason: Reason for termination (e.g., "max_steps", "timeout")
         pending_tool_calls: Unprocessed tool calls if terminated mid-execution
         custom_prompt: Custom user prompt for summary request
-        
+
     Returns:
         New messages list with termination handling messages appended
     """
     # Create a copy to avoid modifying original
     result_messages = list(messages)
-    
+
     # If there are pending tool calls, add placeholder tool results
     if pending_tool_calls:
         for tool_call in pending_tool_calls:
             call_id = tool_call.get("id", "unknown")
             tool_name = tool_call.get("function", {}).get("name", "unknown")
-            result_messages.append({
-                "role": "tool",
-                "tool_call_id": call_id,
-                "name": tool_name,
-                "content": f"[Execution interrupted: {_format_termination_reason(termination_reason)}. "
-                           f"This tool call was not executed.]",
-            })
-    
+            result_messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": call_id,
+                    "name": tool_name,
+                    "content": f"[Execution interrupted: {_format_termination_reason(termination_reason)}. "
+                    f"This tool call was not executed.]",
+                }
+            )
+
     # Build the user prompt requesting summary
     prompt_template = custom_prompt or DEFAULT_TERMINATION_USER_PROMPT
     user_prompt = prompt_template.format(
         termination_reason=_format_termination_reason(termination_reason),
     )
-    
-    result_messages.append({
-        "role": "user",
-        "content": user_prompt,
-    })
-    
+
+    result_messages.append(
+        {
+            "role": "user",
+            "content": user_prompt,
+        }
+    )
+
     return result_messages
 
 

@@ -10,16 +10,12 @@ Wire-based Architecture:
 - All nested executions share the same wire
 """
 
-from typing import TYPE_CHECKING
-
-from agio.domain import AgentSession
+from agio.domain import AgentSession, ExecutionContext, RunOutput
+from agio.config import ExecutionConfig
+from agio.agent.runner import AgentRunner
 from agio.providers.llm import Model
 from agio.providers.storage.base import SessionStore
 from agio.providers.tools import BaseTool
-
-if TYPE_CHECKING:
-    from agio.domain.protocol import RunOutput
-    from agio.domain import ExecutionContext
 
 
 class Agent:
@@ -27,7 +23,7 @@ class Agent:
     Agent Configuration Container.
 
     Holds the configuration for Model, Tools, Memory, etc.
-    Delegates execution to StepRunner.
+    Delegates execution to AgentRunner.
 
     Implements the Runnable protocol for multi-agent orchestration:
     - run(input, context) -> RunOutput (writes events to context.wire)
@@ -91,8 +87,6 @@ class Agent:
         Returns:
             RunOutput with response and metrics
         """
-        from agio.config import ExecutionConfig
-        from agio.runtime import StepRunner
 
         # Use context session_id (ExecutionContext guarantees session_id is present)
         session_id = context.session_id
@@ -106,7 +100,7 @@ class Agent:
             termination_summary_prompt=self.termination_summary_prompt,
         )
 
-        runner = StepRunner(
+        runner = AgentRunner(
             agent=self,
             config=config,
             session_store=self.session_store,
@@ -121,15 +115,6 @@ class Agent:
             raise ValueError("SessionStore not configured")
 
         return await self.session_store.get_steps(session_id)
-
-    async def fork_session(self, session_id: str, sequence: int) -> str:
-        """Fork a session at a specific sequence."""
-        from agio.runtime import fork_session
-
-        if not self.session_store:
-            raise ValueError("SessionStore not configured")
-
-        return await fork_session(session_id, sequence, self.session_store)
 
     async def list_runs(
         self, user_id: str | None = None, limit: int = 20, offset: int = 0

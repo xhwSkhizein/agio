@@ -6,7 +6,7 @@ import pytest
 
 from agio.domain import MessageRole, Step
 from agio.providers.storage import InMemorySessionStore
-from agio.runtime.context import build_context_from_steps
+from agio.agent import build_context_from_steps
 
 
 @pytest.fixture

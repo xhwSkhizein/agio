@@ -13,13 +13,12 @@ Wire-based Architecture:
 import time
 from typing import TYPE_CHECKING
 
-from agio.domain import ExecutionContext
+from agio.domain import ExecutionContext, RunOutput, RunMetrics
+from agio.runtime import RunnableExecutor
+from agio.runtime.event_factory import EventFactory
 from agio.workflow.state import WorkflowState
 from agio.workflow.resolver import ContextResolver
-from agio.runtime import RunnableExecutor
 from agio.workflow.base import BaseWorkflow
-from agio.domain.protocol import RunOutput
-from agio.domain.models import RunMetrics
 from agio.workflow.node import WorkflowNode
 
 if TYPE_CHECKING:
@@ -50,7 +49,6 @@ class PipelineWorkflow(BaseWorkflow):
         *,
         context: ExecutionContext,
     ) -> RunOutput:
-        from agio.runtime.event_factory import EventFactory
 
         start_time = time.time()
         run_id = context.run_id

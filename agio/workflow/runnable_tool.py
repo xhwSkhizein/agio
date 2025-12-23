@@ -19,14 +19,12 @@ import time
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from agio.domain import ToolResult
+from agio.domain import ToolResult, ExecutionContext, Runnable
 from agio.providers.tools import BaseTool
-from agio.domain import ExecutionContext
-from agio.domain.protocol import Runnable
+from agio.runtime import RunnableExecutor, Wire
 
 if TYPE_CHECKING:
-    from agio.runtime.control import AbortSignal
-    from agio.runtime.wire import Wire
+    from agio.agent.control import AbortSignal
     from agio.providers.storage.base import SessionStore
 
 
@@ -36,11 +34,13 @@ DEFAULT_MAX_DEPTH = 5
 
 class CircularReferenceError(Exception):
     """Raised when a circular reference is detected in Runnable call chain."""
+
     pass
 
 
 class MaxDepthExceededError(Exception):
     """Raised when the maximum nesting depth is exceeded."""
+
     pass
 
 
@@ -137,31 +137,27 @@ class RunnableTool(BaseTool):
         start_time = time.time()
         task = parameters.get("task", "")
         extra_context = parameters.get("context", "")
-        
+
         # Get current depth and call stack from parameters
         current_depth = parameters.get("_depth", 0) + 1
         call_stack: list[str] = parameters.get("_call_stack", []).copy()
-        
+
         # Safety check 1: Depth limit
         if current_depth > self.max_depth:
             error_msg = (
                 f"Maximum nesting depth ({self.max_depth}) exceeded. "
                 f"Current call chain: {' -> '.join(call_stack)} -> {self.runnable.id}"
             )
-            return self._create_error_result(
-                parameters, error_msg, start_time
-            )
-        
+            return self._create_error_result(parameters, error_msg, start_time)
+
         # Safety check 2: Circular reference detection
         if self.runnable.id in call_stack:
             error_msg = (
                 f"Circular reference detected: {self.runnable.id} is already in call chain. "
                 f"Call chain: {' -> '.join(call_stack)} -> {self.runnable.id}"
             )
-            return self._create_error_result(
-                parameters, error_msg, start_time
-            )
-        
+            return self._create_error_result(parameters, error_msg, start_time)
+
         # Add current runnable to call stack
         call_stack.append(self.runnable.id)
 
@@ -174,7 +170,7 @@ class RunnableTool(BaseTool):
         # Note: These parameters are passed via magic keys for now (Part 3 task)
         wire: "Wire | None" = parameters.get("_wire")
         parent_run_id: str | None = parameters.get("_parent_run_id")
-        
+
         # Build execution context with wire for unified event streaming
         run_id = str(uuid4())
         context = ExecutionContext(
@@ -197,8 +193,7 @@ class RunnableTool(BaseTool):
 
         # Execute nested Runnable via RunnableExecutor
         # This ensures RUN_STARTED/COMPLETED events are emitted
-        from agio.runtime import RunnableExecutor
-        
+
         output = ""
         error = None
 
@@ -261,8 +256,10 @@ def as_tool(
         RunnableTool instance
     """
     return RunnableTool(
-        runnable, description, name, 
-        max_depth=max_depth, 
+        runnable,
+        description,
+        name,
+        max_depth=max_depth,
         session_store=session_store,
     )
 
