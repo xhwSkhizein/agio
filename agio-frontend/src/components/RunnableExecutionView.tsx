@@ -336,7 +336,10 @@ function ExecutionChildren({ children, parentDepth, parentWorkflowType }: Execut
   // 1. Parent is a ParallelWorkflow
   // 2. Multiple children are running concurrently (e.g., concurrent tool calls)
   const runningCount = standaloneChildren.filter(c => c.status === 'running').length
-  const isParallelExecution = parentWorkflowType === 'parallel' || runningCount > 1
+  const hasParallelContext =
+    parentWorkflowType === 'parallel' ||
+    standaloneChildren.some(child => child.branchId)
+  const isParallelExecution = hasParallelContext || runningCount > 1
 
   // Single child - render directly
   if (standaloneChildren.length === 1) {

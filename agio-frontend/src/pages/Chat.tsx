@@ -52,6 +52,7 @@ export default function Chat() {
     tree: executionTree, 
     processEvent: processTreeEvent, 
     addUserMessage: addTreeUserMessage,
+    hydrateFromSteps,
     reset: resetTree,
   } = useExecutionTree()
 
@@ -118,13 +119,20 @@ export default function Chat() {
     return lastStep.role === 'assistant' && lastStep.tool_calls && lastStep.tool_calls.length > 0
   })()
 
-  // TODO: Convert existing steps to execution tree when loading session
   useEffect(() => {
-    if (existingSteps && existingSteps.length > 0 && executionTree.executions.length === 0) {
-      setCurrentSessionId(urlSessionId!)
-      // Note: stepsToEvents conversion for execution tree would need to be implemented
+    if (!existingSteps || existingSteps.length === 0) return
+    if (executionTree.executions.length > 0) return
+
+    hydrateFromSteps(existingSteps)
+    setCurrentSessionId(urlSessionId!)
+  }, [existingSteps, urlSessionId, executionTree.executions.length, hydrateFromSteps])
+
+  // Preselect agent/workflow when navigating with state (e.g., from Sessions continue)
+  useEffect(() => {
+    if (locationState?.agentId) {
+      setSelectedAgentId(locationState.agentId)
     }
-  }, [existingSteps, urlSessionId])
+  }, [locationState?.agentId, setSelectedAgentId])
 
   // Sync URL sessionId to state when navigating
   useEffect(() => {

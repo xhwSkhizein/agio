@@ -71,7 +71,7 @@ class PaginatedRuns(BaseModel):
 class SessionSummary(BaseModel):
     """Aggregated session summary for display."""
     session_id: str
-    agent_id: str
+    agent_id: str | None
     user_id: str | None
     workflow_id: str | None  # Workflow ID（用于分组展示同一 Workflow 的 session）
     run_count: int
@@ -115,9 +115,10 @@ async def list_session_summaries(
         if sid not in session_map:
             session_map[sid] = {
                 "session_id": sid,
-                "agent_id": run.agent_id,
+                "agent_id": run.runnable_id if run.runnable_type == "agent" else None,
                 "user_id": run.user_id,
-                "workflow_id": run.workflow_id,
+                "workflow_id": run.workflow_id
+                or (run.runnable_id if run.runnable_type == "workflow" else None),
                 "runs": [],
                 "last_activity": run.created_at,
                 "status": run.status.value,

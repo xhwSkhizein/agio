@@ -276,6 +276,7 @@ To fetch full content from a search result, use web_fetch tool with the result i
             citation_sources.append(
                 CitationSourceRaw(
                     citation_id=citation_id,
+                    session_id=session_id,
                     source_type=CitationSourceType.SEARCH,
                     url=item["url"],
                     title=item["title"],
@@ -324,12 +325,14 @@ To fetch full content from a search result, use web_fetch tool with the result i
 
                 # 存储并获取 citation_ids
                 citation_ids = await self._citation_source_store.store_citation_sources(
+                    session_id=session_id,
                     sources=citation_sources,
                 )
 
                 # 获取简化结果
                 simplified_results = (
                     await self._citation_source_store.get_simplified_sources(
+                        session_id=session_id,
                         citation_ids=citation_ids,
                     )
                 )

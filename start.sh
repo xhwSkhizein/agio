@@ -33,21 +33,33 @@ if [ ! -d "agio-frontend/node_modules" ]; then
     cd ..
 fi
 
-echo ""
-echo "✅ All dependencies installed"
-echo ""
-
-echo "🧪 Running backend tests..."
-uv run pytest
-
-echo "🧪 Running frontend tests..."
-cd agio-frontend
-npm test
-cd ..
+RUN_TESTS=false
+for arg in "$@"; do
+    if [ "$arg" = "--with-test" ]; then
+        RUN_TESTS=true
+    fi
+done
 
 echo ""
 echo "✅ All dependencies installed"
 echo ""
+
+if [ "$RUN_TESTS" = true ]; then
+    echo "🧪 Running backend tests..."
+    uv run pytest
+
+    echo "🧪 Running frontend tests..."
+    cd agio-frontend
+    npm test
+    cd ..
+
+    echo ""
+    echo "✅ Tests completed"
+    echo ""
+else
+    echo "⏩ Skipping tests (use --with-test to run)"
+    echo ""
+fi
 
 # 设置默认环境变量以避免组件加载失败
 export TICKETING_API_URL="http://mock-ticketing-api.com"

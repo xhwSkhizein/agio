@@ -117,14 +117,23 @@ export class ExecutionTreeBuilder {
     this.state = createBuilderState()
     this.sessionId = null
   }
-  
+
   /**
    * Get current execution tree
    */
   getTree(): ExecutionTree {
     return this.tree
   }
-  
+
+  /**
+   * Import an existing execution tree (used for hydrating history).
+   */
+  importTree(tree: ExecutionTree, sessionId?: string | null): void {
+    this.tree = tree
+    this.state = createBuilderState()
+    this.sessionId = sessionId ?? this.sessionId
+  }
+
   /**
    * Get session ID
    */

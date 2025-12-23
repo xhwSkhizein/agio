@@ -85,8 +85,9 @@ export default function Sessions() {
   })
 
   // Continue chat handler
-  const handleContinueChat = (sessionId: string) => {
-    navigate(`/chat/${sessionId}`)
+  const handleContinueChat = (session: SessionSummary) => {
+    const agentOrWorkflowId = session.agent_id ?? session.workflow_id ?? undefined
+    navigate(`/chat/${session.session_id}`, { state: { agentId: agentOrWorkflowId } })
   }
 
   // Open fork modal
@@ -203,7 +204,7 @@ export default function Sessions() {
         <button
           onClick={(e) => {
             e.stopPropagation()
-            handleContinueChat(session.session_id)
+            handleContinueChat(session)
           }}
           className="flex items-center gap-1 px-2 py-1 text-xs bg-primary-500/20 text-primary-400 rounded hover:bg-primary-500/30 transition-colors"
         >
@@ -297,7 +298,11 @@ export default function Sessions() {
                   <div className="flex items-center gap-2">
                     {selectedSession && (
                       <button
-                        onClick={() => handleContinueChat(selectedSession)}
+                        onClick={() => {
+                          const sessionMeta = sessions?.items.find((s) => s.session_id === selectedSession)
+                          if (!sessionMeta) return
+                          handleContinueChat(sessionMeta)
+                        }}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary-600 text-white rounded-lg hover:bg-primary-500 transition-colors"
                       >
                         <MessageSquare className="w-3.5 h-3.5" />
@@ -366,18 +371,24 @@ export default function Sessions() {
                               {(step.role === 'assistant' || step.role === 'user') && (
                                 <button
                                   onClick={() => {
-                                    const currentSession = sessions?.items.find((s: SessionSummary) => s.session_id === selectedSession)
+                                    const currentSession = sessions?.items.find(
+                                      (s: SessionSummary) => s.session_id === selectedSession
+                                    )
                                     openForkModal(
-                                      selectedSession!, 
-                                      step.sequence, 
+                                      selectedSession!,
+                                      step.sequence,
                                       step.role as 'assistant' | 'user',
                                       step.content || '',
                                       step.tool_calls,
-                                      currentSession?.agent_id
+                                      currentSession?.agent_id ?? undefined
                                     )
                                   }}
                                   className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400 hover:text-primary-400 hover:bg-primary-500/10 rounded transition-all"
-                                  title={step.role === 'user' ? 'Fork and edit this message' : 'Fork from this response'}
+                                  title={
+                                    step.role === 'user'
+                                      ? 'Fork and edit this message'
+                                      : 'Fork from this response'
+                                  }
                                 >
                                   <GitBranch className="w-3 h-3" />
                                   Fork

@@ -4,6 +4,8 @@ MongoDB implementation of SessionStore.
 
 from typing import List, Optional
 
+from pydantic import ValidationError
+
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from agio.providers.storage.base import SessionStore
@@ -128,7 +130,7 @@ class MongoSessionStore(SessionStore):
         await self._ensure_connection()
 
         try:
-            query = {}
+            query = {"runnable_id": {"$exists": True}}
             if user_id:
                 query["user_id"] = user_id
             if session_id:
@@ -140,7 +142,14 @@ class MongoSessionStore(SessionStore):
 
             runs = []
             async for doc in cursor:
-                runs.append(Run.model_validate(doc))
+                try:
+                    runs.append(Run.model_validate(doc))
+                except ValidationError as e:
+                    logger.error(
+                        "list_runs_validation_failed",
+                        error=str(e),
+                        doc_id=doc.get("id") or str(doc.get("_id")),
+                    )
             return runs
         except Exception as e:
             logger.error("list_runs_failed", error=str(e))

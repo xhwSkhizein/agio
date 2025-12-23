@@ -137,7 +137,7 @@ export interface Run {
 // Session Summary for aggregated view
 export interface SessionSummary {
   session_id: string
-  agent_id: string
+  agent_id: string | null
   user_id: string | null
   workflow_id: string | null
   run_count: number

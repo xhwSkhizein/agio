@@ -9,13 +9,91 @@ import { useRef, useCallback, useState } from 'react'
 import { ExecutionTreeBuilder, createExecutionTreeBuilder } from '../utils/executionTreeBuilder'
 import type { ExecutionTree } from '../types/execution'
 import { createEmptyTree } from '../types/execution'
+import type { BackendStep } from '../utils/stepsToEvents'
+import { stepsToEvents } from '../utils/stepsToEvents'
+import type { ExecutionStep, RunnableExecution } from '../types/execution'
 
 interface UseExecutionTreeResult {
   tree: ExecutionTree
   sessionId: string | null
   processEvent: (eventType: string, data: any) => void
   addUserMessage: (content: string) => void
+  hydrateFromSteps: (steps: BackendStep[]) => void
   reset: () => void
+}
+
+function buildExecutionTreeFromSteps(steps: BackendStep[]): ExecutionTree {
+  const tree = createEmptyTree()
+  if (!steps || steps.length === 0) {
+    return tree
+  }
+
+  const events = stepsToEvents(steps)
+  const firstTimestamp = new Date(steps[0].created_at).getTime()
+  const lastTimestamp = new Date(steps[steps.length - 1].created_at).getTime()
+
+  const exec: RunnableExecution = {
+    id: 'history',
+    runnableId: 'history',
+    runnableType: 'agent',
+    depth: 0,
+    status: 'completed',
+    steps: [],
+    children: [],
+    startTime: firstTimestamp,
+    endTime: lastTimestamp,
+  }
+
+  for (const event of events) {
+    if (event.type === 'user') {
+      tree.messages.push({
+        id: event.id,
+        type: 'user',
+        content: event.content || '',
+        timestamp: event.timestamp,
+      })
+      continue
+    }
+
+    if (event.type === 'assistant') {
+      const step: ExecutionStep = {
+        type: 'assistant_content',
+        stepId: event.id,
+        content: event.content || '',
+        reasoning_content: event.reasoning_content,
+      }
+      exec.steps.push(step)
+      continue
+    }
+
+    if (event.type === 'tool') {
+      // Create tool_call entry
+      exec.steps.push({
+        type: 'tool_call',
+        stepId: `${event.id}_call`,
+        toolCallId: event.id,
+        toolName: event.toolName || 'Tool',
+        toolArgs: event.toolArgs || '{}',
+      })
+
+      // If tool result exists, add result entry
+      if (event.toolResult !== undefined) {
+        exec.steps.push({
+          type: 'tool_result',
+          stepId: `${event.id}_result`,
+          toolCallId: event.id,
+          result: event.toolResult,
+          status: event.toolStatus === 'failed' ? 'failed' : 'completed',
+        })
+      }
+      continue
+    }
+  }
+
+  tree.executions.push(exec)
+  tree.executionMap.set(exec.id, exec)
+
+  return tree
 }
 
 export function useExecutionTree(): UseExecutionTreeResult {
@@ -41,6 +119,15 @@ export function useExecutionTree(): UseExecutionTreeResult {
     setTree({ ...builderRef.current.getTree() })
   }, [])
 
+  const hydrateFromSteps = useCallback((steps: BackendStep[]) => {
+    const hydrated = buildExecutionTreeFromSteps(steps)
+    // Reset builder state and seed with hydrated tree
+    builderRef.current.reset()
+    builderRef.current.importTree(hydrated)
+    setTree({ ...hydrated })
+    setSessionId(steps[0]?.session_id || null)
+  }, [])
+
   const reset = useCallback(() => {
     builderRef.current.reset()
     setTree(createEmptyTree())
@@ -52,6 +139,7 @@ export function useExecutionTree(): UseExecutionTreeResult {
     sessionId,
     processEvent,
     addUserMessage,
+    hydrateFromSteps,
     reset,
   }
 }
