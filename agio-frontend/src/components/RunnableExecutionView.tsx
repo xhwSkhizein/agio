@@ -148,7 +148,20 @@ interface ExecutionStepsProps {
 
 function ExecutionSteps({ execution }: ExecutionStepsProps) {
   const steps = execution.steps
-  const [activeParallelIndex, setActiveParallelIndex] = useState(0)
+  // Use a Map to track active index for each parallel tool call group
+  const [activeParallelIndices, setActiveParallelIndices] = useState<Map<number, number>>(new Map())
+
+  const getActiveIndex = (groupIdx: number, groupLength: number): number => {
+    return activeParallelIndices.get(groupIdx) ?? 0
+  }
+
+  const setActiveIndex = (groupIdx: number, index: number): void => {
+    setActiveParallelIndices(prev => {
+      const newMap = new Map(prev)
+      newMap.set(groupIdx, index)
+      return newMap
+    })
+  }
 
   if (steps.length === 0 && execution.status === 'running') {
     return (
@@ -211,18 +224,19 @@ function ExecutionSteps({ execution }: ExecutionStepsProps) {
         // Handle grouped tool_calls (concurrent execution)
         if (Array.isArray(stepOrGroup)) {
           const toolCallSteps = stepOrGroup as Extract<ExecutionStep, { type: 'tool_call' }>[]
-          const activeToolCall = toolCallSteps[activeParallelIndex] || toolCallSteps[0]
+          const activeIndex = getActiveIndex(idx, toolCallSteps.length)
+          const activeToolCall = toolCallSteps[activeIndex] || toolCallSteps[0]
           const toolResult = getToolResult(activeToolCall.toolCallId)
           const childExec = getChildForToolCall(activeToolCall)
-          const canGoPrev = activeParallelIndex > 0
-          const canGoNext = activeParallelIndex < toolCallSteps.length - 1
+          const canGoPrev = activeIndex > 0
+          const canGoNext = activeIndex < toolCallSteps.length - 1
 
           return (
             <div key={`parallel_tools_${idx}`} className="rounded-lg border border-amber-500/30 bg-amber-500/5 overflow-hidden">
               {/* Parallel tool calls header */}
               <div className="flex items-center gap-1 px-2 pt-1 border-b border-border/50 bg-surface/20">
                 <button
-                  onClick={() => setActiveParallelIndex(prev => Math.max(0, prev - 1))}
+                  onClick={() => setActiveIndex(idx, Math.max(0, activeIndex - 1))}
                   disabled={!canGoPrev}
                   className={`p-1 rounded transition-colors ${
                     canGoPrev
@@ -236,7 +250,7 @@ function ExecutionSteps({ execution }: ExecutionStepsProps) {
                 <div className="flex-1 flex items-center gap-0.5 overflow-x-auto scrollbar-hide">
                   {toolCallSteps.map((tc, tcIdx) => {
                     const tcResult = getToolResult(tc.toolCallId)
-                    const isActive = tcIdx === activeParallelIndex
+                    const isActive = tcIdx === activeIndex
                     const statusColors = {
                       running: 'border-blue-500',
                       completed: 'border-green-500',
@@ -247,7 +261,7 @@ function ExecutionSteps({ execution }: ExecutionStepsProps) {
                     return (
                       <button
                         key={tc.toolCallId}
-                        onClick={() => setActiveParallelIndex(tcIdx)}
+                        onClick={() => setActiveIndex(idx, tcIdx)}
                         className={`flex items-center gap-1.5 px-2 py-1 rounded-t-lg border-b-2 transition-colors ${
                           isActive
                             ? `bg-surface/50 ${statusColors[status]}`
@@ -266,7 +280,7 @@ function ExecutionSteps({ execution }: ExecutionStepsProps) {
                 </div>
 
                 <button
-                  onClick={() => setActiveParallelIndex(prev => Math.min(toolCallSteps.length - 1, prev + 1))}
+                  onClick={() => setActiveIndex(idx, Math.min(toolCallSteps.length - 1, activeIndex + 1))}
                   disabled={!canGoNext}
                   className={`p-1 rounded transition-colors ${
                     canGoNext
@@ -278,7 +292,7 @@ function ExecutionSteps({ execution }: ExecutionStepsProps) {
                 </button>
 
                 <span className="text-[10px] text-gray-500 font-mono px-1">
-                  {activeParallelIndex + 1}/{toolCallSteps.length}
+                  {activeIndex + 1}/{toolCallSteps.length}
                 </span>
               </div>
 
@@ -309,13 +323,13 @@ function ExecutionSteps({ execution }: ExecutionStepsProps) {
                   return (
                     <button
                       key={tc.toolCallId}
-                      onClick={() => setActiveParallelIndex(tcIdx)}
+                      onClick={() => setActiveIndex(idx, tcIdx)}
                       className={`flex-1 h-1 rounded-full transition-colors ${
                         status === 'completed' ? 'bg-green-500/60' :
                         status === 'running' ? 'bg-blue-500/60 animate-pulse' :
                         status === 'failed' ? 'bg-red-500/60' :
                         'bg-gray-700'
-                      } ${tcIdx === activeParallelIndex ? 'ring-1 ring-white/30' : ''}`}
+                        } ${tcIdx === activeIndex ? 'ring-1 ring-white/30' : ''}`}
                       title={`${tc.toolName}: ${status}`}
                     />
                   )

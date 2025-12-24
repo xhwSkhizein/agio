@@ -9,10 +9,18 @@
 - [ ] 各种 Store 没有一个统一的 Specs，应该像 K8s 中的 spec 一样，为各种 Store 设计Specs，然后同步不同类型的父类进行封装/抽象管理，方便后续拓展，也方便 yaml 配置时格式统一，同样的系统中所有支持配置的组件应该都是这种模式
 
 
+
 - [ ] web 展示问题
-  - [ ] 当一个 Agent 运行过程中存在多次并发工具调用时，在并排展示的视图中点击任意一组的其中个工具调用 tab，所有的并发工具调用组都会跟着切换
+  - [x] 当一个 Agent 运行过程中存在多次并发工具调用时，在并排展示的视图中点击任意一组的其中个工具调用 tab，所有的并发工具调用组都会跟着切换
   - [ ] 通过 Sessions 页面中的 Continue Chat 按钮或 /chat/[session_id] 访问聊天界面时，历史会话会显示，但是显示的内容并没有按照之前运行时那种有层级的展示，而且展示的很混乱
 
+
+- [ ] 基础工具问题
+  - [ ] playwright 爬虫依赖的 ToolSettings 疑似遗留代码问题，需要进行重构优化
+  ```
+  2025-12-24T03:13:07.887675Z [info     ] 启动 Playwright 爬虫               [agio.providers.tools.builtin.common.web_fetch.playwright_crawler]
+2025-12-24T03:13:08.101525Z [error    ] 启动失败: 'ToolSettings' object has no attribute 'web_fetch_headless' [agio.providers.tools.builtin.common.web_fetch.playwright_crawler]
+```
 
 
 ## 🤔 疑问
