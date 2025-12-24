@@ -22,6 +22,7 @@ async def build_context_from_steps(
     run_id: str | None = None,
     workflow_id: str | None = None,
     node_id: str | None = None,
+    runnable_id: str | None = None,
 ) -> list[dict]:
     """
     Build LLM context from Steps using StepAdapter.
@@ -33,6 +34,7 @@ async def build_context_from_steps(
         run_id: Filter by run_id (optional, for isolating agent context)
         workflow_id: Filter by workflow_id (optional)
         node_id: Filter by node_id (optional)
+        runnable_id: Filter by runnable_id (optional, for isolating agent steps)
 
     Returns:
         list[dict]: Messages in OpenAI format, ready to send to LLM
@@ -43,6 +45,7 @@ async def build_context_from_steps(
         run_id=run_id,
         workflow_id=workflow_id,
         node_id=node_id,
+        runnable_id=runnable_id,
     )
 
     # 1. Query steps from session_store with optional filters
@@ -51,6 +54,7 @@ async def build_context_from_steps(
         run_id=run_id,
         workflow_id=workflow_id,
         node_id=node_id,
+        runnable_id=runnable_id,
     )
 
     logger.debug("context_steps_loaded", session_id=session_id, count=len(steps))
@@ -76,6 +80,7 @@ async def build_context_from_sequence_range(
     run_id: str | None = None,
     workflow_id: str | None = None,
     node_id: str | None = None,
+    runnable_id: str | None = None,
 ) -> list[dict]:
     """
     Build context from a specific sequence range.
@@ -89,6 +94,7 @@ async def build_context_from_sequence_range(
         run_id: Filter by run_id (optional)
         workflow_id: Filter by workflow_id (optional)
         node_id: Filter by node_id (optional)
+        runnable_id: Filter by runnable_id (optional)
 
     Returns:
         list[dict]: Messages in OpenAI format
@@ -100,6 +106,7 @@ async def build_context_from_sequence_range(
         run_id=run_id,
         workflow_id=workflow_id,
         node_id=node_id,
+        runnable_id=runnable_id,
     )
     messages = StepAdapter.steps_to_messages(steps)
 

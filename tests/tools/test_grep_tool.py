@@ -4,6 +4,8 @@ import pytest
 from pathlib import Path
 
 from agio.providers.tools.builtin.grep_tool import GrepTool
+from agio.domain import ExecutionContext
+from agio.runtime import Wire
 from agio.agent import AbortSignal
 
 
@@ -14,6 +16,13 @@ class TestGrepTool:
     def tool(self):
         """创建工具实例"""
         return GrepTool()
+
+    @pytest.fixture
+    def context(self):
+        """创建执行上下文"""
+        from agio.domain import ExecutionContext
+        from agio.runtime import Wire
+        return ExecutionContext(run_id="test_run", session_id="test_session", wire=Wire())
 
     @pytest.fixture
     def test_files(self):
@@ -40,13 +49,13 @@ class TestGrepTool:
                 shutil.rmtree(test_dir)
 
     @pytest.mark.asyncio
-    async def test_basic_search(self, tool, test_files):
+    async def test_basic_search(self, tool, test_files, context):
         """测试基本搜索"""
         result = await tool.execute({
             "tool_call_id": "test_123",
             "pattern": "Hello",
             "path": str(test_files),
-        })
+        }, context=context)
 
         assert result.is_success
         assert result.tool_name == tool.name
@@ -57,27 +66,27 @@ class TestGrepTool:
         assert len(result.output["filenames"]) > 0
 
     @pytest.mark.asyncio
-    async def test_case_insensitive_search(self, tool, test_files):
+    async def test_case_insensitive_search(self, tool, test_files, context):
         """测试大小写不敏感搜索"""
         result = await tool.execute({
             "tool_call_id": "test_case",
             "pattern": "hello",  # 小写
             "path": str(test_files),
-        })
+        }, context=context)
 
         assert result.is_success
         # 应该找到包含 "Hello" 的文件
         assert result.output["num_files"] > 0
 
     @pytest.mark.asyncio
-    async def test_search_with_include_pattern(self, tool, test_files):
+    async def test_search_with_include_pattern(self, tool, test_files, context):
         """测试使用 include 模式"""
         result = await tool.execute({
             "tool_call_id": "test_include",
             "pattern": "Hello",
             "path": str(test_files),
             "include": "*.txt",  # 只搜索 .txt 文件
-        })
+        }, context=context)
 
         assert result.is_success
         # 检查结果中只包含 .txt 文件
@@ -85,45 +94,45 @@ class TestGrepTool:
             assert filename.endswith(".txt")
 
     @pytest.mark.asyncio
-    async def test_no_results(self, tool, test_files):
+    async def test_no_results(self, tool, test_files, context):
         """测试无结果情况"""
         result = await tool.execute({
             "tool_call_id": "test_no_results",
             "pattern": "NonExistentPattern12345",
             "path": str(test_files),
-        })
+        }, context=context)
 
         assert result.is_success
         assert result.output["num_files"] == 0
         assert len(result.output["filenames"]) == 0
 
     @pytest.mark.asyncio
-    async def test_empty_pattern(self, tool):
+    async def test_empty_pattern(self, tool, context):
         """测试空模式"""
         result = await tool.execute({
             "tool_call_id": "test_empty",
             "pattern": "",
             "path": ".",
-        })
+        }, context=context)
 
         assert not result.is_success
         assert result.error
         assert "pattern" in result.content.lower() or "empty" in result.content.lower()
 
     @pytest.mark.asyncio
-    async def test_invalid_path(self, tool):
+    async def test_invalid_path(self, tool, context):
         """测试无效路径"""
         result = await tool.execute({
             "tool_call_id": "test_invalid",
             "pattern": "test",
             "path": "/nonexistent/path/that/does/not/exist",
-        })
+        }, context=context)
 
         assert not result.is_success
         assert result.error
 
     @pytest.mark.asyncio
-    async def test_abort_signal_before_execution(self, tool, test_files):
+    async def test_abort_signal_before_execution(self, tool, test_files, context):
         """测试执行前中断"""
         abort_signal = AbortSignal()
         abort_signal.abort("Test cancellation")
@@ -135,6 +144,7 @@ class TestGrepTool:
                 "path": str(test_files),
             },
             abort_signal=abort_signal,
+            context=context,
         )
 
         assert not result.is_success
@@ -142,13 +152,13 @@ class TestGrepTool:
         assert "aborted" in result.content.lower()
 
     @pytest.mark.asyncio
-    async def test_output_structure(self, tool, test_files):
+    async def test_output_structure(self, tool, test_files, context):
         """测试输出结构"""
         result = await tool.execute({
             "tool_call_id": "test_output",
             "pattern": "Hello",
             "path": str(test_files),
-        })
+        }, context=context)
 
         assert result.is_success
         assert result.output is not None
@@ -166,13 +176,13 @@ class TestGrepTool:
         assert result.output["duration_ms"] >= 0
 
     @pytest.mark.asyncio
-    async def test_timing_information(self, tool, test_files):
+    async def test_timing_information(self, tool, test_files, context):
         """测试时间信息"""
         result = await tool.execute({
             "tool_call_id": "test_timing",
             "pattern": "Hello",
             "path": str(test_files),
-        })
+        }, context=context)
 
         assert result.is_success
         assert result.start_time > 0
@@ -181,13 +191,13 @@ class TestGrepTool:
         assert abs(result.duration - (result.end_time - result.start_time)) < 0.001
 
     @pytest.mark.asyncio
-    async def test_search_in_subdirectories(self, tool, test_files):
+    async def test_search_in_subdirectories(self, tool, test_files, context):
         """测试在子目录中搜索"""
         result = await tool.execute({
             "tool_call_id": "test_subdir",
             "pattern": "Hello",
             "path": str(test_files),
-        })
+        }, context=context)
 
         assert result.is_success
         # 应该找到主目录和子目录中的文件
@@ -198,14 +208,14 @@ class TestGrepTool:
         assert "subdir" in filenames_str
 
     @pytest.mark.asyncio
-    async def test_python_file_search(self, tool, test_files):
+    async def test_python_file_search(self, tool, test_files, context):
         """测试搜索 Python 文件"""
         result = await tool.execute({
             "tool_call_id": "test_python",
             "pattern": "def",
             "path": str(test_files),
             "include": "*.py",
-        })
+        }, context=context)
 
         assert result.is_success
         assert result.output["num_files"] > 0
@@ -214,14 +224,14 @@ class TestGrepTool:
             assert filename.endswith(".py")
 
     @pytest.mark.asyncio
-    async def test_relative_path_search(self, tool):
+    async def test_relative_path_search(self, tool, context):
         """测试相对路径搜索"""
         result = await tool.execute({
             "tool_call_id": "test_relative",
             "pattern": "import",
             "path": "agio",  # 相对路径
             "include": "*.py",
-        })
+        }, context=context)
 
         # 应该能够搜索
         assert result.is_success or not result.is_success  # 取决于是否有匹配

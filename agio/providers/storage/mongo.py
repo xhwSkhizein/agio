@@ -60,6 +60,7 @@ class MongoSessionStore(SessionStore):
         self.db = None
         self.runs_collection = None
         self.steps_collection = None
+        self.counters_collection = None
 
     async def _ensure_connection(self):
         """Ensure database connection is established."""
@@ -68,6 +69,7 @@ class MongoSessionStore(SessionStore):
             self.db = self.client[self.db_name]
             self.runs_collection = self.db["runs"]
             self.steps_collection = self.db["steps"]
+            self.counters_collection = self.db["counters"]
 
             # Create indexes for runs
             await self.runs_collection.create_index("id", unique=True)
@@ -90,6 +92,9 @@ class MongoSessionStore(SessionStore):
             )
             await self.steps_collection.create_index([("session_id", 1), ("tool_call_id", 1)])
             await self.steps_collection.create_index("created_at")
+
+            # Create index for counters collection
+            await self.counters_collection.create_index("session_id", unique=True)
 
             logger.info("mongodb_connected", uri=self.uri, db_name=self.db_name)
 
@@ -176,15 +181,22 @@ class MongoSessionStore(SessionStore):
         """Save or update a step."""
         await self._ensure_connection()
 
-        try:
-            step_data = step.model_dump(mode="json")
-            step_data = filter_none_values(step_data)
+        step_data = step.model_dump(mode="json", exclude_none=True)
+        step_data = filter_none_values(step_data)
 
+        try:
+            # Use upsert: update if step.id exists, insert otherwise
             await self.steps_collection.update_one(
                 {"id": step.id}, {"$set": step_data}, upsert=True
             )
         except Exception as e:
-            logger.error("save_step_failed", error=str(e), step_id=step.id)
+            logger.error(
+                "save_step_failed",
+                error=str(e),
+                step_id=step.id,
+                session_id=step.session_id,
+                sequence=step.sequence,
+            )
             raise
 
     async def save_steps_batch(self, steps: List[Step]) -> None:
@@ -219,6 +231,7 @@ class MongoSessionStore(SessionStore):
         workflow_id: Optional[str] = None,
         node_id: Optional[str] = None,
         branch_key: Optional[str] = None,
+        runnable_id: Optional[str] = None,
         limit: int = 1000,
     ) -> List[Step]:
         """Get steps for a session with optional filtering."""
@@ -242,6 +255,8 @@ class MongoSessionStore(SessionStore):
                 query["node_id"] = node_id
             if branch_key is not None:
                 query["branch_key"] = branch_key
+            if runnable_id is not None:
+                query["runnable_id"] = runnable_id
 
             cursor = self.steps_collection.find(query).sort("sequence", 1).limit(limit)
 
@@ -312,6 +327,58 @@ class MongoSessionStore(SessionStore):
         except Exception as e:
             logger.error("get_max_sequence_failed", error=str(e), session_id=session_id)
             raise
+
+    async def allocate_sequence(self, session_id: str) -> int:
+        """
+        Atomically allocate next sequence number using MongoDB's findAndModify.
+        Thread-safe and concurrent-safe operation.
+
+        Args:
+            session_id: Session ID
+
+        Returns:
+            Next sequence number (starting from 1)
+        """
+        await self._ensure_connection()
+
+        try:
+            # First, try to increment existing counter
+            result = await self.counters_collection.find_one_and_update(
+                {"session_id": session_id},
+                {"$inc": {"sequence": 1}},
+                return_document=True,
+            )
+            
+            if result:
+                return result["sequence"]
+            
+            # Counter doesn't exist, initialize from steps collection
+            max_seq = await self.get_max_sequence(session_id)
+            
+            # Try to insert initial counter value
+            # Use insert to avoid race condition (will fail if another thread inserted first)
+            try:
+                await self.counters_collection.insert_one({
+                    "session_id": session_id,
+                    "sequence": max_seq + 1,
+                })
+                return max_seq + 1
+            except Exception:
+                # Another thread already initialized, retry increment
+                result = await self.counters_collection.find_one_and_update(
+                    {"session_id": session_id},
+                    {"$inc": {"sequence": 1}},
+                    return_document=True,
+                )
+                if result:
+                    return result["sequence"]
+                # Should never reach here
+                raise RuntimeError(f"Failed to allocate sequence for session {session_id}")
+                
+        except Exception as e:
+            logger.error("allocate_sequence_failed", error=str(e), session_id=session_id)
+            raise
+
 
     async def get_step_by_tool_call_id(
         self,

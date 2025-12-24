@@ -24,6 +24,7 @@ export type ExecutionStep =
       toolCallId: string
       toolName: string
       toolArgs: string
+      childRunId?: string  // run_id of child execution triggered by this tool call
     }
   | { 
       type: 'tool_result'

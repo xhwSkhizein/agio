@@ -16,6 +16,7 @@ export interface WaterfallSpan {
   sublabel: string | null;
   tokens: number | null;
   metrics?: Record<string, any>;
+  llm_details?: Record<string, any>; // Complete LLM call details (for LLM_CALL spans)
 }
 
 interface WaterfallProps {
@@ -24,7 +25,8 @@ interface WaterfallProps {
   onSpanClick?: (span: WaterfallSpan) => void;
 }
 
-const LABEL_WIDTH = 250;
+const LABEL_MIN_WIDTH = 200;
+const LABEL_MAX_WIDTH = 400;
 const MIN_BAR_WIDTH = 4;
 const TIMELINE_MIN_WIDTH = 600;
 
@@ -84,59 +86,77 @@ export function Waterfall({ spans, totalDuration, onSpanClick }: WaterfallProps)
 
   const timeMarkers = [0, 0.25, 0.5, 0.75, 1];
 
-  const renderMetrics = (span: WaterfallSpan) => {
-    if (!span.metrics) return null;
+  const formatTokens = (count: number | null | undefined): string => {
+    if (count === null || count === undefined) return '';
+    if (count >= 1000) return `${(count / 1000).toFixed(1)}k`;
+    return count.toString();
+  };
 
-    const chips: { label: string; value: string | number }[] = [];
-    const tokensTotal = span.metrics["tokens.total"] ?? span.metrics["total_tokens"];
-    const tokensIn = span.metrics["tokens.input"];
-    const tokensOut = span.metrics["tokens.output"];
-    const firstToken = span.metrics["first_token_ms"];
-    const duration = span.metrics["duration_ms"];
-    const toolExec = span.metrics["tool.exec_time_ms"];
+  const getPrimaryInfo = (span: WaterfallSpan): { text: string; type: 'tokens' | 'duration' | null } => {
+    // For LLM calls, prioritize tokens
+    if (span.kind === 'llm_call') {
+      const tokensTotal = span.tokens ?? span.metrics?.["tokens.total"] ?? span.metrics?.["total_tokens"];
+      if (tokensTotal !== null && tokensTotal !== undefined && tokensTotal > 0) {
+        const formatted = formatTokens(tokensTotal);
+        return { text: `${formatted} tokens`, type: 'tokens' };
+      }
+      // Fallback to duration if no tokens
+      if (span.duration_ms > 0) {
+        return { text: formatDuration(span.duration_ms), type: 'duration' };
+      }
+    }
+    
+    // For tool calls, prioritize execution time
+    if (span.kind === 'tool_call') {
+      const toolExec = span.metrics?.["tool.exec_time_ms"];
+      if (toolExec !== null && toolExec !== undefined && toolExec > 0) {
+        return { text: formatDuration(toolExec), type: 'duration' };
+      }
+      // Fallback to duration_ms
+      if (span.duration_ms > 0) {
+        return { text: formatDuration(span.duration_ms), type: 'duration' };
+      }
+    }
+    
+    // For other types, use duration if available
+    if (span.duration_ms > 0) {
+      return { text: formatDuration(span.duration_ms), type: 'duration' };
+    }
+    
+    return { text: '', type: null };
+  };
 
-    if (tokensTotal !== undefined) {
-      chips.push({ label: "tokens", value: tokensTotal });
-    } else if (tokensIn !== undefined || tokensOut !== undefined) {
-      chips.push({
-        label: "tokens",
-        value: `${tokensIn ?? "-"} / ${tokensOut ?? "-"}`,
-      });
+  const getSecondaryInfo = (span: WaterfallSpan): string[] => {
+    const info: string[] = [];
+    
+    if (span.kind === 'llm_call') {
+      const firstToken = span.metrics?.["first_token_ms"];
+      if (firstToken !== null && firstToken !== undefined) {
+        info.push(`TTFT: ${formatDuration(firstToken)}`);
+      }
     }
-    if (firstToken !== undefined && firstToken !== null) {
-      chips.push({ label: "first_token", value: `${Number(firstToken).toFixed(0)}ms` });
+    
+    if (span.kind === 'tool_call') {
+      const toolExec = span.metrics?.["tool.exec_time_ms"];
+      if (toolExec !== null && toolExec !== undefined && span.duration_ms !== toolExec) {
+        info.push(`Total: ${formatDuration(span.duration_ms)}`);
+      }
     }
-    if (duration !== undefined && duration !== null) {
-      chips.push({ label: "latency", value: `${Number(duration).toFixed(0)}ms` });
-    }
-    if (toolExec !== undefined && toolExec !== null) {
-      chips.push({ label: "tool_exec", value: `${Number(toolExec).toFixed(0)}ms` });
-    }
-
-    if (!chips.length) return null;
-
-    return (
-      <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-400 font-mono">
-        {chips.map((chip) => (
-          <span
-            key={`${span.span_id}-${chip.label}`}
-            className="px-2 py-0.5 rounded bg-surfaceHighlight border border-border/60 text-white/80"
-          >
-            {chip.label}: <span className="font-semibold text-white">{chip.value}</span>
-          </span>
-        ))}
-      </div>
-    );
+    
+    return info;
   };
 
   return (
     <div className="w-full">
       {/* Timeline header */}
-      <div className="flex border-b border-border mb-2 pb-2">
-        <div style={{ width: LABEL_WIDTH }} className="shrink-0 px-2 py-1 text-sm font-medium text-white">
+      <div className="flex border-b border-border mb-2 pb-2 overflow-x-auto">
+        <div 
+          style={{ minWidth: LABEL_MIN_WIDTH, maxWidth: LABEL_MAX_WIDTH }} 
+          className="shrink-0 px-2 py-1 text-sm font-medium text-white"
+        >
           Span
         </div>
-        <div className="flex-1 relative h-6" style={{ minWidth: TIMELINE_MIN_WIDTH }}>
+        <div className="flex-1 relative h-6 shrink-0" style={{ minWidth: TIMELINE_MIN_WIDTH }}>
           {timeMarkers.map((pct) => (
             <div
               key={pct}
@@ -162,10 +182,13 @@ export function Waterfall({ spans, totalDuration, onSpanClick }: WaterfallProps)
 
           const isError = span.status === 'error';
 
+          const primaryInfo = getPrimaryInfo(span);
+          const secondaryInfo = getSecondaryInfo(span);
+
           return (
             <div
               key={span.span_id}
-              className={`flex items-center h-10 hover:bg-surfaceHighlight cursor-pointer transition-colors ${
+              className={`flex items-center min-h-[3rem] py-1 hover:bg-surfaceHighlight cursor-pointer transition-colors ${
                 isError ? 'bg-red-900/20' : ''
               }`}
               onClick={() => onSpanClick?.(span)}
@@ -173,27 +196,49 @@ export function Waterfall({ spans, totalDuration, onSpanClick }: WaterfallProps)
               {/* Label */}
               <div
                 style={{
-                  width: LABEL_WIDTH,
+                  minWidth: LABEL_MIN_WIDTH,
+                  maxWidth: LABEL_MAX_WIDTH,
                   paddingLeft: span.depth * 16 + 8,
                 }}
-                className="shrink-0 truncate text-sm flex items-center gap-2"
+                className="shrink-0 px-2 flex flex-col gap-0.5"
               >
-                <span className="text-base">
-                  {KIND_ICONS[span.kind] || '●'}
-                </span>
-                <span className="font-medium text-white">
-                  {span.label}
-                </span>
-                {span.sublabel && (
-                  <span className="text-gray-400 text-xs">
-                    ({span.sublabel})
+                {/* Main label row */}
+                <div className="flex items-center gap-2">
+                  <span className="text-base shrink-0">
+                    {KIND_ICONS[span.kind] || '●'}
                   </span>
+                  <span 
+                    className="font-medium text-white truncate text-sm" 
+                    title={span.label}
+                  >
+                    {span.label}
+                  </span>
+                </div>
+                
+                {/* Secondary info row */}
+                {(primaryInfo.text || secondaryInfo.length > 0) && (
+                  <div className="flex items-center gap-2 ml-6 text-xs">
+                    {primaryInfo.text && (
+                      <span className={`font-medium ${
+                        primaryInfo.type === 'tokens' ? 'text-yellow-400' : 'text-blue-400'
+                      }`}>
+                        {primaryInfo.text}
+                      </span>
+                    )}
+                    {secondaryInfo.length > 0 && (
+                      <>
+                        {primaryInfo.text && <span className="text-gray-600 mx-1">•</span>}
+                        <span className="text-gray-500">
+                          {secondaryInfo.join(' • ')}
+                        </span>
+                      </>
+                    )}
+                  </div>
                 )}
-                {renderMetrics(span)}
               </div>
 
               {/* Timeline bar */}
-              <div className="flex-1 relative h-full" style={{ minWidth: TIMELINE_MIN_WIDTH }}>
+              <div className="flex-1 relative h-full shrink-0" style={{ minWidth: TIMELINE_MIN_WIDTH }}>
                 <div
                   className={`absolute top-1/2 -translate-y-1/2 h-5 rounded shadow-sm ${
                     KIND_COLORS[span.kind] || 'bg-gray-400'

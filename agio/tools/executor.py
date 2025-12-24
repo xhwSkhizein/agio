@@ -92,16 +92,6 @@ class ToolExecutor:
 
         args["tool_call_id"] = call_id
 
-        # Inject context information for RunnableTool and other context-aware tools
-        # We pass individual fields for compatibility with RunnableTool's current expectations
-        # and the full object for future use.
-        args["_wire"] = context.wire
-        args["_parent_run_id"] = context.run_id
-        args["_trace_id"] = context.trace_id
-        args["_parent_span_id"] = context.span_id
-        args["_depth"] = context.depth
-        args["_execution_context"] = context
-
         # Check cache for cacheable tools
         session_id = context.session_id
         if session_id and tool.cacheable:
@@ -123,7 +113,7 @@ class ToolExecutor:
 
         try:
             logger.debug("executing_tool", tool_name=fn_name, tool_call_id=call_id)
-            result: ToolResult = await tool.execute(args, abort_signal=abort_signal)
+            result: ToolResult = await tool.execute(args, context=context, abort_signal=abort_signal)
             logger.debug(
                 "tool_execution_completed",
                 tool_name=fn_name,

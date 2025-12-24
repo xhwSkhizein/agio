@@ -49,7 +49,8 @@ export default function Chat() {
 
   // Execution tree state
   const { 
-    tree: executionTree, 
+    tree: executionTree,
+    sessionId: treeSessionId,
     processEvent: processTreeEvent, 
     addUserMessage: addTreeUserMessage,
     hydrateFromSteps,
@@ -119,13 +120,28 @@ export default function Chat() {
     return lastStep.role === 'assistant' && lastStep.tool_calls && lastStep.tool_calls.length > 0
   })()
 
+  // Hydrate execution tree when session changes
   useEffect(() => {
     if (!existingSteps || existingSteps.length === 0) return
-    if (executionTree.executions.length > 0) return
+    if (!urlSessionId) return
 
+    // If tree has different session ID, reset and rehydrate
+    const needsReset = treeSessionId !== null && treeSessionId !== urlSessionId
+
+    // If tree already has data for this session, skip hydration
+    if (!needsReset && executionTree.executions.length > 0 && treeSessionId === urlSessionId) {
+      return
+    }
+
+    // Reset tree if switching to different session
+    if (needsReset) {
+      resetTree()
+    }
+
+    // Hydrate with new session's steps
     hydrateFromSteps(existingSteps)
-    setCurrentSessionId(urlSessionId!)
-  }, [existingSteps, urlSessionId, executionTree.executions.length, hydrateFromSteps])
+    setCurrentSessionId(urlSessionId)
+  }, [existingSteps, urlSessionId, treeSessionId, executionTree.executions.length, hydrateFromSteps, resetTree])
 
   // Preselect agent/workflow when navigating with state (e.g., from Sessions continue)
   useEffect(() => {

@@ -4,15 +4,103 @@
 
 ## 目录结构
 
+配置系统支持**灵活的文件夹组织方式**，可以按任意目录结构组织配置文件。
+
+### 推荐结构
+
 ```
 configs/
-├── agents/          # Agent 配置
-├── models/          # LLM 模型配置
-├── tools/           # 工具配置（内置 + 自定义）
-├── storages/        # SessionStore 配置（内存/MongoDB）
-├── observability/   # TraceStore 配置（可观测性数据）
-└── workflows/       # Workflow 编排配置（示例）
+├── agents/                    # Agent 配置
+│   ├── simple_assistant.yaml
+│   ├── collector.yaml
+│   └── master_orchestrator.yaml
+├── models/                    # LLM 模型配置
+│   ├── deepseek.yaml
+│   ├── deepseek-reasoner.yaml
+│   ├── claude.yaml
+│   ├── gpt-4o-mini.yaml
+│   └── embedding.yaml
+├── tools/                     # 工具配置（按功能分类）
+│   ├── file_operations/       # 文件操作工具
+│   │   ├── file_read.yaml
+│   │   ├── file_write.yaml
+│   │   └── file_edit.yaml
+│   ├── web_operations/        # Web 操作工具
+│   │   ├── web_search.yaml
+│   │   └── web_fetch.yaml
+│   ├── system_operations/     # 系统操作工具
+│   │   ├── bash.yaml
+│   │   ├── ls.yaml
+│   │   ├── grep.yaml
+│   │   └── glob.yaml
+│   └── utilities/             # 工具类
+│       └── get_tool_result.yaml
+├── storages/                  # 存储配置（按类型分类）
+│   ├── session_stores/        # 会话存储
+│   │   ├── mongodb.yaml
+│   │   └── inmemory.yaml
+│   └── citation_stores/       # 引用存储
+│       └── citation_store_mongodb.yaml
+├── observability/             # 可观测性配置
+│   └── trace_store.yaml
+└── workflows/                 # Workflow 编排配置
+    └── examples/              # 示例工作流
+        ├── example_pipeline.yaml
+        ├── example_parallel.yaml
+        ├── example_loop.yaml
+        ├── example_composite.yaml
+        └── example_quality_loop.yaml
 ```
+
+### 灵活组织方式
+
+配置系统会**递归扫描**所有子目录中的 YAML 文件，并基于配置文件中的 `type` 字段自动识别组件类型。这意味着你可以：
+
+- **按功能分类**（当前采用的方式）：
+  ```
+  configs/
+  ├── tools/
+  │   ├── file_operations/    # 文件操作工具
+  │   ├── web_operations/      # Web 操作工具
+  │   ├── system_operations/   # 系统操作工具
+  │   └── utilities/          # 工具类
+  └── storages/
+      ├── session_stores/     # 会话存储
+      └── citation_stores/     # 引用存储
+  ```
+
+- **按环境组织**：
+  ```
+  configs/
+  ├── production/
+  │   ├── models/
+  │   └── agents/
+  └── development/
+      ├── models/
+      └── agents/
+  ```
+
+- **按团队组织**：
+  ```
+  configs/
+  ├── team-a/
+  │   └── workflows/
+  └── team-b/
+      └── workflows/
+  ```
+
+- **任意嵌套结构**：
+  ```
+  configs/
+  ├── shared/
+  │   └── storages/
+  └── custom/
+      └── nested/
+          └── path/
+              └── config.yaml
+  ```
+
+**重要**：配置文件的类型由 `type` 字段决定，而不是文件夹名称。文件夹仅用于组织，不影响类型识别。
 
 ## 环境变量
 
@@ -64,10 +152,12 @@ ConfigSystem (门面/协调者)
 
 ## 加载与构建
 
+配置系统会递归扫描指定目录下的所有 YAML 文件，基于每个文件的 `type` 字段识别组件类型。
+
 ```python
 from agio.config import init_config_system
 
-# 读取目录 -> 解析 -> 验证 -> 拓扑排序 -> 构建实例
+# 读取目录 -> 递归扫描 -> 解析 -> 验证 -> 拓扑排序 -> 构建实例
 config_sys = await init_config_system("./configs")
 
 # 直接获取已构建组件
@@ -89,6 +179,16 @@ await config_sys.save_config(new_model)
 ```
 
 服务启动时 `agio.api.app` 会自动读取 `AGIO_CONFIG_DIR` 并调用 `load_from_directory` + `build_all`。
+
+### 配置加载机制
+
+1. **递归扫描**：`ConfigLoader` 使用 `rglob("*.yaml")` 递归扫描所有子目录
+2. **类型识别**：从配置文件的 `type` 字段识别组件类型（`model`, `tool`, `agent`, `workflow` 等）
+3. **重复检测**：如果发现相同 `(type, name)` 的配置，会记录警告，后加载的覆盖先加载的
+4. **错误处理**：
+   - 缺少 `type` 或 `name` 字段：记录警告并跳过
+   - 未知类型：记录警告并跳过
+   - `enabled: false`：跳过但不报错
 
 ### 扩展模型 Provider
 
@@ -288,9 +388,28 @@ stages:
 | `params` | dict | 工具参数 |
 | `dependencies` | dict | 依赖映射 {param: component_name} |
 
+## 目录组织原则
+
+当前配置采用**按功能分类**的组织方式，提高可读性和可维护性：
+
+- **tools/** - 按功能分类：
+  - `file_operations/` - 文件操作相关工具
+  - `web_operations/` - Web 相关工具
+  - `system_operations/` - 系统操作相关工具
+  - `utilities/` - 通用工具类
+
+- **storages/** - 按存储类型分类：
+  - `session_stores/` - 会话存储（Agent Run/Step 数据）
+  - `citation_stores/` - 引用存储（Web 搜索结果等）
+
+- **workflows/** - 示例工作流统一放在 `examples/` 子目录
+
 ## 最佳实践
 
 1. **敏感信息使用环境变量** - API Key 等不要硬编码
 2. **禁用未使用的组件** - 设置 `enabled: false`
-3. **合理组织配置** - 按类型放入对应目录
-4. **添加注释说明** - 便于团队协作
+3. **灵活组织配置** - 可以按环境、团队、功能等维度组织，不限制目录结构
+4. **确保 type 字段正确** - 配置类型由 `type` 字段决定，必须与 `ComponentType` 枚举值匹配
+5. **避免重复名称** - 相同 `(type, name)` 的配置会被覆盖，建议使用唯一名称
+6. **添加注释说明** - 便于团队协作
+7. **按功能分类** - 工具和存储配置建议按功能分类组织，提高可读性

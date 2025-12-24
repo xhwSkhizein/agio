@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Activity, Clock, MessageSquare, Wrench } from 'lucide-react';
+import { ArrowLeft, Activity, Clock, MessageSquare, Wrench, ChevronDown, ChevronRight } from 'lucide-react';
 import { Waterfall } from '../components/Waterfall';
 
 interface TraceDetail {
@@ -73,6 +73,12 @@ export default function TraceDetail() {
       </div>
     );
   }
+
+  const formatDuration = (ms: number) => {
+    if (ms < 1) return '<1ms';
+    if (ms < 1000) return `${ms.toFixed(0)}ms`;
+    return `${(ms / 1000).toFixed(2)}s`;
+  };
 
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
@@ -180,86 +186,409 @@ export default function TraceDetail() {
       {/* Span Detail Modal */}
       {selectedSpan && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
           onClick={() => setSelectedSpan(null)}
         >
           <div
-            className="bg-surface border border-border rounded-xl shadow-2xl p-6 max-w-3xl w-full mx-4"
+            className="bg-surface border border-border rounded-xl shadow-2xl flex flex-col max-w-5xl w-full max-h-[90vh] mx-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-xl font-bold text-white mb-1">
+            {/* Header - Fixed */}
+            <div className="flex items-start justify-between gap-4 p-6 border-b border-border shrink-0">
+              <div className="flex-1 min-w-0">
+                <h3 className="text-xl font-bold text-white mb-1 truncate">
                   {selectedSpan.label}
                 </h3>
-                {selectedSpan.sublabel && (
-                  <p className="text-xs text-gray-400 mb-2">{selectedSpan.sublabel}</p>
-                )}
-                <div className="flex flex-wrap items-center gap-3 text-xs text-gray-300">
+                <div className="flex flex-wrap items-center gap-3 text-xs mt-2">
                   <span className="px-2 py-1 rounded bg-primary-500/10 text-primary-300 border border-primary-500/30 capitalize">
                     {selectedSpan.kind.replace('_', ' ')}
                   </span>
-                  <span>
-                    Duration:{' '}
-                    <strong className="text-white">
-                      {selectedSpan.duration_ms ? `${selectedSpan.duration_ms.toFixed(0)}ms` : '-'}
-                    </strong>
-                  </span>
+                  {selectedSpan.duration_ms > 0 && (
+                    <span className="text-gray-300">
+                      Duration:{' '}
+                      <strong className="text-blue-400">
+                        {formatDuration(selectedSpan.duration_ms)}
+                      </strong>
+                    </span>
+                  )}
                   <span className={`px-2 py-1 rounded text-xs font-semibold ${getStatusColor(selectedSpan.status)}`}>
                     {selectedSpan.status}
                   </span>
-                  {selectedSpan.tokens ? (
-                    <span>
+                  {selectedSpan.tokens && selectedSpan.tokens > 0 && (
+                    <span className="text-gray-300">
                       Tokens:{' '}
-                      <strong className="text-white">
+                      <strong className="text-yellow-400">
                         {selectedSpan.tokens.toLocaleString()}
                       </strong>
                     </span>
-                  ) : null}
+                  )}
                 </div>
               </div>
               <button
                 onClick={() => setSelectedSpan(null)}
-                className="text-gray-400 hover:text-white text-sm"
+                className="text-gray-400 hover:text-white text-lg font-bold shrink-0 w-8 h-8 flex items-center justify-center rounded hover:bg-surfaceHighlight transition-colors"
+                aria-label="Close"
               >
-                Close
+                ×
               </button>
             </div>
 
-            {/* Metrics grid */}
-            {selectedSpan.metrics && Object.keys(selectedSpan.metrics).length > 0 && (
-              <div className="mt-4">
-                <h4 className="text-sm font-semibold text-white mb-2">Metrics</h4>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs text-gray-200 font-mono">
-                  {Object.entries(selectedSpan.metrics).map(([key, value]) => (
-                    <div
-                      key={key}
-                      className="flex flex-col bg-background border border-border rounded-lg px-3 py-2"
-                    >
-                      <span className="text-[11px] uppercase tracking-wide text-gray-400">
-                        {key}
-                      </span>
-                      <span className="text-sm text-white break-words">
-                        {value === null || value === undefined ? '-' : String(value)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* Content - Scrollable */}
+            <div className="flex-1 overflow-y-auto p-6">
 
-            {/* Error section */}
-            {selectedSpan.error_message && (
-              <div className="mt-4">
-                <span className="text-sm font-medium text-red-400">Error</span>
-                <pre className="mt-1 text-sm bg-red-500/10 p-3 rounded-lg border border-red-500/50 text-red-300">
-                  {selectedSpan.error_message}
-                </pre>
-              </div>
-            )}
+              {/* Metrics grid */}
+              {selectedSpan.metrics && Object.keys(selectedSpan.metrics).length > 0 && (
+                <div className="mb-6">
+                  <h4 className="text-sm font-semibold text-white mb-3">Metrics</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                    {Object.entries(selectedSpan.metrics).map(([key, value]) => {
+                      // Color code based on metric type
+                      let valueColor = 'text-white';
+                      if (key.includes('token')) {
+                        valueColor = 'text-yellow-400';
+                      } else if (key.includes('duration') || key.includes('latency') || key.includes('time')) {
+                        valueColor = 'text-blue-400';
+                      }
+                      
+                      return (
+                        <div
+                          key={key}
+                          className="flex flex-col bg-background border border-border rounded-lg px-3 py-2"
+                        >
+                          <span className="text-[11px] uppercase tracking-wide text-gray-400 mb-1">
+                            {key.replace(/\./g, ' ')}
+                          </span>
+                          <span className={`text-sm font-medium break-words ${valueColor}`}>
+                            {value === null || value === undefined ? '-' : String(value)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Error section */}
+              {selectedSpan.error_message && (
+                <div className="mb-6">
+                  <span className="text-sm font-medium text-red-400">Error</span>
+                  <pre className="mt-2 text-sm bg-red-500/10 p-3 rounded-lg border border-red-500/50 text-red-300 overflow-x-auto">
+                    {selectedSpan.error_message}
+                  </pre>
+                </div>
+              )}
+
+              {/* LLM Call Details (for LLM_CALL spans) */}
+              {selectedSpan.kind === 'llm_call' && selectedSpan.llm_details && (
+                <LLMCallDetailsPanel llmDetails={selectedSpan.llm_details} />
+              )}
+            </div>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function LLMCallDetailsPanel({ llmDetails }: { llmDetails: Record<string, any> }) {
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['response']));
+  const [expandedMessages, setExpandedMessages] = useState<Set<number>>(new Set());
+  const [expandedContent, setExpandedContent] = useState<Set<string>>(new Set());
+
+  const toggleSection = (section: string) => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(section)) {
+        next.delete(section);
+      } else {
+        next.add(section);
+      }
+      return next;
+    });
+  };
+
+  const toggleMessage = (index: number) => {
+    setExpandedMessages((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+  };
+
+  const toggleContent = (contentId: string) => {
+    setExpandedContent((prev) => {
+      const next = new Set(prev);
+      if (next.has(contentId)) {
+        next.delete(contentId);
+      } else {
+        next.add(contentId);
+      }
+      return next;
+    });
+  };
+
+  return (
+    <div className="border-t border-border pt-4">
+      <h4 className="text-sm font-semibold text-white mb-4">LLM Call Details</h4>
+
+      <div className="divide-y divide-border/50 max-h-none">
+        {/* Request Messages */}
+        {llmDetails.messages && llmDetails.messages.length > 0 && (
+          <DetailSection
+            title={`Request Messages (${llmDetails.messages.length})`}
+            isExpanded={expandedSections.has('request')}
+            onToggle={() => toggleSection('request')}
+          >
+            <div className="space-y-3">
+              {llmDetails.messages.map((msg: any, idx: number) => {
+                const isMessageExpanded = expandedMessages.has(idx);
+                const msgContent = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content, null, 2);
+                const hasLongContent = (msgContent?.length || 0) > 300 || (msg.tool_calls?.length || 0) > 0;
+
+                return (
+                  <div key={idx} className="bg-background rounded-lg p-3 border border-border/50">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`text-xs font-medium px-2 py-0.5 rounded ${msg.role === 'user'
+                              ? 'bg-blue-900/30 text-blue-400'
+                              : msg.role === 'assistant'
+                                ? 'bg-green-900/30 text-green-400'
+                                : msg.role === 'system'
+                                  ? 'bg-purple-900/30 text-purple-400'
+                                  : msg.role === 'tool'
+                                    ? 'bg-orange-900/30 text-orange-400'
+                                    : 'bg-gray-900/30 text-gray-400'
+                            }`}
+                        >
+                          {msg.role}
+                        </span>
+                        {msg.tool_call_id && (
+                          <span className="text-xs font-mono text-gray-500">
+                            {msg.tool_call_id}
+                          </span>
+                        )}
+                      </div>
+                      {hasLongContent && (
+                        <button
+                          onClick={() => toggleMessage(idx)}
+                          className="text-xs text-gray-400 hover:text-white transition-colors"
+                        >
+                          {isMessageExpanded ? 'Collapse' : 'Expand'}
+                        </button>
+                      )}
+                    </div>
+                    {msgContent && (
+                      <div className={!isMessageExpanded ? 'max-h-32 overflow-hidden' : 'max-h-[400px] overflow-y-auto'}>
+                        <pre className="text-sm text-gray-300 whitespace-pre-wrap break-words">
+                          {msgContent}
+                        </pre>
+                      </div>
+                    )}
+                    {msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0 && (
+                      <div className={`mt-2 space-y-2 ${!isMessageExpanded ? 'max-h-32 overflow-hidden' : 'max-h-[400px] overflow-y-auto'}`}>
+                        <div className="text-xs font-medium text-gray-400">Tool Calls ({msg.tool_calls.length}):</div>
+                        {msg.tool_calls.map((tc: any, tcIdx: number) => (
+                          <div key={tcIdx} className="bg-surfaceHighlight rounded p-2 border border-border/30">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-xs font-medium text-orange-400">
+                                {tc.function?.name || tc.name || 'unknown'}
+                              </span>
+                              {tc.id && (
+                                <span className="text-xs font-mono text-gray-500">{tc.id}</span>
+                              )}
+                            </div>
+                            <pre className="text-xs text-gray-400 whitespace-pre-wrap break-words">
+                              {tc.function?.arguments
+                                ? (typeof tc.function.arguments === 'string'
+                                  ? tc.function.arguments
+                                  : JSON.stringify(tc.function.arguments, null, 2))
+                                : JSON.stringify(tc, null, 2)}
+                            </pre>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {!isMessageExpanded && hasLongContent && (
+                      <button
+                        onClick={() => toggleMessage(idx)}
+                        className="mt-2 text-xs text-gray-500 hover:text-primary-400 transition-colors"
+                      >
+                        Click to expand...
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </DetailSection>
+        )}
+
+        {/* Tools */}
+        {llmDetails.tools && llmDetails.tools.length > 0 && (
+          <DetailSection
+            title={`Tools (${llmDetails.tools.length})`}
+            isExpanded={expandedSections.has('tools')}
+            onToggle={() => toggleSection('tools')}
+          >
+            {expandedSections.has('tools') && (() => {
+              const toolsContent = JSON.stringify(llmDetails.tools, null, 2);
+              const isContentExpanded = expandedContent.has('tools');
+              const hasLongContent = toolsContent.length > 300;
+
+              return (
+                <div>
+                  <div className={!isContentExpanded ? 'max-h-32 overflow-hidden' : 'max-h-[400px] overflow-y-auto'}>
+                    <pre className="text-sm text-gray-300 bg-background rounded-lg p-3 border border-border/50 break-words whitespace-pre-wrap">
+                      {toolsContent}
+                    </pre>
+                  </div>
+                  {hasLongContent && (
+                    <button
+                      onClick={() => toggleContent('tools')}
+                      className="mt-2 text-xs text-gray-500 hover:text-primary-400 transition-colors"
+                    >
+                      {isContentExpanded ? 'Click to collapse...' : 'Click to expand...'}
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+          </DetailSection>
+        )}
+
+        {/* Response */}
+        <DetailSection
+          title="Response"
+          isExpanded={expandedSections.has('response')}
+          onToggle={() => toggleSection('response')}
+        >
+          {expandedSections.has('response') && (() => {
+            const isContentExpanded = expandedContent.has('response');
+
+            if (llmDetails.error) {
+              const hasLongContent = llmDetails.error.length > 300;
+              return (
+                <div>
+                  <div className={!isContentExpanded ? 'max-h-32 overflow-hidden' : 'max-h-[400px] overflow-y-auto'}>
+                    <div className="bg-red-900/20 border border-red-900/50 rounded-lg p-4">
+                      <p className="text-sm text-red-400 font-mono break-words">{llmDetails.error}</p>
+                    </div>
+                  </div>
+                  {hasLongContent && (
+                    <button
+                      onClick={() => toggleContent('response')}
+                      className="mt-2 text-xs text-gray-500 hover:text-primary-400 transition-colors"
+                    >
+                      {isContentExpanded ? 'Click to collapse...' : 'Click to expand...'}
+                    </button>
+                  )}
+                </div>
+              );
+            } else if (llmDetails.response_content) {
+              const hasLongContent = llmDetails.response_content.length > 300;
+              return (
+                <div>
+                  <div className={!isContentExpanded ? 'max-h-32 overflow-hidden' : 'max-h-[400px] overflow-y-auto'}>
+                    <pre className="text-sm text-gray-300 whitespace-pre-wrap break-words bg-background rounded-lg p-4 border border-border/50">
+                      {llmDetails.response_content}
+                    </pre>
+                  </div>
+                  {hasLongContent && (
+                    <button
+                      onClick={() => toggleContent('response')}
+                      className="mt-2 text-xs text-gray-500 hover:text-primary-400 transition-colors"
+                    >
+                      {isContentExpanded ? 'Click to collapse...' : 'Click to expand...'}
+                    </button>
+                  )}
+                </div>
+              );
+            } else {
+              return (
+                <p className="text-sm text-gray-500 py-4">No response content</p>
+              );
+            }
+          })()}
+        </DetailSection>
+
+        {/* Tool Calls */}
+        {llmDetails.response_tool_calls && llmDetails.response_tool_calls.length > 0 && (
+          <DetailSection
+            title={`Tool Calls (${llmDetails.response_tool_calls.length})`}
+            isExpanded={expandedSections.has('tool_calls')}
+            onToggle={() => toggleSection('tool_calls')}
+          >
+            {expandedSections.has('tool_calls') && (() => {
+              const toolCallsContent = JSON.stringify(llmDetails.response_tool_calls, null, 2);
+              const isContentExpanded = expandedContent.has('tool_calls');
+              const hasLongContent = toolCallsContent.length > 300;
+
+              return (
+                <div>
+                  <div className={!isContentExpanded ? 'max-h-32 overflow-hidden' : 'max-h-[400px] overflow-y-auto'}>
+                    <pre className="text-sm text-gray-300 bg-background rounded-lg p-3 border border-border/50 break-words whitespace-pre-wrap">
+                      {toolCallsContent}
+                    </pre>
+                  </div>
+                  {hasLongContent && (
+                    <button
+                      onClick={() => toggleContent('tool_calls')}
+                      className="mt-2 text-xs text-gray-500 hover:text-primary-400 transition-colors"
+                    >
+                      {isContentExpanded ? 'Click to collapse...' : 'Click to expand...'}
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+          </DetailSection>
+        )}
+
+        {/* Request Parameters */}
+        {llmDetails.request && (
+          <DetailSection
+            title="Request Parameters"
+            isExpanded={expandedSections.has('params')}
+            onToggle={() => toggleSection('params')}
+          >
+            <div>
+              <pre className="text-sm text-gray-300 bg-background rounded-lg p-3 border border-border/50 break-words whitespace-pre-wrap">
+                {JSON.stringify(llmDetails.request, null, 2)}
+              </pre>
+            </div>
+          </DetailSection>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DetailSection({
+  title,
+  isExpanded,
+  onToggle,
+  children,
+}: {
+  title: string;
+  isExpanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <button
+        onClick={onToggle}
+        className="w-full px-4 py-2.5 flex items-center justify-between text-sm font-medium text-gray-400 hover:text-white transition-colors hover:bg-surfaceHighlight/50 rounded"
+      >
+        <span className="truncate">{title}</span>
+        {isExpanded ? <ChevronDown className="w-4 h-4 flex-shrink-0" /> : <ChevronRight className="w-4 h-4 flex-shrink-0" />}
+      </button>
+      {isExpanded && <div className="px-4 pb-4">{children}</div>}
     </div>
   );
 }

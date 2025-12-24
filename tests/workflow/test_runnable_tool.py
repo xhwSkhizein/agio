@@ -2,7 +2,7 @@
 
 import pytest
 
-from agio.domain import StepEvent, StepEventType
+from agio.domain import StepEvent, StepEventType, ExecutionContext
 from agio.domain.protocol import RunOutput
 from agio.domain.models import RunMetrics
 from agio.workflow.runnable_tool import (
@@ -74,8 +74,9 @@ class TestRunnableTool:
         mock_runnable = MockRunnable(output="Hello from mock")
         tool = as_tool(mock_runnable, "Test tool")
         mock_wire = MockWire()
+        context = ExecutionContext(run_id="test_run", session_id="test_session", wire=mock_wire)
 
-        result = await tool.execute({"task": "Do something", "_wire": mock_wire})
+        result = await tool.execute({"task": "Do something"}, context=context)
 
         assert result.is_success
         assert result.content == "Hello from mock"
@@ -124,12 +125,12 @@ class TestRunnableTool:
         mock_runnable = MockRunnable()
         tool = as_tool(mock_runnable)
         mock_wire = MockWire()
+        context = ExecutionContext(run_id="test_run", session_id="test_session", wire=mock_wire)
 
         result = await tool.execute({
             "task": "Do something",
             "context": "Additional context here",
-            "_wire": mock_wire,
-        })
+        }, context=context)
 
         assert result.is_success
         assert result.input_args["task"] == "Do something"
@@ -141,8 +142,9 @@ class TestRunnableTool:
         mock_runnable = MockRunnable(should_fail=True)
         tool = as_tool(mock_runnable)
         mock_wire = MockWire()
+        context = ExecutionContext(run_id="test_run", session_id="test_session", wire=mock_wire)
 
-        result = await tool.execute({"task": "This will fail", "_wire": mock_wire})
+        result = await tool.execute({"task": "This will fail"}, context=context)
 
         assert not result.is_success
         assert result.error is not None
@@ -176,8 +178,9 @@ class TestRunnableTool:
         mock_runnable = MockRunnable()
         tool = as_tool(mock_runnable)
         mock_wire = MockWire()
+        context = ExecutionContext(run_id="test_run", session_id="test_session", wire=mock_wire)
 
-        result = await tool.execute({"task": "Test", "_wire": mock_wire})
+        result = await tool.execute({"task": "Test"}, context=context)
 
         assert result.duration > 0
         assert result.start_time < result.end_time
@@ -223,13 +226,17 @@ class TestSafetyFeatures:
         """Test that max depth limit is enforced."""
         mock_runnable = MockRunnable()
         tool = as_tool(mock_runnable, max_depth=2)
+        mock_wire = MockWire()
+        context = ExecutionContext(
+            run_id="test_run",
+            session_id="test_session",
+            wire=mock_wire,
+            depth=2,
+            metadata={"_call_stack": ["agent_a", "agent_b"]},
+        )
 
         # Simulate being called at depth 2 (will become depth 3)
-        result = await tool.execute({
-            "task": "Test",
-            "_depth": 2,
-            "_call_stack": ["agent_a", "agent_b"],
-        })
+        result = await tool.execute({"task": "Test"}, context=context)
 
         assert not result.is_success
         assert "Maximum nesting depth" in result.content
@@ -240,12 +247,16 @@ class TestSafetyFeatures:
         """Test that circular reference is detected."""
         mock_runnable = MockRunnable()
         tool = as_tool(mock_runnable)
+        mock_wire = MockWire()
+        context = ExecutionContext(
+            run_id="test_run",
+            session_id="test_session",
+            wire=mock_wire,
+            metadata={"_call_stack": ["agent_a", "mock_agent", "agent_b"]},
+        )
 
         # Simulate mock_agent already being in the call stack
-        result = await tool.execute({
-            "task": "Test",
-            "_call_stack": ["agent_a", "mock_agent", "agent_b"],
-        })
+        result = await tool.execute({"task": "Test"}, context=context)
 
         assert not result.is_success
         assert "Circular reference detected" in result.content
@@ -258,9 +269,10 @@ class TestSafetyFeatures:
         mock_runnable = MockRunnable()
         tool = as_tool(mock_runnable)
         mock_wire = MockWire()
+        context = ExecutionContext(run_id="test_run", session_id="test_session", wire=mock_wire)
 
         # First call - no call stack yet
-        result = await tool.execute({"task": "Test", "_wire": mock_wire})
+        result = await tool.execute({"task": "Test"}, context=context)
         assert result.is_success
 
     @pytest.mark.asyncio
@@ -276,12 +288,16 @@ class TestSafetyFeatures:
         """Test self-reference detection via call stack."""
         mock_runnable = MockRunnable()
         tool = as_tool(mock_runnable)
+        mock_wire = MockWire()
+        context = ExecutionContext(
+            run_id="test_run",
+            session_id="test_session",
+            wire=mock_wire,
+            metadata={"_call_stack": ["mock_agent"]},
+        )
 
         # Self-reference: mock_agent is already in call stack
-        result = await tool.execute({
-            "task": "Test",
-            "_call_stack": ["mock_agent"],
-        })
+        result = await tool.execute({"task": "Test"}, context=context)
 
         assert not result.is_success
         assert "Circular reference detected" in result.content

@@ -82,8 +82,34 @@ class Span(BaseModel):
     # - tokens.total: Total token count
     # - first_token_ms: Time to first token
 
+    # === LLM Call Details (for LLM_CALL spans) ===
+    llm_details: dict[str, Any] | None = Field(default=None)
+    # When kind == LLM_CALL, contains complete LLM call information:
+    # {
+    #   "request": {...},           # Request parameters (temperature, max_tokens, etc.)
+    #   "messages": [...],          # Complete message list sent to LLM
+    #   "tools": [...],             # Tool definitions
+    #   "response_content": "...",   # Complete response content
+    #   "response_tool_calls": [...], # Tool calls from response
+    #   "finish_reason": "...",     # Finish reason
+    #   "error": "...",             # Error message (if any)
+    # }
+
+    # === Tool Call Details (for TOOL_CALL spans) ===
+    tool_details: dict[str, Any] | None = Field(default=None)
+    # When kind == TOOL_CALL, contains complete tool call information:
+    # {
+    #   "tool_name": "...",         # Tool name
+    #   "tool_id": "...",            # Tool identifier
+    #   "tool_call_id": "...",      # Tool call ID
+    #   "input_args": {...},         # Complete input arguments (not truncated)
+    #   "output": "...",             # Complete execution result (not truncated)
+    #   "error": "...",              # Error message (if any)
+    #   "metrics": {...},            # Execution metrics (duration_ms, tool_exec_time_ms)
+    #   "status": "...",             # Status: "completed" | "error"
+    # }
+
     # === Associations ===
-    llm_log_id: str | None = None  # Associated LLMCallLog ID
     run_id: str | None = None  # Associated Run ID
     step_id: str | None = None  # Associated Step ID
 

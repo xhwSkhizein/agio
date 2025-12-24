@@ -11,6 +11,7 @@ from agio.domain import ToolResult
 
 if TYPE_CHECKING:
     from agio.agent.control import AbortSignal
+    from agio.domain import ExecutionContext
 
 
 class RiskLevel(str, Enum):
@@ -76,13 +77,15 @@ class BaseTool(ABC):
     async def execute(
         self,
         parameters: dict[str, Any],
+        context: "ExecutionContext",
         abort_signal: "AbortSignal | None" = None,
     ) -> "ToolResult":
         """
         Execute the tool and return ToolResult directly.
 
         Args:
-            parameters: Tool parameters
+            parameters: Tool parameters (from LLM, user-defined)
+            context: Execution context (required, provided by runtime)
             abort_signal: Optional abort signal for cancellation
 
         Returns:

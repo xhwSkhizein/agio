@@ -18,6 +18,7 @@ from agio.utils.logging import get_logger
 
 if TYPE_CHECKING:
     from agio.agent.control import AbortSignal
+    from agio.domain import ExecutionContext
 
 logger = get_logger(__name__)
 
@@ -303,6 +304,7 @@ class FileWriteTool(FileOperationBaseTool):
     async def execute(
         self,
         parameters: dict[str, Any],
+        context: "ExecutionContext",
         abort_signal: "AbortSignal | None" = None,
     ) -> ToolResult:
         """执行文件写入"""

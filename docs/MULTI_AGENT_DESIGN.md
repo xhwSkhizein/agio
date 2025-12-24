@@ -242,8 +242,8 @@ class RunMetrics:
     """执行指标"""
     duration: float = 0.0  # 秒
     total_tokens: int = 0
-    prompt_tokens: int = 0
-    completion_tokens: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
     tool_calls_count: int = 0
     # Workflow 专用
     iterations: int | None = None
@@ -1624,42 +1624,34 @@ class WorkflowEngine:
 ### 8.2 与现有配置系统集成
 
 ```python
-# agio/config/loader.py - 扩展
+# agio/config/loader.py - 配置加载器
 
 class ConfigLoader:
-    """配置加载器，扩展支持 Workflow"""
+    """配置加载器 - 递归扫描并基于 type 字段识别类型"""
     
-    def __init__(self, config_dir: str):
+    def __init__(self, config_dir: str | Path):
         self.config_dir = Path(config_dir)
-        self.engine = WorkflowEngine()
     
-    def load_all(self):
-        """加载所有配置"""
-        # 1. 先加载 Agents
-        self._load_agents()
+    async def load_all_configs(self) -> dict[ComponentType, list[dict]]:
+        """递归扫描所有 YAML 文件，基于 type 字段识别类型"""
+        # 初始化所有类型的列表
+        configs_by_type = {ct: [] for ct in ComponentType}
         
-        # 2. 再加载 Workflows（可能引用 Agents）
-        self._load_workflows()
-    
-    def _load_agents(self):
-        """加载所有 Agent 配置"""
-        agents_dir = self.config_dir / "agents"
-        if agents_dir.exists():
-            for yaml_file in agents_dir.glob("*.yaml"):
-                agent = self._build_agent_from_yaml(yaml_file)
-                self.engine.register(agent)
-    
-    def _load_workflows(self):
-        """加载所有 Workflow 配置"""
-        workflows_dir = self.config_dir / "workflows"
-        if workflows_dir.exists():
-            for yaml_file in workflows_dir.glob("*.yaml"):
-                workflow = self.engine.load_workflow(str(yaml_file))
-                self.engine.register(workflow)
-    
-    def get_runnable(self, id: str) -> Runnable:
-        """获取 Runnable（Agent 或 Workflow）"""
-        return self.engine.get(id)
+        # 递归扫描所有 YAML 文件
+        for yaml_file in self.config_dir.rglob("*.yaml"):
+            config_data = self._load_yaml_file(yaml_file)
+            if not config_data:
+                continue
+            
+            # 从配置文件的 type 字段识别类型
+            component_type = ComponentType(config_data["type"])
+            configs_by_type[component_type].append(config_data)
+        
+        return configs_by_type
+        
+        # 注意：配置系统会递归扫描所有子目录，基于 type 字段识别类型
+        # 不再依赖固定的文件夹结构，支持灵活的目录组织方式
+        # 配置文件的类型由 type 字段决定，而不是文件夹名称
 ```
 
 ---

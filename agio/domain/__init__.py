@@ -17,6 +17,7 @@ from .models import (
     RunStatus,
     Step,
     StepMetrics,
+    normalize_usage_metrics,
 )
 
 # Protocol
@@ -55,6 +56,7 @@ __all__ = [
     "RunStatus",
     "MemoryCategory",
     "AgentMemoriedContent",
+    "normalize_usage_metrics",
     # Protocol
     "Runnable",
     "RunOutput",

@@ -10,6 +10,7 @@ This module contains all core data models:
 
 from datetime import datetime
 from enum import Enum
+from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -44,6 +45,45 @@ class RunStatus(str, Enum):
 # ============================================================================
 
 
+def normalize_usage_metrics(usage_data: dict[str, Any] | None) -> dict[str, int | None]:
+    """
+    Normalize model usage metrics to unified format.
+
+    Handles both OpenAI-style (prompt_tokens/completion_tokens) and
+    unified-style (input_tokens/output_tokens) metrics.
+
+    Args:
+        usage_data: Raw usage data from model (may contain prompt_tokens/completion_tokens
+                   or input_tokens/output_tokens)
+
+    Returns:
+        dict with normalized keys: input_tokens, output_tokens, total_tokens
+    """
+    if not usage_data:
+        return {
+            "input_tokens": None,
+            "output_tokens": None,
+            "total_tokens": None,
+        }
+
+    # Handle both OpenAI-style and unified-style keys
+    input_tokens = usage_data.get("input_tokens") or usage_data.get("prompt_tokens")
+    output_tokens = usage_data.get("output_tokens") or usage_data.get(
+        "completion_tokens"
+    )
+    total_tokens = usage_data.get("total_tokens")
+
+    # Calculate total_tokens if not provided but both input/output are available
+    if total_tokens is None and input_tokens is not None and output_tokens is not None:
+        total_tokens = input_tokens + output_tokens
+
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+    }
+
+
 class StepMetrics(BaseModel):
     """
     Metrics for a single Step.
@@ -55,6 +95,10 @@ class StepMetrics(BaseModel):
 
     # Timing
     duration_ms: float | None = None
+    exec_start_at: datetime | None = (
+        None  # Actual execution start time (for LLM calls or tool execution)
+    )
+    exec_end_at: datetime | None = None  # Actual execution end time
 
     # Token usage (for assistant/model steps)
     input_tokens: int | None = None
@@ -88,8 +132,8 @@ class RunMetrics(BaseModel):
 
     # Token usage
     total_tokens: int = 0
-    prompt_tokens: int = 0
-    completion_tokens: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
 
     # Execution stats
     steps_count: int = 0
@@ -137,8 +181,8 @@ class RunMetrics(BaseModel):
 
         # Token usage always sums
         self.total_tokens += other.total_tokens
-        self.prompt_tokens += other.prompt_tokens
-        self.completion_tokens += other.completion_tokens
+        self.input_tokens += other.input_tokens
+        self.output_tokens += other.output_tokens
 
         # Execution stats sum
         self.steps_count += other.steps_count
@@ -207,6 +251,15 @@ class Step(BaseModel):
     span_id: str | None = None  # Span ID
     parent_span_id: str | None = None  # Parent span ID
     depth: int = 0  # Nesting depth in workflow
+
+    # --- LLM Call Context (for assistant steps) ---
+    llm_messages: list[dict[str, Any]] | None = (
+        None  # Complete message list sent to LLM
+    )
+    llm_tools: list[dict[str, Any]] | None = None  # Tool definitions sent to LLM
+    llm_request_params: dict[str, Any] | None = (
+        None  # Request parameters (temperature, max_tokens, etc.)
+    )
 
     def is_user_step(self) -> bool:
         """Check if this is a user message"""

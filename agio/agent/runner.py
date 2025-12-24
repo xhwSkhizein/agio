@@ -20,27 +20,20 @@ is handled by RunnableExecutor, not AgentRunner.
 import asyncio
 import time
 from typing import TYPE_CHECKING, NamedTuple
-from uuid import uuid4
 
 from agio.domain import (
     AgentSession,
-    MessageRole,
-    Step,
-    StepEvent,
     StepEventType,
-    StepMetrics,
     RunOutput,
     RunMetrics,
     StepAdapter,
     ExecutionContext,
 )
 
-from agio.observability.tracker import set_tracking_context, clear_tracking_context
 from agio.agent.control import AbortSignal
 from agio.agent.context import build_context_from_steps
 from agio.agent.executor import AgentExecutor
-from agio.runtime.event_factory import EventFactory
-from agio.runtime.wire import Wire
+from agio.runtime.step_factory import StepFactory
 from agio.utils.logging import get_logger
 from agio.config import ExecutionConfig
 
@@ -57,8 +50,8 @@ class TerminationSummaryResult(NamedTuple):
 
     summary: str
     tokens_used: int
-    prompt_tokens_used: int
-    completion_tokens_used: int
+    input_tokens_used: int
+    output_tokens_used: int
 
 
 class AgentRunner:
@@ -94,7 +87,6 @@ class AgentRunner:
         self,
         session: AgentSession,
         query: str,
-        wire: Wire,
         abort_signal: AbortSignal | None = None,
         context: "ExecutionContext | None" = None,
     ) -> "RunOutput":
@@ -125,15 +117,8 @@ class AgentRunner:
         run_id = context.run_id
         start_time = time.time()
 
-        # Set tracking context for LLM call logging
-        set_tracking_context(
-            agent_name=self.agent.id,
-            session_id=session.session_id,
-            run_id=run_id,
-        )
-
-        # Create EventFactory for simplified event creation
-        ef = EventFactory(context)
+        # Create StepFactory for simplified step creation
+        sf = StepFactory(context)
 
         logger.info(
             "step_runner_started",
@@ -144,36 +129,49 @@ class AgentRunner:
             parent_run_id=context.parent_run_id,
         )
 
-        # 1. Create User Step
-        user_step = Step(
-            id=str(uuid4()),
-            session_id=session.session_id,
-            run_id=run_id,
-            sequence=await self._get_next_sequence(session.session_id, context),
-            role=MessageRole.USER,
+        # 1. Create User Step using StepFactory
+        user_sequence = await self._allocate_sequence(session.session_id, context)
+        user_step = sf.user_step(
+            sequence=user_sequence,
             content=query,
-            # Runnable binding for unified Fork/Resume
             runnable_id=self.agent.id,
             runnable_type="agent",
-            # Extract metadata from ExecutionContext
-            workflow_id=context.workflow_id,
-            node_id=context.node_id,
-            parent_run_id=context.parent_run_id,
-            branch_key=context.metadata.get("branch_key"),
-            iteration=context.iteration,
         )
 
         if self.session_store:
             await self.session_store.save_step(user_step)
 
-        # 2. Build context - filter by run_id to isolate agent context
+        # 2. Build context - filter by runnable_id to isolate agent context
+        # Query current Agent's Steps and parent Agent's Steps (if exists)
         if self.session_store:
+            # Query current Agent's Steps (by runnable_id and run_id)
             messages = await build_context_from_steps(
                 session.session_id,
                 self.session_store,
                 system_prompt=self.agent.system_prompt,
-                run_id=run_id,  # Only load Steps for this run_id
+                run_id=run_id,  # Current run's Steps
+                runnable_id=self.agent.id,  # Current Agent's Steps
             )
+
+            # If there's a parent_run_id, also query parent Agent's Steps
+            if context.parent_run_id:
+                parent_messages = await build_context_from_steps(
+                    session.session_id,
+                    self.session_store,
+                    run_id=context.parent_run_id,  # Parent Agent's run_id
+                    runnable_id=context.runnable_id,  # Parent Agent's runnable_id
+                )
+                # Merge and sort by sequence
+                all_messages = parent_messages + messages
+                # Remove duplicates (by sequence) and sort
+                seen_sequences = set()
+                unique_messages = []
+                for msg in sorted(all_messages, key=lambda m: m.get("_sequence", 0)):
+                    seq = msg.get("_sequence")
+                    if seq is None or seq not in seen_sequences:
+                        seen_sequences.add(seq)
+                        unique_messages.append(msg)
+                messages = unique_messages
         else:
             messages = []
             if self.agent.system_prompt:
@@ -189,29 +187,30 @@ class AgentRunner:
 
         # Track metrics
         total_tokens = 0
-        prompt_tokens = 0
-        completion_tokens = 0
+        input_tokens = 0
+        output_tokens = 0
         tool_calls_count = 0
         assistant_steps_count = 0
         last_assistant_had_tools = False
         pending_tool_calls: list[dict] | None = None  # Track unprocessed tool calls
-        last_step_sequence = user_step.sequence  # Track last sequence for summary generation
 
         response_content = None
         termination_reason = None
 
         try:
             # 4. Execute with Wire - events written directly to wire
-            start_sequence = user_step.sequence + 1
+            # Create sequence allocation callback
+            async def allocate_seq():
+                return await self._allocate_sequence(session.session_id, context)
 
             async for event in executor.execute(
                 messages=messages,
                 ctx=context,
-                start_sequence=start_sequence,
+                allocate_sequence_fn=allocate_seq,
                 abort_signal=abort_signal,
             ):
                 # Write event to wire
-                await wire.write(event)
+                await context.wire.write(event)
                 # handle Completed event
                 if event.type == StepEventType.STEP_COMPLETED and event.snapshot:
                     step = event.snapshot
@@ -219,20 +218,20 @@ class AgentRunner:
                     if self.session_store:
                         await self.session_store.save_step(step)
 
-                    # Track last sequence
-                    last_step_sequence = step.sequence
-
                     if step.metrics:
                         if step.metrics.total_tokens:
                             total_tokens += step.metrics.total_tokens
                         if step.metrics.input_tokens:
-                            prompt_tokens += step.metrics.input_tokens
+                            input_tokens += step.metrics.input_tokens
                         if step.metrics.output_tokens:
-                            completion_tokens += step.metrics.output_tokens
+                            output_tokens += step.metrics.output_tokens
 
                     if step.is_assistant_step():
                         assistant_steps_count += 1
                         last_assistant_had_tools = step.has_tool_calls()
+                        # Extract response content directly from step
+                        if step.content:
+                            response_content = step.content
                         if step.has_tool_calls():
                             tool_calls_count += len(step.tool_calls or [])
                             # Track pending tool calls (will be cleared if tool results follow)
@@ -241,14 +240,10 @@ class AgentRunner:
                         # Tool result received, clear pending
                         pending_tool_calls = None
 
-            # 5. Complete - extract response from messages
-            if messages:
-                for msg in reversed(messages):
-                    if msg.get("role") == "assistant" and msg.get("content"):
-                        response_content = msg["content"]
-                        break
-
-            if last_assistant_had_tools and assistant_steps_count >= self.config.max_steps:
+            if (
+                last_assistant_had_tools
+                and assistant_steps_count >= self.config.max_steps
+            ):
                 termination_reason = "max_steps"
 
             # Generate termination summary if configured and there's a termination reason
@@ -259,14 +254,14 @@ class AgentRunner:
                     messages=messages,
                     termination_reason=termination_reason,
                     pending_tool_calls=pending_tool_calls,
-                    wire=wire,
-                    current_sequence=last_step_sequence,
+                    context=context,
+                    abort_signal=abort_signal,
                 )
                 response_content = summary_result.summary
                 # Update metrics from summary generation
                 total_tokens += summary_result.tokens_used
-                prompt_tokens += summary_result.prompt_tokens_used
-                completion_tokens += summary_result.completion_tokens_used
+                input_tokens += summary_result.input_tokens_used
+                output_tokens += summary_result.output_tokens_used
 
             # Calculate duration
             end_time = time.time()
@@ -289,8 +284,8 @@ class AgentRunner:
                 metrics=RunMetrics(
                     duration=duration,
                     total_tokens=total_tokens,
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=completion_tokens,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
                     tool_calls_count=tool_calls_count,
                 ),
                 termination_reason=termination_reason,
@@ -303,17 +298,22 @@ class AgentRunner:
             raise
 
         except Exception as e:
-            logger.error("step_runner_failed", run_id=run_id, error=str(e), exc_info=True)
+            logger.error(
+                "step_runner_failed", run_id=run_id, error=str(e), exc_info=True
+            )
             # Re-raise - RunnableExecutor will handle the Run failure
             raise
-        finally:
-            clear_tracking_context()
 
-    async def _get_next_sequence(
-        self, session_id: str, context: ExecutionContext | None = None
+    async def _allocate_sequence(
+        self,
+        session_id: str,
+        context: ExecutionContext | None = None,
     ) -> int:
         """
-        Get next sequence number.
+        Allocate next sequence number atomically.
+
+        Uses SessionStore.allocate_sequence for atomic allocation.
+        Thread-safe and concurrent-safe.
 
         Args:
             session_id: Session ID
@@ -323,18 +323,18 @@ class AgentRunner:
         Returns:
             Next sequence number
         """
+        # For parallel workflow branches, use pre-allocated sequence
         if context and "seq_start" in context.metadata:
             seq_start = context.metadata["seq_start"]
             context.metadata.pop("seq_start")
             return seq_start
 
-        if not self.session_store:
+        # Use SessionStore's atomic allocation
+        if self.session_store:
+            return await self.session_store.allocate_sequence(session_id)
+        else:
+            # Fallback for testing without session store
             return 1
-
-        last_step = await self.session_store.get_last_step(session_id)
-        if last_step:
-            return last_step.sequence + 1
-        return 1
 
     async def _generate_termination_summary(
         self,
@@ -343,14 +343,14 @@ class AgentRunner:
         messages: list[dict],
         termination_reason: str,
         pending_tool_calls: list[dict] | None,
-        wire: Wire,
-        current_sequence: int,
+        context: ExecutionContext,
+        abort_signal: AbortSignal | None = None,
     ) -> TerminationSummaryResult:
         """
         Generate summary when execution is terminated.
 
-        This continues the conversation by appending appropriate messages,
-        saves the new steps, and sends wire events.
+        Uses AgentExecutor to generate the summary, ensuring consistency
+        with normal execution flow.
 
         Args:
             session: Current session
@@ -358,107 +358,19 @@ class AgentRunner:
             messages: Conversation history
             termination_reason: Reason for termination
             pending_tool_calls: Unprocessed tool calls if any
-            wire: Wire for event streaming
-            current_sequence: Current sequence number
+            context: Execution context
 
         Returns:
             TerminationSummaryResult with summary and metrics
         """
-        next_sequence = current_sequence + 1
-        tokens_used = 0
-        prompt_tokens_used = 0
-        completion_tokens_used = 0
+        from agio.agent.summarizer import build_termination_messages
 
-        # 1. Add placeholder tool results if needed
-        if pending_tool_calls:
-            for tool_call in pending_tool_calls:
-                call_id = tool_call.get("id", "unknown")
-                tool_name = tool_call.get("function", {}).get("name", "unknown")
-
-                tool_step = Step(
-                    session_id=session.session_id,
-                    run_id=run_id,
-                    sequence=next_sequence,
-                    role=MessageRole.TOOL,
-                    tool_call_id=call_id,
-                    name=tool_name,
-                    content=f"[Execution interrupted: {termination_reason}. This tool call was not executed.]",
-                    # Runnable binding
-                    runnable_id=self.agent.id,
-                    runnable_type="agent",
-                )
-
-                if self.session_store:
-                    await self.session_store.save_step(tool_step)
-
-                await wire.write(
-                    StepEvent(
-                        type=StepEventType.STEP_COMPLETED,
-                        run_id=run_id,
-                        snapshot=tool_step,
-                    )
-                )
-
-                next_sequence += 1
-
-        # 2. Add user message requesting summary
-        from agio.agent.summarizer import (
-            DEFAULT_TERMINATION_USER_PROMPT,
-            _format_termination_reason,
-        )
-
-        prompt_template = self.config.termination_summary_prompt or DEFAULT_TERMINATION_USER_PROMPT
-        user_prompt = prompt_template.format(
-            termination_reason=_format_termination_reason(termination_reason),
-        )
-
-        user_step = Step(
-            session_id=session.session_id,
-            run_id=run_id,
-            sequence=next_sequence,
-            role=MessageRole.USER,
-            content=user_prompt,
-            # Runnable binding
-            runnable_id=self.agent.id,
-            runnable_type="agent",
-        )
-
-        if self.session_store:
-            await self.session_store.save_step(user_step)
-
-        await wire.write(
-            StepEvent(
-                type=StepEventType.STEP_COMPLETED,
-                run_id=run_id,
-                snapshot=user_step,
-            )
-        )
-
-        next_sequence += 1
-
-        # 3. Generate summary via LLM
-        summary_messages = list(messages)
-
-        # Add placeholder tool results to messages
-        if pending_tool_calls:
-            for tool_call in pending_tool_calls:
-                call_id = tool_call.get("id", "unknown")
-                tool_name = tool_call.get("function", {}).get("name", "unknown")
-                summary_messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": call_id,
-                        "name": tool_name,
-                        "content": f"[Execution interrupted: {termination_reason}. This tool call was not executed.]",
-                    }
-                )
-
-        # Add user summary request
-        summary_messages.append(
-            {
-                "role": "user",
-                "content": user_prompt,
-            }
+        # 1. Build termination messages using summarizer utility
+        summary_messages = build_termination_messages(
+            messages=messages,
+            termination_reason=termination_reason,
+            pending_tool_calls=pending_tool_calls,
+            custom_prompt=self.config.termination_summary_prompt,
         )
 
         logger.debug(
@@ -468,25 +380,53 @@ class AgentRunner:
             has_pending_tool_calls=bool(pending_tool_calls),
         )
 
+        # 2. Create AgentExecutor without tools to avoid recursive tool calls
+        executor = AgentExecutor(
+            model=self.agent.model,
+            tools=[],
+            config=self.config,
+        )
+
+        # Track metrics
+        tokens_used = 0
+        input_tokens_used = 0
+        output_tokens_used = 0
+        summary = ""
+
         try:
-            # Call LLM via streaming and collect full response
-            tool_schemas = (
-                [t.to_openai_schema() for t in self.agent.tools] if self.agent.tools else None
-            )
-            summary = ""
-            usage_data = None
+            # 3. Use AgentExecutor to generate summary (reuses all event/step logic)
+            # Create sequence allocation callback
+            async def allocate_seq():
+                return await self._allocate_sequence(session.session_id, context)
 
-            async for chunk in self.agent.model.arun_stream(summary_messages, tools=tool_schemas):
-                if chunk.content:
-                    summary += chunk.content
-                if chunk.usage:
-                    usage_data = chunk.usage
+            async for event in executor.execute(
+                messages=summary_messages,
+                ctx=context,
+                allocate_sequence_fn=allocate_seq,
+                abort_signal=abort_signal,
+            ):
+                # Write events to wire
+                await context.wire.write(event)
 
-            # Track token usage
-            if usage_data:
-                tokens_used = usage_data.get("total_tokens", 0)
-                prompt_tokens_used = usage_data.get("prompt_tokens", 0)
-                completion_tokens_used = usage_data.get("completion_tokens", 0)
+                # Save completed steps
+                if event.type == StepEventType.STEP_COMPLETED and event.snapshot:
+                    step = event.snapshot
+
+                    if self.session_store:
+                        await self.session_store.save_step(step)
+
+                    # Track metrics
+                    if step.metrics:
+                        if step.metrics.total_tokens:
+                            tokens_used += step.metrics.total_tokens
+                        if step.metrics.input_tokens:
+                            input_tokens_used += step.metrics.input_tokens
+                        if step.metrics.output_tokens:
+                            output_tokens_used += step.metrics.output_tokens
+
+                    # Extract summary from assistant step
+                    if step.is_assistant_step() and step.content:
+                        summary = step.content
 
             logger.info(
                 "termination_summary_generated",
@@ -502,49 +442,19 @@ class AgentRunner:
                 exc_info=True,
             )
             # Fallback summary
+            from agio.agent.summarizer import _format_termination_reason
+
             summary = (
                 f"**Execution Interrupted**\n\n"
                 f"Terminated due to: {_format_termination_reason(termination_reason)}\n\n"
                 f"Note: Unable to generate detailed summary due to: {str(e)}"
             )
 
-        # 4. Save assistant response step
-        assistant_step = Step(
-            session_id=session.session_id,
-            run_id=run_id,
-            sequence=next_sequence,
-            role=MessageRole.ASSISTANT,
-            content=summary,
-            # Runnable binding
-            runnable_id=self.agent.id,
-            runnable_type="agent",
-            metrics=(
-                StepMetrics(
-                    total_tokens=tokens_used,
-                    input_tokens=prompt_tokens_used,
-                    output_tokens=completion_tokens_used,
-                )
-                if tokens_used > 0
-                else None
-            ),
-        )
-
-        if self.session_store:
-            await self.session_store.save_step(assistant_step)
-
-        await wire.write(
-            StepEvent(
-                type=StepEventType.STEP_COMPLETED,
-                run_id=run_id,
-                snapshot=assistant_step,
-            )
-        )
-
         return TerminationSummaryResult(
             summary=summary,
             tokens_used=tokens_used,
-            prompt_tokens_used=prompt_tokens_used,
-            completion_tokens_used=completion_tokens_used,
+            input_tokens_used=input_tokens_used,
+            output_tokens_used=output_tokens_used,
         )
 
 

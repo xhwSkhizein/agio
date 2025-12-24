@@ -107,3 +107,6 @@ Thumbs.db
 # Project specific
 configs/local/
 .secrets/
+
+trash/
+trash/*

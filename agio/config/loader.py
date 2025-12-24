@@ -13,13 +13,16 @@ logger = get_logger(__name__)
 
 
 class ConfigLoader:
-    """从 YAML 文件加载配置并按依赖顺序初始化
+    """从 YAML 文件加载配置
 
     职责：
-    - 扫描配置目录
-    - 解析 YAML 文件
-    - 构建依赖图
-    - 按拓扑顺序加载配置
+    - 递归扫描配置目录中的所有 YAML 文件
+    - 解析 YAML 文件内容
+    - 基于配置文件的 type 字段识别组件类型
+    - 检测重复配置名称
+    - 返回按类型分组的配置字典
+
+    支持任意文件夹组织方式，不限制目录结构。
     """
 
     def __init__(self, config_dir: str | Path):
@@ -35,54 +38,88 @@ class ConfigLoader:
     async def load_all_configs(self) -> dict[ComponentType, list[dict[str, Any]]]:
         """加载所有配置文件
 
+        递归扫描所有 YAML 文件，基于配置文件的 type 字段识别组件类型。
+
         Returns:
             按类型分组的配置字典: {ComponentType: [config_dict, ...]}
         """
+        # 初始化所有类型的列表（动态生成）
         configs_by_type: dict[ComponentType, list[dict[str, Any]]] = {
-            ComponentType.MODEL: [],
-            ComponentType.TOOL: [],
-            ComponentType.MEMORY: [],
-            ComponentType.KNOWLEDGE: [],
-            ComponentType.SESSION_STORE: [],
-            ComponentType.TRACE_STORE: [],
-            ComponentType.AGENT: [],
-            ComponentType.WORKFLOW: [],
+            ct: [] for ct in ComponentType
         }
 
-        # 扫描各个子目录
-        type_dir_mapping = {
-            "models": ComponentType.MODEL,
-            "tools": ComponentType.TOOL,
-            # "memory": ComponentType.MEMORY,
-            # "knowledge": ComponentType.KNOWLEDGE,
-            "storages": ComponentType.SESSION_STORE,
-            "observability": ComponentType.TRACE_STORE,
-            "agents": ComponentType.AGENT,
-            "workflows": ComponentType.WORKFLOW,
-        }
+        # 用于检测重复配置名称
+        seen_configs: dict[tuple[ComponentType, str], Path] = {}
 
-        for dir_name, component_type in type_dir_mapping.items():
-            type_dir = self.config_dir / dir_name
-            if not type_dir.exists():
-                logger.warning(f"Config directory not found: {type_dir}")
-                continue
+        # 递归扫描所有 YAML 文件
+        yaml_files = list(self.config_dir.rglob("*.yaml"))
+        logger.info(f"Found {len(yaml_files)} YAML files in {self.config_dir}")
 
-            # 加载该类型的所有 YAML 文件
-            for yaml_file in type_dir.glob("*.yaml"):
+        for yaml_file in yaml_files:
+            try:
+                config_data = self._load_yaml_file(yaml_file)
+                if not config_data:
+                    continue
+
+                # 验证必需字段
+                if "type" not in config_data:
+                    logger.warning(
+                        f"Missing 'type' field in {yaml_file.relative_to(self.config_dir)}, skipping"
+                    )
+                    continue
+
+                if "name" not in config_data:
+                    logger.warning(
+                        f"Missing 'name' field in {yaml_file.relative_to(self.config_dir)}, skipping"
+                    )
+                    continue
+
+                # 从配置内容识别类型
                 try:
-                    config_data = self._load_yaml_file(yaml_file)
-                    if not config_data:
-                        continue
-                    if config_data.get("enabled", True):
-                        configs_by_type[component_type].append(config_data)
-                        logger.info(f"Loaded config: {yaml_file.name}")
-                    else:
-                        logger.info(
-                            f"Skipped disabled config: {yaml_file.name} "
-                            f"(type={component_type.value}, name={config_data.get('name')})"
-                        )
-                except Exception as e:
-                    logger.error(f"Failed to load {yaml_file}: {e}")
+                    component_type = ComponentType(config_data["type"])
+                except ValueError:
+                    logger.warning(
+                        f"Unknown component type '{config_data['type']}' in "
+                        f"{yaml_file.relative_to(self.config_dir)}, skipping"
+                    )
+                    continue
+
+                # 检查是否启用
+                if not config_data.get("enabled", True):
+                    logger.info(
+                        f"Skipped disabled config: {yaml_file.relative_to(self.config_dir)} "
+                        f"(type={component_type.value}, name={config_data['name']})"
+                    )
+                    continue
+
+                # 检测重复配置名称
+                config_key = (component_type, config_data["name"])
+                if config_key in seen_configs:
+                    previous_path = seen_configs[config_key].relative_to(
+                        self.config_dir
+                    )
+                    logger.warning(
+                        f"Duplicate config found: {component_type.value}/{config_data['name']} "
+                        f"at {yaml_file.relative_to(self.config_dir)}, "
+                        f"previous: {previous_path}"
+                    )
+
+                seen_configs[config_key] = yaml_file
+                configs_by_type[component_type].append(config_data)
+                logger.info(
+                    f"Loaded config: {yaml_file.relative_to(self.config_dir)} "
+                    f"(type={component_type.value}, name={config_data['name']})"
+                )
+
+            except Exception as e:
+                logger.error(
+                    f"Failed to load {yaml_file.relative_to(self.config_dir)}: {e}",
+                    exc_info=True,
+                )
+
+        # 统计信息
+        total = sum(len(configs) for configs in configs_by_type.values())
+        logger.info(f"Loaded {total} configs across {len(ComponentType)} types")
 
         return configs_by_type
 

@@ -16,6 +16,7 @@ from agio.utils.logging import get_logger
 
 if TYPE_CHECKING:
     from agio.agent.control import AbortSignal
+    from agio.domain import ExecutionContext
     from agio.providers.storage.base import SessionStore
 
 logger = get_logger(__name__)
@@ -75,13 +76,14 @@ Example:
     async def execute(
         self,
         parameters: dict[str, Any],
+        context: "ExecutionContext",
         abort_signal: "AbortSignal | None" = None,
     ) -> ToolResult:
         start_time = time.time()
 
         try:
             tool_call_id = parameters.get("tool_call_id", "")
-            session_id = parameters.get("_session_id", "")
+            session_id = context.session_id
 
             if not tool_call_id:
                 return self._create_error_result(

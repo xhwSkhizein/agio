@@ -89,6 +89,8 @@ class PipelineWorkflow(BaseWorkflow):
         final_output = ""
         nodes_executed = 0
         total_tokens = 0
+        input_tokens = 0
+        output_tokens = 0
 
         try:
             for node_index, node in enumerate(nodes):
@@ -151,7 +153,10 @@ class PipelineWorkflow(BaseWorkflow):
                 executor = RunnableExecutor(store=session_store)
                 result = await executor.execute(runnable, node_input, child_context)
                 node_output = result.response or ""
-                total_tokens += result.metrics.total_tokens
+                if result.metrics:
+                    total_tokens += result.metrics.total_tokens
+                    input_tokens += result.metrics.input_tokens
+                    output_tokens += result.metrics.output_tokens
 
                 # Update state cache
                 state.set_output(node_id, node_output)
@@ -179,6 +184,8 @@ class PipelineWorkflow(BaseWorkflow):
                 metrics=RunMetrics(
                     duration=duration,
                     total_tokens=total_tokens,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
                     nodes_executed=nodes_executed,
                 ),
             )

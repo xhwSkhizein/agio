@@ -117,11 +117,13 @@ class OpenAIModel(Model):
             stream_chunk = StreamChunk()
 
             if chunk.usage:
-                stream_chunk.usage = {
+                # Convert OpenAI-style tokens to unified format
+                from agio.domain.models import normalize_usage_metrics
+                stream_chunk.usage = normalize_usage_metrics({
                     "prompt_tokens": chunk.usage.prompt_tokens,
                     "completion_tokens": chunk.usage.completion_tokens,
                     "total_tokens": chunk.usage.total_tokens,
-                }
+                })
 
             if chunk.choices and len(chunk.choices) > 0:
                 choice = chunk.choices[0]

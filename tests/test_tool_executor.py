@@ -24,7 +24,7 @@ class SuccessTool(BaseTool):
     def is_concurrency_safe(self) -> bool:
         return True
 
-    async def execute(self, parameters: dict, abort_signal=None) -> ToolResult:
+    async def execute(self, parameters: dict, context: ExecutionContext, abort_signal=None) -> ToolResult:
         start_time = time.time()
         return ToolResult(
             tool_name=self.name,
@@ -54,7 +54,7 @@ class FailureTool(BaseTool):
     def is_concurrency_safe(self) -> bool:
         return True
 
-    async def execute(self, parameters: dict, abort_signal=None) -> ToolResult:
+    async def execute(self, parameters: dict, context: ExecutionContext, abort_signal=None) -> ToolResult:
         raise ValueError("Intentional failure")
 
 

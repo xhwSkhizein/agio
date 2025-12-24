@@ -148,6 +148,7 @@ interface ExecutionStepsProps {
 
 function ExecutionSteps({ execution }: ExecutionStepsProps) {
   const steps = execution.steps
+  const [activeParallelIndex, setActiveParallelIndex] = useState(0)
 
   if (steps.length === 0 && execution.status === 'running') {
     return (
@@ -166,19 +167,166 @@ function ExecutionSteps({ execution }: ExecutionStepsProps) {
   }
 
   // Find child execution for a tool_call (RunnableTool)
-  // Tool name format: "call_{runnable_id}", child's runnableId is "{runnable_id}"
-  const getChildForToolCall = (toolName: string) => {
+  // If tool_call step has childRunId, use it for precise matching.
+  // Otherwise, fall back to matching by runnableId (may match wrong child if parallel calls exist).
+  const getChildForToolCall = (step: Extract<ExecutionStep, { type: 'tool_call' }>) => {
+    // If step has childRunId, use it for precise matching
+    if (step.childRunId) {
+      return execution.children.find(child => child.id === step.childRunId)
+    }
+
+  // Fallback: match by runnableId (legacy behavior, may be incorrect for parallel calls)
     // Extract runnable_id from tool name (e.g., "call_collector" -> "collector")
-    const runnableId = toolName.startsWith('call_') ? toolName.slice(5) : toolName
+    const runnableId = step.toolName.startsWith('call_') ? step.toolName.slice(5) : step.toolName
     
     return execution.children.find(child => 
       child.nestingType === 'tool_call' && child.runnableId === runnableId
     )
   }
 
+  // Group consecutive tool_calls together (they are concurrent)
+  const groupedSteps: Array<ExecutionStep | ExecutionStep[]> = []
+  let currentToolCallGroup: Extract<ExecutionStep, { type: 'tool_call' }>[] = []
+  
+  for (const step of steps) {
+    if (step.type === 'tool_call') {
+      currentToolCallGroup.push(step)
+    } else {
+      // Flush current tool_call group if exists
+      if (currentToolCallGroup.length > 0) {
+        groupedSteps.push(currentToolCallGroup.length === 1 ? currentToolCallGroup[0] : currentToolCallGroup)
+        currentToolCallGroup = []
+      }
+      groupedSteps.push(step)
+    }
+  }
+  // Flush remaining tool_call group
+  if (currentToolCallGroup.length > 0) {
+    groupedSteps.push(currentToolCallGroup.length === 1 ? currentToolCallGroup[0] : currentToolCallGroup)
+  }
+
   return (
     <div className="space-y-2">
-      {steps.map((step, idx) => {
+      {groupedSteps.map((stepOrGroup, idx) => {
+        // Handle grouped tool_calls (concurrent execution)
+        if (Array.isArray(stepOrGroup)) {
+          const toolCallSteps = stepOrGroup as Extract<ExecutionStep, { type: 'tool_call' }>[]
+          const activeToolCall = toolCallSteps[activeParallelIndex] || toolCallSteps[0]
+          const toolResult = getToolResult(activeToolCall.toolCallId)
+          const childExec = getChildForToolCall(activeToolCall)
+          const canGoPrev = activeParallelIndex > 0
+          const canGoNext = activeParallelIndex < toolCallSteps.length - 1
+
+          return (
+            <div key={`parallel_tools_${idx}`} className="rounded-lg border border-amber-500/30 bg-amber-500/5 overflow-hidden">
+              {/* Parallel tool calls header */}
+              <div className="flex items-center gap-1 px-2 pt-1 border-b border-border/50 bg-surface/20">
+                <button
+                  onClick={() => setActiveParallelIndex(prev => Math.max(0, prev - 1))}
+                  disabled={!canGoPrev}
+                  className={`p-1 rounded transition-colors ${
+                    canGoPrev
+                      ? 'text-gray-400 hover:text-white hover:bg-surface/50'
+                      : 'text-gray-700 cursor-not-allowed'
+                  }`}
+                >
+                  <ChevronLeft className="w-3 h-3" />
+                </button>
+
+                <div className="flex-1 flex items-center gap-0.5 overflow-x-auto scrollbar-hide">
+                  {toolCallSteps.map((tc, tcIdx) => {
+                    const tcResult = getToolResult(tc.toolCallId)
+                    const isActive = tcIdx === activeParallelIndex
+                    const statusColors = {
+                      running: 'border-blue-500',
+                      completed: 'border-green-500',
+                      failed: 'border-red-500',
+                    }
+                    const status = tcResult?.status || 'running'
+
+                    return (
+                      <button
+                        key={tc.toolCallId}
+                        onClick={() => setActiveParallelIndex(tcIdx)}
+                        className={`flex items-center gap-1.5 px-2 py-1 rounded-t-lg border-b-2 transition-colors ${
+                          isActive
+                            ? `bg-surface/50 ${statusColors[status]}`
+                            : 'bg-transparent border-transparent hover:bg-surface/30'
+                        }`}
+                      >
+                        <ChildStatusIcon status={status} />
+                        <span className={`text-[11px] font-mono font-medium ${
+                          isActive ? 'text-purple-300' : 'text-gray-400'
+                        }`}>
+                          {tc.toolName}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <button
+                  onClick={() => setActiveParallelIndex(prev => Math.min(toolCallSteps.length - 1, prev + 1))}
+                  disabled={!canGoNext}
+                  className={`p-1 rounded transition-colors ${
+                    canGoNext
+                      ? 'text-gray-400 hover:text-white hover:bg-surface/50'
+                      : 'text-gray-700 cursor-not-allowed'
+                  }`}
+                >
+                  <ChevronRight className="w-3 h-3" />
+                </button>
+
+                <span className="text-[10px] text-gray-500 font-mono px-1">
+                  {activeParallelIndex + 1}/{toolCallSteps.length}
+                </span>
+              </div>
+
+              {/* Active tool call content */}
+              <div className="p-2">
+                <ToolCall
+                  toolName={activeToolCall.toolName}
+                  args={activeToolCall.toolArgs}
+                  result={toolResult?.result}
+                  status={toolResult?.status || 'running'}
+                  duration={toolResult?.duration}
+                />
+                {childExec && (
+                  <div className="ml-4 mt-2">
+                    <RunnableExecutionView 
+                      execution={childExec} 
+                      depth={(execution.depth || 0) + 1}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Status overview bar */}
+              <div className="flex items-center gap-1 px-2 py-1.5 border-t border-border/30 bg-surface/10">
+                {toolCallSteps.map((tc, tcIdx) => {
+                  const tcResult = getToolResult(tc.toolCallId)
+                  const status = tcResult?.status || 'running'
+                  return (
+                    <button
+                      key={tc.toolCallId}
+                      onClick={() => setActiveParallelIndex(tcIdx)}
+                      className={`flex-1 h-1 rounded-full transition-colors ${
+                        status === 'completed' ? 'bg-green-500/60' :
+                        status === 'running' ? 'bg-blue-500/60 animate-pulse' :
+                        status === 'failed' ? 'bg-red-500/60' :
+                        'bg-gray-700'
+                      } ${tcIdx === activeParallelIndex ? 'ring-1 ring-white/30' : ''}`}
+                      title={`${tc.toolName}: ${status}`}
+                    />
+                  )
+                })}
+              </div>
+            </div>
+          )
+        }
+
+        // Single step (not grouped)
+        const step = stepOrGroup as ExecutionStep
         if (step.type === 'assistant_content') {
           return (
             <div key={`${step.stepId}_content_${idx}`} className="space-y-2">
@@ -221,8 +369,9 @@ function ExecutionSteps({ execution }: ExecutionStepsProps) {
         }
         
         if (step.type === 'tool_call') {
+          // Single tool_call (not concurrent)
           const toolResult = getToolResult(step.toolCallId)
-          const childExec = getChildForToolCall(step.toolName)
+          const childExec = getChildForToolCall(step)
           
           return (
             <div key={`${step.toolCallId}_call_${idx}`}>

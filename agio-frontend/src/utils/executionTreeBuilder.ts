@@ -227,6 +227,23 @@ export class ExecutionTreeBuilder {
     if (data.parent_run_id && this.tree.executionMap.has(data.parent_run_id)) {
       const parent = this.tree.executionMap.get(data.parent_run_id)!
       parent.children.push(exec)
+
+      // If this child execution was triggered by a tool_call, link it to the tool_call step
+      if (data.nesting_type === 'tool_call' && exec.runnableId) {
+        // Find the matching tool_call step in parent that hasn't been linked yet
+        // Match by runnableId extracted from tool name (e.g., "call_collector" -> "collector")
+        const toolCallStep = parent.steps.find(
+          step => step.type === 'tool_call' &&
+            !step.childRunId &&
+            (step.toolName.startsWith('call_')
+              ? step.toolName.slice(5) === exec.runnableId
+              : step.toolName === exec.runnableId)
+        ) as Extract<ExecutionStep, { type: 'tool_call' }> | undefined
+
+        if (toolCallStep) {
+          toolCallStep.childRunId = runId
+        }
+      }
     } else {
       // Top-level execution
       this.tree.executions.push(exec)
@@ -323,10 +340,13 @@ export class ExecutionTreeBuilder {
     const exec = this.tree.executionMap.get(runId)
     if (!exec) return
     
+    // Normalize metrics using getEventMetrics (handles OpenAI-style keys)
+    const normalizedMetrics = getEventMetrics(data)
+
     // Handle assistant step completion
     if (snapshot.role === 'assistant') {
       if (snapshot.content) {
-        this.updateAssistantStep(exec, stepId, snapshot.content, snapshot.metrics)
+        this.updateAssistantStep(exec, stepId, snapshot.content, normalizedMetrics)
       }
       if (snapshot.reasoning_content) {
         this.updateAssistantStepReasoning(exec, stepId, snapshot.reasoning_content)
@@ -353,7 +373,7 @@ export class ExecutionTreeBuilder {
           toolCallId: snapshot.tool_call_id,
           result: snapshot.content || '',
           status: snapshot.is_error ? 'failed' : 'completed',
-          duration: snapshot.metrics?.duration_ms,
+          duration: normalizedMetrics?.duration_ms,
         })
       }
     }
@@ -373,7 +393,7 @@ export class ExecutionTreeBuilder {
     exec: RunnableExecution, 
     stepId: string, 
     content: string,
-    metrics?: Record<string, number>
+    metrics?: ReturnType<typeof getEventMetrics>
   ): void {
     const existing = exec.steps.find(
       s => s.type === 'assistant_content' && s.stepId === stepId
@@ -382,6 +402,7 @@ export class ExecutionTreeBuilder {
     if (existing) {
       existing.content = content
       if (metrics) {
+        // Metrics are already normalized by getEventMetrics
         existing.metrics = {
           input_tokens: metrics.input_tokens,
           output_tokens: metrics.output_tokens,
@@ -395,6 +416,7 @@ export class ExecutionTreeBuilder {
         stepId,
         content,
         metrics: metrics ? {
+          // Metrics are already normalized by getEventMetrics
           input_tokens: metrics.input_tokens,
           output_tokens: metrics.output_tokens,
           total_tokens: metrics.total_tokens,
@@ -495,10 +517,23 @@ export class ExecutionTreeBuilder {
     }
     
     // Mark as finalized
-    const tcIndex = tc.index ?? exec.steps.length - 1
+    // Use same default index as handleToolCallDelta to ensure tracker key matches
+    const tcIndex = tc.index ?? 0
     const trackerKey = `${exec.id}_${stepId}_${tcIndex}`
     const tracked = this.state.toolCallTracker.get(trackerKey)
-    if (tracked) {
+    
+    // If tracker key doesn't match, try to find by toolCallId
+    if (!tracked || tracked.toolCallId !== tc.id) {
+      // Search for tracker entry with matching toolCallId
+      for (const [key, value] of this.state.toolCallTracker.entries()) {
+        if (value.toolCallId === tc.id && key.startsWith(`${exec.id}_${stepId}_`)) {
+          this.state.toolCallTracker.set(key, { ...value, finalized: true })
+          return
+        }
+      }
+      // If still not found, create new tracker entry with default index
+      this.state.toolCallTracker.set(trackerKey, { toolCallId: tc.id, finalized: true })
+    } else {
       this.state.toolCallTracker.set(trackerKey, { ...tracked, finalized: true })
     }
   }

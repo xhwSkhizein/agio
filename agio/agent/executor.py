@@ -15,20 +15,19 @@ Does NOT handle:
 import asyncio
 import time
 from typing import AsyncIterator, TYPE_CHECKING
-from uuid import uuid4
 
 from agio.domain import (
-    MessageRole,
-    Step,
     StepDelta,
     StepEvent,
     StepMetrics,
     ExecutionContext,
-    StepAdapter
+    StepAdapter,
+    normalize_usage_metrics,
 )
 from agio.tools.executor import ToolExecutor
 from agio.utils.logging import get_logger
 from agio.runtime.event_factory import EventFactory
+from agio.runtime.step_factory import StepFactory
 from agio.config import ExecutionConfig
 
 if TYPE_CHECKING:
@@ -119,7 +118,7 @@ class AgentExecutor:
         messages: list[dict],
         ctx: "ExecutionContext",
         *,
-        start_sequence: int = 1,
+        allocate_sequence_fn,
         pending_tool_calls: list[dict] | None = None,
         abort_signal: "AbortSignal | None" = None,
     ) -> AsyncIterator[StepEvent]:
@@ -129,18 +128,16 @@ class AgentExecutor:
         Args:
             messages: Initial message list (OpenAI format), modified in place
             ctx: ExecutionContext containing run_id, session_id, wire, depth, etc.
-            start_sequence: Starting sequence number
+            allocate_sequence_fn: Async callback to allocate next sequence number
             pending_tool_calls: Tool calls to execute before starting LLM loop (for resume)
             abort_signal: Abort signal (optional)
 
         Yields:
             StepEvent: Step event stream
         """
-        
 
         ef = EventFactory(ctx)
         current_step = 0
-        current_sequence = start_sequence
 
         # Execute pending tool_calls first (for resume from assistant with tools)
         if pending_tool_calls:
@@ -151,14 +148,13 @@ class AgentExecutor:
                 tool_count=len(pending_tool_calls),
             )
 
-            async for event, new_seq in self._execute_tool_calls(
+            async for event in self._execute_tool_calls(
                 pending_tool_calls,
                 ctx,
-                current_sequence,
+                allocate_sequence_fn,
                 messages,
                 abort_signal,
             ):
-                current_sequence = new_seq
                 yield event
 
         tool_schemas = self._get_tool_schemas() if self.tools else None
@@ -172,6 +168,9 @@ class AgentExecutor:
             current_step += 1
             step_start_time = time.time()
 
+            # Allocate sequence for assistant step
+            current_sequence = await allocate_sequence_fn()
+            
             logger.debug(
                 "executor_step_started",
                 session_id=ctx.session_id,
@@ -180,24 +179,27 @@ class AgentExecutor:
                 sequence=current_sequence,
             )
 
-            # 1. Call LLM, create Assistant Step
-            assistant_step = Step(
-                id=str(uuid4()),
-                session_id=ctx.session_id,
-                run_id=ctx.run_id,
+            # Record LLM call start time
+            from datetime import datetime, timezone
+
+            llm_start_time = datetime.now(timezone.utc)
+
+            # 1. Call LLM, create Assistant Step using StepFactory
+            sf = StepFactory(ctx)
+            assistant_step = sf.assistant_step(
                 sequence=current_sequence,
-                role=MessageRole.ASSISTANT,
                 content="",
                 tool_calls=None,
-                metrics=StepMetrics(),
-                # Runnable binding
-                runnable_id=ctx.runnable_id,
-                runnable_type=ctx.runnable_type,
-                # Extract metadata from ExecutionContext
-                workflow_id=ctx.workflow_id,
-                node_id=ctx.node_id,
-                parent_run_id=ctx.parent_run_id,
-                branch_key=ctx.metadata.get("branch_key"),  # Extract branch_key from metadata
+                llm_messages=messages.copy() if messages else None,
+                llm_tools=tool_schemas.copy() if tool_schemas else None,
+                llm_request_params={
+                    "temperature": self.model.temperature,
+                    "max_tokens": self.model.max_tokens,
+                    "top_p": self.model.top_p,
+                }
+                if hasattr(self.model, "temperature")
+                else None,
+                metrics=StepMetrics(exec_start_at=llm_start_time),
             )
 
             full_content = ""
@@ -215,7 +217,9 @@ class AgentExecutor:
 
                 if chunk.content:
                     full_content += chunk.content
-                    yield ef.step_delta(assistant_step.id, StepDelta(content=chunk.content))
+                    yield ef.step_delta(
+                        assistant_step.id, StepDelta(content=chunk.content)
+                    )
 
                 if chunk.reasoning_content:
                     full_reasoning_content += chunk.reasoning_content
@@ -226,13 +230,16 @@ class AgentExecutor:
 
                 if chunk.tool_calls:
                     accumulator.accumulate(chunk.tool_calls)
-                    yield ef.step_delta(assistant_step.id, StepDelta(tool_calls=chunk.tool_calls))
+                    yield ef.step_delta(
+                        assistant_step.id, StepDelta(tool_calls=chunk.tool_calls)
+                    )
 
                 if chunk.usage:
                     usage_data = chunk.usage
 
             # 2. Finalize Assistant Step
             step_end_time = time.time()
+            llm_end_time = datetime.now(timezone.utc)
             final_tool_calls = accumulator.finalize()
 
             assistant_step.content = full_content or None
@@ -240,24 +247,30 @@ class AgentExecutor:
             assistant_step.tool_calls = final_tool_calls or None
 
             if assistant_step.metrics:
-                assistant_step.metrics.duration_ms = (step_end_time - step_start_time) * 1000
+                assistant_step.metrics.exec_end_at = llm_end_time
+                assistant_step.metrics.duration_ms = (
+                    step_end_time - step_start_time
+                ) * 1000
                 if first_token_time:
                     assistant_step.metrics.first_token_latency_ms = (
                         first_token_time - step_start_time
                     ) * 1000
 
                 if usage_data:
-                    assistant_step.metrics.input_tokens = usage_data.get("prompt_tokens")
-                    assistant_step.metrics.output_tokens = usage_data.get("completion_tokens")
-                    assistant_step.metrics.total_tokens = usage_data.get("total_tokens")
+                    # Normalize metrics to handle both OpenAI-style and unified-style keys
+                    normalized = normalize_usage_metrics(usage_data)
+                    assistant_step.metrics.input_tokens = normalized["input_tokens"]
+                    assistant_step.metrics.output_tokens = normalized["output_tokens"]
+                    assistant_step.metrics.total_tokens = normalized["total_tokens"]
 
-                assistant_step.metrics.model_name = getattr(self.model, "model_name", None)
+                assistant_step.metrics.model_name = getattr(
+                    self.model, "model_name", None
+                )
                 assistant_step.metrics.provider = getattr(self.model, "provider", None)
 
             yield ef.step_completed(assistant_step.id, assistant_step)
 
             messages.append(StepAdapter.to_llm_message(assistant_step))
-            current_sequence += 1
 
             # 3. Check if we need to execute tools
             if not final_tool_calls:
@@ -277,38 +290,38 @@ class AgentExecutor:
                 tool_count=len(final_tool_calls),
             )
 
-            async for event, new_seq in self._execute_tool_calls(
+            async for event in self._execute_tool_calls(
                 final_tool_calls,
                 ctx,
-                current_sequence,
+                allocate_sequence_fn,
                 messages,
                 abort_signal,
             ):
-                current_sequence = new_seq
                 yield event
 
     async def _execute_tool_calls(
         self,
         tool_calls: list[dict],
         ctx: "ExecutionContext",
-        current_sequence: int,
+        allocate_sequence_fn,
         messages: list[dict],
         abort_signal: "AbortSignal | None" = None,
-    ) -> AsyncIterator[tuple[StepEvent, int]]:
+    ) -> AsyncIterator[StepEvent]:
         """
-        Execute tool calls and yield (event, new_sequence) tuples.
+        Execute tool calls and yield step events.
 
         Args:
             tool_calls: Tool calls to execute
             ctx: ExecutionContext
-            current_sequence: Current sequence number
+            allocate_sequence_fn: Async callback to allocate sequence
             messages: Messages list (modified in place)
             abort_signal: Abort signal
 
         Yields:
-            tuple[StepEvent, int]: (step_completed_event, updated_sequence)
+            StepEvent: step_completed events
         """
         ef = EventFactory(ctx)
+        sf = StepFactory(ctx)
 
         results = await self.tool_executor.execute_batch(
             tool_calls,
@@ -317,34 +330,34 @@ class AgentExecutor:
         )
 
         for result in results:
-            # Create Tool Step with metadata from context
-            tool_step = Step(
-                id=str(uuid4()),
-                session_id=ctx.session_id,
-                run_id=ctx.run_id,
-                sequence=current_sequence,
-                role=MessageRole.TOOL,
-                content=result.content,
+            # Allocate sequence for tool step
+            tool_sequence = await allocate_sequence_fn()
+            
+            # Create Tool Step using StepFactory
+            from datetime import datetime, timezone
+
+            tool_step = sf.tool_step(
+                sequence=tool_sequence,
                 tool_call_id=result.tool_call_id,
                 name=result.tool_name,
+                content=result.content,
                 metrics=StepMetrics(
                     duration_ms=result.duration * 1000 if result.duration else None,
-                    tool_exec_time_ms=result.duration * 1000 if result.duration else None,
+                    tool_exec_time_ms=result.duration * 1000
+                    if result.duration
+                    else None,
+                    exec_start_at=datetime.fromtimestamp(
+                        result.start_time, tz=timezone.utc
+                    ),
+                    exec_end_at=datetime.fromtimestamp(
+                        result.end_time, tz=timezone.utc
+                    ),
                 ),
-                # Runnable binding
-                runnable_id=ctx.runnable_id,
-                runnable_type=ctx.runnable_type,
-                # Extract metadata from ExecutionContext
-                workflow_id=ctx.workflow_id,
-                node_id=ctx.node_id,
-                parent_run_id=ctx.parent_run_id,
-                branch_key=ctx.metadata.get("branch_key"),  # Extract branch_key from metadata
             )
 
             messages.append(StepAdapter.to_llm_message(tool_step))
-            current_sequence += 1
 
-            yield ef.step_completed(tool_step.id, tool_step), current_sequence
+            yield ef.step_completed(tool_step.id, tool_step)
 
     def _get_tool_schemas(self) -> list[dict]:
         """Get OpenAI schema for tools."""

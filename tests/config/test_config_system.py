@@ -58,6 +58,66 @@ def config_system():
     return ConfigSystem()
 
 
+@pytest.fixture
+def nested_config_dir():
+    """Create a temporary config directory with nested folder structure."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Create nested directory structure
+        production_dir = Path(tmpdir) / "production"
+        dev_dir = Path(tmpdir) / "development"
+        shared_dir = Path(tmpdir) / "shared"
+        
+        production_dir.mkdir()
+        dev_dir.mkdir()
+        shared_dir.mkdir()
+        
+        # Create nested subdirectories
+        (production_dir / "models").mkdir()
+        (production_dir / "agents").mkdir()
+        (dev_dir / "models").mkdir()
+        (shared_dir / "storages").mkdir()
+        
+        # Create configs in nested directories
+        prod_model_config = {
+            "type": "model",
+            "name": "prod_model",
+            "provider": "openai",
+            "model_name": "gpt-4",
+            "api_key": "prod-key",
+        }
+        with open(production_dir / "models" / "prod_model.yaml", "w") as f:
+            yaml.dump(prod_model_config, f)
+        
+        dev_model_config = {
+            "type": "model",
+            "name": "dev_model",
+            "provider": "openai",
+            "model_name": "gpt-3.5-turbo",
+            "api_key": "dev-key",
+        }
+        with open(dev_dir / "models" / "dev_model.yaml", "w") as f:
+            yaml.dump(dev_model_config, f)
+        
+        storage_config = {
+            "type": "session_store",
+            "name": "shared_storage",
+            "store_type": "inmemory",
+        }
+        with open(shared_dir / "storages" / "shared_storage.yaml", "w") as f:
+            yaml.dump(storage_config, f)
+        
+        # Create a config directly in root (no subdirectory)
+        root_tool_config = {
+            "type": "tool",
+            "name": "root_tool",
+            "tool_name": "bash",
+        }
+        with open(Path(tmpdir) / "root_tool.yaml", "w") as f:
+            yaml.dump(root_tool_config, f)
+        
+        yield tmpdir
+
+
 class TestConfigSystemBasic:
     """Test basic ConfigSystem functionality."""
 
@@ -242,6 +302,227 @@ class TestConfigSystemComponentInfo:
         """Test getting info for non-existent component."""
         info = config_system.get_component_info("nonexistent")
         assert info is None
+
+
+class TestConfigLoaderRefactor:
+    """Test ConfigLoader refactored functionality."""
+
+    @pytest.mark.asyncio
+    async def test_load_recursive_scan(self, config_system, nested_config_dir):
+        """Test recursive scanning of nested directories."""
+        stats = await config_system.load_from_directory(nested_config_dir)
+        
+        # Should load configs from nested directories
+        assert stats["loaded"] >= 4  # prod_model, dev_model, shared_storage, root_tool
+        assert stats["failed"] == 0
+        
+        # Verify configs are loaded correctly
+        prod_model = config_system.get_config(ComponentType.MODEL, "prod_model")
+        assert prod_model is not None
+        assert prod_model["model_name"] == "gpt-4"
+        
+        dev_model = config_system.get_config(ComponentType.MODEL, "dev_model")
+        assert dev_model is not None
+        assert dev_model["model_name"] == "gpt-3.5-turbo"
+        
+        storage = config_system.get_config(ComponentType.SESSION_STORE, "shared_storage")
+        assert storage is not None
+        
+        tool = config_system.get_config(ComponentType.TOOL, "root_tool")
+        assert tool is not None
+
+    @pytest.mark.asyncio
+    async def test_type_identification_from_content(self, config_system):
+        """Test type identification from config content, not folder structure."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create configs in arbitrary folder structure
+            custom_dir = Path(tmpdir) / "custom" / "nested" / "path"
+            custom_dir.mkdir(parents=True)
+            
+            # Model config in a non-standard folder
+            model_config = {
+                "type": "model",
+                "name": "custom_model",
+                "provider": "openai",
+                "model_name": "gpt-4",
+                "api_key": "test-key",
+            }
+            with open(custom_dir / "model.yaml", "w") as f:
+                yaml.dump(model_config, f)
+            
+            # Agent config in same folder
+            agent_config = {
+                "type": "agent",
+                "name": "custom_agent",
+                "model": "custom_model",
+                "tools": [],
+            }
+            with open(custom_dir / "agent.yaml", "w") as f:
+                yaml.dump(agent_config, f)
+            
+            stats = await config_system.load_from_directory(tmpdir)
+            
+            # Should load both configs correctly based on type field
+            assert stats["loaded"] == 2
+            assert stats["failed"] == 0
+            
+            model = config_system.get_config(ComponentType.MODEL, "custom_model")
+            assert model is not None
+            
+            agent = config_system.get_config(ComponentType.AGENT, "custom_agent")
+            assert agent is not None
+
+    @pytest.mark.asyncio
+    async def test_duplicate_name_detection(self, config_system):
+        """Test duplicate config name detection."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create two configs with same type and name in different folders
+            dir1 = Path(tmpdir) / "folder1"
+            dir2 = Path(tmpdir) / "folder2"
+            dir1.mkdir()
+            dir2.mkdir()
+            
+            config1 = {
+                "type": "model",
+                "name": "duplicate_model",
+                "provider": "openai",
+                "model_name": "gpt-4",
+                "api_key": "key1",
+            }
+            with open(dir1 / "model.yaml", "w") as f:
+                yaml.dump(config1, f)
+            
+            config2 = {
+                "type": "model",
+                "name": "duplicate_model",
+                "provider": "openai",
+                "model_name": "gpt-3.5-turbo",
+                "api_key": "key2",
+            }
+            with open(dir2 / "model.yaml", "w") as f:
+                yaml.dump(config2, f)
+            
+            stats = await config_system.load_from_directory(tmpdir)
+            
+            # Both should be loaded, but second one overwrites first
+            assert stats["loaded"] == 2  # Both files are loaded
+            assert stats["failed"] == 0
+            
+            # The last loaded config should be the one stored
+            final_config = config_system.get_config(ComponentType.MODEL, "duplicate_model")
+            assert final_config is not None
+            # Note: Which one wins depends on file iteration order, but one should win
+
+    @pytest.mark.asyncio
+    async def test_flexible_folder_structure(self, config_system):
+        """Test flexible folder structure organization."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create completely custom folder structure
+            team_a = Path(tmpdir) / "teams" / "team-a" / "configs"
+            team_b = Path(tmpdir) / "teams" / "team-b" / "configs"
+            team_a.mkdir(parents=True)
+            team_b.mkdir(parents=True)
+            
+            # Team A configs
+            team_a_model = {
+                "type": "model",
+                "name": "team_a_model",
+                "provider": "openai",
+                "model_name": "gpt-4",
+                "api_key": "team-a-key",
+            }
+            with open(team_a / "model.yaml", "w") as f:
+                yaml.dump(team_a_model, f)
+            
+            # Team B configs
+            team_b_model = {
+                "type": "model",
+                "name": "team_b_model",
+                "provider": "openai",
+                "model_name": "gpt-3.5-turbo",
+                "api_key": "team-b-key",
+            }
+            with open(team_b / "model.yaml", "w") as f:
+                yaml.dump(team_b_model, f)
+            
+            # Shared config at root
+            shared_tool = {
+                "type": "tool",
+                "name": "shared_tool",
+                "tool_name": "bash",
+            }
+            with open(Path(tmpdir) / "shared_tool.yaml", "w") as f:
+                yaml.dump(shared_tool, f)
+            
+            stats = await config_system.load_from_directory(tmpdir)
+            
+            # All configs should be loaded regardless of folder structure
+            assert stats["loaded"] == 3
+            assert stats["failed"] == 0
+            
+            # Verify all configs are accessible
+            assert config_system.get_config(ComponentType.MODEL, "team_a_model") is not None
+            assert config_system.get_config(ComponentType.MODEL, "team_b_model") is not None
+            assert config_system.get_config(ComponentType.TOOL, "shared_tool") is not None
+
+    @pytest.mark.asyncio
+    async def test_missing_type_field(self, config_system):
+        """Test handling of configs with missing type field."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            invalid_config = {
+                "name": "invalid_config",
+                "provider": "openai",
+                "model_name": "gpt-4",
+            }
+            with open(Path(tmpdir) / "invalid.yaml", "w") as f:
+                yaml.dump(invalid_config, f)
+            
+            stats = await config_system.load_from_directory(tmpdir)
+            
+            # Should skip invalid config
+            assert stats["loaded"] == 0
+            assert stats["failed"] == 0  # Not counted as failed, just skipped
+
+    @pytest.mark.asyncio
+    async def test_unknown_type(self, config_system):
+        """Test handling of configs with unknown type."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            unknown_type_config = {
+                "type": "unknown_type",
+                "name": "unknown_config",
+            }
+            with open(Path(tmpdir) / "unknown.yaml", "w") as f:
+                yaml.dump(unknown_type_config, f)
+            
+            stats = await config_system.load_from_directory(tmpdir)
+            
+            # Should skip unknown type config
+            assert stats["loaded"] == 0
+            assert stats["failed"] == 0  # Not counted as failed, just skipped
+
+    @pytest.mark.asyncio
+    async def test_disabled_config(self, config_system):
+        """Test handling of disabled configs."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            disabled_config = {
+                "type": "model",
+                "name": "disabled_model",
+                "provider": "openai",
+                "model_name": "gpt-4",
+                "api_key": "test-key",
+                "enabled": False,
+            }
+            with open(Path(tmpdir) / "disabled.yaml", "w") as f:
+                yaml.dump(disabled_config, f)
+            
+            stats = await config_system.load_from_directory(tmpdir)
+            
+            # Disabled config should be skipped
+            assert stats["loaded"] == 0
+            assert stats["failed"] == 0
+            
+            # Config should not be registered
+            assert config_system.get_config(ComponentType.MODEL, "disabled_model") is None
 
 
 if __name__ == "__main__":

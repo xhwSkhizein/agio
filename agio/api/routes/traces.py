@@ -52,6 +52,7 @@ class SpanSummary(BaseModel):
     error_message: str | None
     attributes: dict[str, Any]
     metrics: dict[str, Any]
+    llm_details: dict[str, Any] | None = None  # Complete LLM call details (for LLM_CALL spans)
 
 
 class TraceDetail(BaseModel):
@@ -96,6 +97,7 @@ class WaterfallSpan(BaseModel):
     sublabel: str | None
     tokens: int | None
     metrics: dict[str, Any] | None = None
+    llm_details: dict[str, Any] | None = None  # Complete LLM call details (for LLM_CALL spans)
 
 
 class WaterfallData(BaseModel):
@@ -107,6 +109,24 @@ class WaterfallData(BaseModel):
 
     # Aggregated metrics
     metrics: dict[str, Any]
+
+
+class LLMCallSummary(BaseModel):
+    """LLM call summary extracted from Trace spans"""
+
+    span_id: str
+    trace_id: str
+    agent_id: str | None
+    session_id: str | None
+    run_id: str | None
+    start_time: datetime
+    duration_ms: float | None
+    model_name: str | None
+    provider: str | None
+    input_tokens: int | None
+    output_tokens: int | None
+    total_tokens: int | None
+    llm_details: dict[str, Any] | None = None
 
 
 # === API Endpoints ===
@@ -212,6 +232,59 @@ async def stream_traces(
     )
 
 
+@router.get("/spans/llm-calls", response_model=list[LLMCallSummary])
+async def list_llm_calls(
+    agent_id: str | None = Query(None, description="Filter by agent ID"),
+    session_id: str | None = Query(None, description="Filter by session ID"),
+    run_id: str | None = Query(None, description="Filter by run ID"),
+    model_id: str | None = Query(None, description="Filter by model ID"),
+    provider: str | None = Query(None, description="Filter by provider"),
+    start_time: datetime | None = Query(None, description="Start time filter"),
+    end_time: datetime | None = Query(None, description="End time filter"),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    config_system: ConfigSystem = Depends(get_config_system),
+):
+    """
+    Query LLM calls from all traces.
+    
+    Returns:
+        List of LLM call summaries extracted from Trace spans
+    """
+    store = get_trace_store(config_sys=config_system)
+    
+    # Query traces with filters
+    query = TraceQuery(
+        agent_id=agent_id,
+        session_id=session_id,
+        start_time=start_time,
+        end_time=end_time,
+        limit=500,  # Get more traces to extract LLM calls from
+        offset=0,
+    )
+    traces = await store.query_traces(query)
+    
+    # Extract LLM_CALL spans
+    llm_calls = []
+    for trace in traces:
+        for span in trace.spans:
+            if span.kind == SpanKind.LLM_CALL:
+                # Apply additional filters
+                if run_id and span.run_id != run_id:
+                    continue
+                if model_id and span.attributes.get("model_name") != model_id:
+                    continue
+                if provider and span.metrics.get("provider") != provider:
+                    continue
+                
+                llm_calls.append(_span_to_llm_call(span, trace))
+    
+    # Apply pagination
+    start = offset
+    end = start + limit
+    return llm_calls[start:end]
+
+
 # === Helper Functions ===
 
 
@@ -270,17 +343,29 @@ def _span_to_summary(span: Span) -> SpanSummary:
         error_message=span.error_message,
         attributes=span.attributes,
         metrics=span.metrics,
+        llm_details=span.llm_details,
     )
 
 
 def _build_waterfall(trace: Trace) -> WaterfallData:
     """Build waterfall chart data"""
+    from datetime import timezone
+    
     trace_start = trace.start_time
+    # Ensure trace_start is timezone-aware
+    if trace_start.tzinfo is None:
+        trace_start = trace_start.replace(tzinfo=timezone.utc)
+    
     spans = []
 
     for span in trace.spans:
+        # Ensure span.start_time is timezone-aware
+        span_start = span.start_time
+        if span_start.tzinfo is None:
+            span_start = span_start.replace(tzinfo=timezone.utc)
+        
         # Calculate relative offset
-        offset = (span.start_time - trace_start).total_seconds() * 1000
+        offset = (span_start - trace_start).total_seconds() * 1000
 
         # Build label
         label = span.name
@@ -308,6 +393,7 @@ def _build_waterfall(trace: Trace) -> WaterfallData:
                 sublabel=sublabel,
                 tokens=tokens,
                 metrics=span.metrics or {},
+                llm_details=span.llm_details,
             )
         )
 
@@ -321,4 +407,23 @@ def _build_waterfall(trace: Trace) -> WaterfallData:
             "total_tool_calls": trace.total_tool_calls,
             "max_depth": trace.max_depth,
         },
+    )
+
+
+def _span_to_llm_call(span: Span, trace: Trace) -> LLMCallSummary:
+    """Convert LLM_CALL Span to LLMCallSummary"""
+    return LLMCallSummary(
+        span_id=span.span_id,
+        trace_id=trace.trace_id,
+        agent_id=trace.agent_id,
+        session_id=trace.session_id,
+        run_id=span.run_id,
+        start_time=span.start_time,
+        duration_ms=span.duration_ms,
+        model_name=span.metrics.get("model") or span.attributes.get("model_name"),
+        provider=span.metrics.get("provider") or span.attributes.get("provider"),
+        input_tokens=span.metrics.get("tokens.input"),
+        output_tokens=span.metrics.get("tokens.output"),
+        total_tokens=span.metrics.get("tokens.total"),
+        llm_details=span.llm_details,
     )

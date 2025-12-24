@@ -27,6 +27,7 @@ if TYPE_CHECKING:
         CitationSourceRepository,
     )
     from agio.agent.control import AbortSignal
+    from agio.domain import ExecutionContext
 
 logger = get_logger(__name__)
 
@@ -366,6 +367,7 @@ To fetch full content from a search result, use web_fetch tool with the result i
     async def execute(
         self,
         parameters: dict[str, Any],
+        context: "ExecutionContext",
         abort_signal: "AbortSignal | None" = None,
     ) -> ToolResult:
         """执行网页搜索"""

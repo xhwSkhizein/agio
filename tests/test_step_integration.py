@@ -31,7 +31,7 @@ async def run_with_wire(runner, session, query):
 
     async def _run():
         try:
-            await runner.run(session, query, wire, context=context)
+            await runner.run(session, query, abort_signal=None, context=context)
         finally:
             await wire.close()
 
@@ -59,7 +59,7 @@ def mock_model():
         yield StreamChunk(
             content=None,
             tool_calls=None,
-            usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+            usage={"input_tokens": 10, "output_tokens": 5, "total_tokens": 15},
         )
 
     model.arun_stream = mock_stream
@@ -110,7 +110,13 @@ async def test_step_executor_creates_steps(mock_model, session_store):
     )
 
     events = []
-    async for event in executor.execute(messages, ctx, start_sequence=1):
+    seq_counter = 0
+    async def allocate_seq():
+        nonlocal seq_counter
+        seq_counter += 1
+        return seq_counter
+    
+    async for event in executor.execute(messages, ctx, allocate_sequence_fn=allocate_seq):
         events.append(event)
 
     # Check we got delta and completed events

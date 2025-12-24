@@ -40,6 +40,7 @@ if TYPE_CHECKING:
         CitationSourceRepository,
     )
     from agio.agent.control import AbortSignal
+    from agio.domain import ExecutionContext
 
 
 logger = get_logger(__name__)
@@ -142,6 +143,7 @@ class WebFetchTool(BaseTool):
     async def execute(
         self,
         parameters: dict[str, Any],
+        context: "ExecutionContext",
         abort_signal: "AbortSignal | None" = None,
     ) -> ToolResult:
         """执行网页内容获取"""

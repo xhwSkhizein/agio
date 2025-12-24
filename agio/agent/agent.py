@@ -107,7 +107,7 @@ class Agent:
         )
 
         # Execute and write Step events to wire, return RunOutput
-        return await runner.run(session, input, context.wire, context=context)
+        return await runner.run(session, input, context=context)
 
     async def get_steps(self, session_id: str):
         """Get all Steps for a Session."""

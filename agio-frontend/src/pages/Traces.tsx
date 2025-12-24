@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Activity, Filter, RefreshCw, Clock, Zap, AlertCircle, CheckCircle, Loader2, X } from 'lucide-react';
+import { Activity, Filter, RefreshCw, Clock, Zap, AlertCircle, CheckCircle, Loader2, X, MessageSquare } from 'lucide-react';
 
 interface TraceSummary {
   trace_id: string;
@@ -27,6 +27,7 @@ export default function Traces() {
     status: '',
   });
   const [showFilters, setShowFilters] = useState(false);
+  const [showLLMCallsOnly, setShowLLMCallsOnly] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -126,6 +127,16 @@ export default function Traces() {
             <RefreshCw className="w-4 h-4" />
             Refresh
           </button>
+          <button
+            onClick={() => setShowLLMCallsOnly(!showLLMCallsOnly)}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${showLLMCallsOnly
+                ? 'bg-primary-500/20 text-primary-400 border border-primary-500/50'
+                : 'bg-surfaceHighlight text-gray-300 hover:text-white'
+              }`}
+          >
+            <MessageSquare className="w-4 h-4" />
+            LLM Calls Only
+          </button>
         </div>
       </div>
 
@@ -223,7 +234,9 @@ export default function Traces() {
         </div>
       ) : (
         <div className="space-y-2">
-          {traces.map((trace) => (
+              {traces
+                .filter((trace) => !showLLMCallsOnly || trace.total_llm_calls > 0)
+                .map((trace) => (
             <div
               key={trace.trace_id}
               onClick={() => navigate(`/traces/${trace.trace_id}`)}

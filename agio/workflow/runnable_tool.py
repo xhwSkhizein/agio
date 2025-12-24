@@ -118,6 +118,7 @@ class RunnableTool(BaseTool):
     async def execute(
         self,
         parameters: dict[str, Any],
+        context: "ExecutionContext",
         abort_signal: "AbortSignal | None" = None,
     ) -> ToolResult:
         """
@@ -138,9 +139,9 @@ class RunnableTool(BaseTool):
         task = parameters.get("task", "")
         extra_context = parameters.get("context", "")
 
-        # Get current depth and call stack from parameters
-        current_depth = parameters.get("_depth", 0) + 1
-        call_stack: list[str] = parameters.get("_call_stack", []).copy()
+        # Get current depth and call stack from context metadata
+        current_depth = context.depth + 1
+        call_stack: list[str] = context.metadata.get("_call_stack", []).copy()
 
         # Safety check 1: Depth limit
         if current_depth > self.max_depth:
@@ -166,26 +167,16 @@ class RunnableTool(BaseTool):
         if extra_context:
             input_text = f"{task}\n\nContext: {extra_context}"
 
-        # Get wire and parent_run_id from parameters (passed by ToolExecutor)
-        # Note: These parameters are passed via magic keys for now (Part 3 task)
-        wire: "Wire | None" = parameters.get("_wire")
-        parent_run_id: str | None = parameters.get("_parent_run_id")
-
         # Build execution context with wire for unified event streaming
+        # Use parent's session_id to keep all Steps in the same Session
         run_id = str(uuid4())
-        context = ExecutionContext(
+        child_context = context.child(
             run_id=run_id,
-            wire=wire,  # Pass wire to nested execution
-            session_id=str(uuid4()),  # Independent session
-            trace_id=parameters.get("_trace_id"),
-            span_id=None,
-            parent_span_id=parameters.get("_parent_span_id"),
-            parent_run_id=parent_run_id,  # Parent run ID for grouping nested events
-            nested_runnable_id=self.runnable.id,  # Identify which Runnable is executing
-            runnable_type=self.runnable.runnable_type,  # "agent" or "workflow"
-            runnable_id=self.runnable.id,  # Runnable config ID
-            nesting_type="tool_call",  # Mark as tool_call triggered execution
-            depth=current_depth,
+            nested_runnable_id=self.runnable.id,
+            # session_id will be inherited from parent context
+            runnable_type=self.runnable.runnable_type,
+            runnable_id=self.runnable.id,
+            nesting_type="tool_call",
             metadata={
                 "_call_stack": call_stack,  # Pass call stack for nested detection
             },
@@ -200,7 +191,7 @@ class RunnableTool(BaseTool):
         try:
             # Use RunnableExecutor to handle Run lifecycle events
             executor = RunnableExecutor(store=self.session_store)
-            result = await executor.execute(self.runnable, input_text, context)
+            result = await executor.execute(self.runnable, input_text, child_context)
             output = result.response or ""
 
         except CircularReferenceError as e:

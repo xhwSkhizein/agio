@@ -46,12 +46,16 @@ export function getEventMetrics(event: SSEEventData): Metrics | undefined {
  * Handles both OpenAI style (prompt_tokens) and unified style (input_tokens).
  */
 function normalizeMetrics(raw: Metrics): Metrics {
+  const inputTokens = raw.input_tokens ?? raw.prompt_tokens
+  const outputTokens = raw.output_tokens ?? raw.completion_tokens
+
   return {
-    input_tokens: raw.input_tokens ?? raw.prompt_tokens,
-    output_tokens: raw.output_tokens ?? raw.completion_tokens,
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
     total_tokens: raw.total_tokens ?? (
-      ((raw.input_tokens ?? raw.prompt_tokens ?? 0) + 
-      (raw.output_tokens ?? raw.completion_tokens ?? 0)) || undefined
+      inputTokens !== undefined && outputTokens !== undefined
+        ? inputTokens + outputTokens
+        : undefined
     ),
     duration_ms: raw.duration_ms,
   }
@@ -59,12 +63,23 @@ function normalizeMetrics(raw: Metrics): Metrics {
 
 /**
  * Merge metrics from multiple sources (for aggregation).
+ * Preserves zero values as valid metrics (doesn't convert to undefined).
  */
 export function mergeMetrics(base: Metrics, other: Metrics): Metrics {
+  const sumOrUndefined = (a: number | undefined, b: number | undefined): number | undefined => {
+    if (a === undefined && b === undefined) return undefined
+    return (a ?? 0) + (b ?? 0)
+  }
+
+  const maxOrUndefined = (a: number | undefined, b: number | undefined): number | undefined => {
+    if (a === undefined && b === undefined) return undefined
+    return Math.max(a ?? 0, b ?? 0)
+  }
+
   return {
-    input_tokens: (base.input_tokens ?? 0) + (other.input_tokens ?? 0) || undefined,
-    output_tokens: (base.output_tokens ?? 0) + (other.output_tokens ?? 0) || undefined,
-    total_tokens: (base.total_tokens ?? 0) + (other.total_tokens ?? 0) || undefined,
-    duration_ms: Math.max(base.duration_ms ?? 0, other.duration_ms ?? 0) || undefined,
+    input_tokens: sumOrUndefined(base.input_tokens, other.input_tokens),
+    output_tokens: sumOrUndefined(base.output_tokens, other.output_tokens),
+    total_tokens: sumOrUndefined(base.total_tokens, other.total_tokens),
+    duration_ms: maxOrUndefined(base.duration_ms, other.duration_ms),
   }
 }

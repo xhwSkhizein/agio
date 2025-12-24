@@ -64,6 +64,7 @@ class SessionStore(ABC):
         workflow_id: Optional[str] = None,
         node_id: Optional[str] = None,
         branch_key: Optional[str] = None,
+        runnable_id: Optional[str] = None,
         limit: int = 1000,
     ) -> List[Step]:
         """
@@ -77,6 +78,7 @@ class SessionStore(ABC):
             workflow_id: Filter by workflow_id (optional)
             node_id: Filter by node_id (optional)
             branch_key: Filter by branch_key (optional)
+            runnable_id: Filter by runnable_id (optional)
             limit: Maximum return count
         """
         pass
@@ -110,6 +112,21 @@ class SessionStore(ABC):
             Maximum sequence number, or 0 if no steps exist
         """
         pass
+
+    @abstractmethod
+    async def allocate_sequence(self, session_id: str) -> int:
+        """
+        Atomically allocate next sequence number for a session.
+        Thread-safe and concurrent-safe operation.
+        
+        Args:
+            session_id: Session ID
+            
+        Returns:
+            Next sequence number (starting from 1)
+        """
+        pass
+
 
     async def get_last_assistant_content(
         self,
@@ -161,8 +178,11 @@ class InMemorySessionStore(SessionStore):
     """
 
     def __init__(self):
+        import asyncio
         self.runs: dict[str, Run] = {}
         self.steps: dict[str, List[Step]] = {}  # session_id -> List[Step]
+        self._sequence_counters: dict[str, int] = {}  # session_id -> counter
+        self._sequence_locks: dict[str, asyncio.Lock] = {}  # session_id -> lock
 
     async def save_run(self, run: Run) -> None:
         self.runs[run.id] = run
@@ -196,9 +216,16 @@ class InMemorySessionStore(SessionStore):
     # --- Step Operations ---
 
     async def save_step(self, step: Step) -> None:
+        """
+        Save or update a step.
+        
+        Handles idempotency: if a step with same (session_id, sequence) exists,
+        updates it instead of creating a duplicate.
+        """
         if step.session_id not in self.steps:
             self.steps[step.session_id] = []
 
+        # First, try to find by step.id
         existing_idx = None
         for i, s in enumerate(self.steps[step.session_id]):
             if s.id == step.id:
@@ -206,9 +233,24 @@ class InMemorySessionStore(SessionStore):
                 break
 
         if existing_idx is not None:
+            # Update existing step by id
             self.steps[step.session_id][existing_idx] = step
         else:
-            self.steps[step.session_id].append(step)
+            # Check if step with same (session_id, sequence) exists
+            seq_existing_idx = None
+            for i, s in enumerate(self.steps[step.session_id]):
+                if s.session_id == step.session_id and s.sequence == step.sequence:
+                    seq_existing_idx = i
+                    break
+            
+            if seq_existing_idx is not None:
+                # Update existing step by (session_id, sequence)
+                self.steps[step.session_id][seq_existing_idx] = step
+            else:
+                # Insert new step
+                self.steps[step.session_id].append(step)
+            
+            # Keep steps sorted by sequence
             self.steps[step.session_id].sort(key=lambda s: s.sequence)
 
     async def save_steps_batch(self, steps: List[Step]) -> None:
@@ -224,6 +266,7 @@ class InMemorySessionStore(SessionStore):
         workflow_id: Optional[str] = None,
         node_id: Optional[str] = None,
         branch_key: Optional[str] = None,
+        runnable_id: Optional[str] = None,
         limit: int = 1000,
     ) -> List[Step]:
         steps = self.steps.get(session_id, [])
@@ -240,6 +283,8 @@ class InMemorySessionStore(SessionStore):
             steps = [s for s in steps if s.node_id == node_id]
         if branch_key is not None:
             steps = [s for s in steps if s.branch_key == branch_key]
+        if runnable_id is not None:
+            steps = [s for s in steps if s.runnable_id == runnable_id]
 
         return steps[:limit]
 
@@ -263,6 +308,25 @@ class InMemorySessionStore(SessionStore):
         if not steps:
             return 0
         return max(s.sequence for s in steps)
+
+    async def allocate_sequence(self, session_id: str) -> int:
+        """Atomically allocate next sequence number."""
+        import asyncio
+        
+        # Initialize lock for this session if not exists
+        if session_id not in self._sequence_locks:
+            self._sequence_locks[session_id] = asyncio.Lock()
+        
+        async with self._sequence_locks[session_id]:
+            # Initialize counter from existing steps if not yet initialized
+            if session_id not in self._sequence_counters:
+                max_seq = await self.get_max_sequence(session_id)
+                self._sequence_counters[session_id] = max_seq
+            
+            # Increment and return
+            self._sequence_counters[session_id] += 1
+            return self._sequence_counters[session_id]
+
 
 
 __all__ = ["SessionStore", "InMemorySessionStore"]

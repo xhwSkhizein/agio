@@ -16,6 +16,7 @@ from agio.domain import ToolResult
 
 if TYPE_CHECKING:
     from agio.agent.control import AbortSignal
+    from agio.domain import ExecutionContext
 
 
 class GlobOutput(BaseModel):
@@ -255,6 +256,7 @@ class GlobTool(BaseTool):
     async def execute(
         self,
         parameters: dict[str, Any],
+        context: "ExecutionContext",
         abort_signal: "AbortSignal | None" = None,
     ) -> ToolResult:
         """执行 glob 搜索"""

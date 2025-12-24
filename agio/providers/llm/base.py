@@ -35,7 +35,7 @@ class StreamChunk(BaseModel):
     tool_calls: list[dict] | None = Field(default=None, description="Tool calls delta (OpenAI format)")
     usage: dict[str, int] | None = Field(
         default=None,
-        description="Token usage stats {prompt_tokens, completion_tokens, total_tokens}",
+        description="Token usage stats {input_tokens, output_tokens, total_tokens}",
     )
     finish_reason: str | None = Field(
         default=None, description="Finish reason: stop, tool_calls, length, etc."
@@ -57,19 +57,11 @@ class Model(BaseModel, ABC):
     max_tokens: int | None = Field(default=None, ge=1)
     top_p: float | None = Field(default=None, ge=0.0, le=1.0)
 
-    # Internal flag to prevent double-wrapping
-    _tracking_enabled: bool = False
-
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
 
     def model_post_init(self, __context) -> None:
-        """Enable LLM call tracking after model initialization."""
-        if not self._tracking_enabled:
-            from agio.observability.tracker import get_tracker
-
-            tracker = get_tracker()
-            tracker.wrap_model(self)
-            object.__setattr__(self, "_tracking_enabled", True)
+        """Post-initialization hook for model configuration."""
+        pass
 
     @abstractmethod
     async def arun_stream(

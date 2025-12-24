@@ -96,6 +96,18 @@ function buildExecutionTreeFromSteps(steps: BackendStep[]): ExecutionTree {
   return tree
 }
 
+/**
+ * Clone ExecutionTree properly, preserving Map instance.
+ * Spread operator {...tree} converts Map to empty object {}, breaking Map methods.
+ */
+function cloneExecutionTree(tree: ExecutionTree): ExecutionTree {
+  return {
+    messages: [...tree.messages],
+    executions: [...tree.executions],
+    executionMap: new Map(tree.executionMap),
+  }
+}
+
 export function useExecutionTree(): UseExecutionTreeResult {
   const builderRef = useRef<ExecutionTreeBuilder>(createExecutionTreeBuilder())
   const [tree, setTree] = useState<ExecutionTree>(createEmptyTree())
@@ -104,8 +116,8 @@ export function useExecutionTree(): UseExecutionTreeResult {
   const processEvent = useCallback((eventType: string, data: any) => {
     builderRef.current.processEvent(eventType, data)
     
-    // Update React state with new tree
-    setTree({ ...builderRef.current.getTree() })
+    // Update React state with new tree (properly clone Map)
+    setTree(cloneExecutionTree(builderRef.current.getTree()))
     
     // Update session ID if changed
     const newSessionId = builderRef.current.getSessionId()
@@ -116,7 +128,7 @@ export function useExecutionTree(): UseExecutionTreeResult {
 
   const addUserMessage = useCallback((content: string) => {
     builderRef.current.addUserMessage(content)
-    setTree({ ...builderRef.current.getTree() })
+    setTree(cloneExecutionTree(builderRef.current.getTree()))
   }, [])
 
   const hydrateFromSteps = useCallback((steps: BackendStep[]) => {
@@ -124,7 +136,7 @@ export function useExecutionTree(): UseExecutionTreeResult {
     // Reset builder state and seed with hydrated tree
     builderRef.current.reset()
     builderRef.current.importTree(hydrated)
-    setTree({ ...hydrated })
+    setTree(cloneExecutionTree(hydrated))
     setSessionId(steps[0]?.session_id || null)
   }, [])
 

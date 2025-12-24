@@ -9,7 +9,6 @@ import Knowledge from './pages/Knowledge'
 import Memory from './pages/Memory'
 import Sessions from './pages/Sessions'
 import Metrics from './pages/Metrics'
-import LLMLogs from './pages/LLMLogs'
 import Traces from './pages/Traces'
 import TraceDetail from './pages/TraceDetail'
 
@@ -26,7 +25,6 @@ function App() {
           <Route path="/memory" element={<Memory />} />
           <Route path="/sessions" element={<Sessions />} />
           <Route path="/metrics" element={<Metrics />} />
-          <Route path="/llm-logs" element={<LLMLogs />} />
           <Route path="/traces" element={<Traces />} />
           <Route path="/traces/:traceId" element={<TraceDetail />} />
           <Route path="/config" element={<ConfigList />} />

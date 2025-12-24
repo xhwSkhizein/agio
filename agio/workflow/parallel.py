@@ -177,13 +177,18 @@ class ParallelWorkflow(BaseWorkflow):
             # Aggregate results (handle exceptions)
             merged_output = []
             total_tokens = 0
+            input_tokens = 0
+            output_tokens = 0
             for res in results:
                 if isinstance(res, Exception):
                     # Handle exception - could log or include error message
                     continue
                 merged_output.append(f"{res['branch_id']}: {res['output']}")
                 if res.get("metrics"):
-                    total_tokens += res["metrics"].total_tokens
+                    metrics = res["metrics"]
+                    total_tokens += metrics.total_tokens
+                    input_tokens += metrics.input_tokens
+                    output_tokens += metrics.output_tokens
 
             final_response = "\n\n".join(merged_output)
             if self.merge_template:
@@ -198,6 +203,8 @@ class ParallelWorkflow(BaseWorkflow):
                 metrics=RunMetrics(
                     duration=duration,
                     total_tokens=total_tokens,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
                     nodes_executed=total_branches,
                 ),
             )

@@ -201,7 +201,7 @@ export default function Sessions() {
                     {selectedSession && (
                       <button
                         onClick={() => {
-                          const sessionMeta = sessions?.items.find((s) => s.session_id === selectedSession)
+                              const sessionMeta = sessions?.items?.find((s) => s.session_id === selectedSession)
                           if (!sessionMeta) return
                           handleContinueChat(sessionMeta)
                         }}
@@ -275,7 +275,7 @@ export default function Sessions() {
                               {(step.role === 'assistant' || step.role === 'user') && (
                                 <button
                                   onClick={() => {
-                                    const currentSession = sessions?.items.find(
+                                    const currentSession = sessions?.items?.find(
                                       (s: SessionSummary) => s.session_id === selectedSession
                                     )
                                     openForkModal(

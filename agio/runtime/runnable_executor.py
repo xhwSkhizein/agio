@@ -117,8 +117,8 @@ class RunnableExecutor:
             # Merge metrics from result if available
             if result.metrics:
                 run.metrics.total_tokens = result.metrics.total_tokens
-                run.metrics.prompt_tokens = result.metrics.prompt_tokens
-                run.metrics.completion_tokens = result.metrics.completion_tokens
+                run.metrics.input_tokens = result.metrics.input_tokens
+                run.metrics.output_tokens = result.metrics.output_tokens
                 run.metrics.tool_calls_count = result.metrics.tool_calls_count
 
             logger.info(

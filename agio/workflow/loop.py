@@ -100,6 +100,8 @@ class LoopWorkflow(BaseWorkflow):
         final_output = ""
         iteration = 0
         total_tokens = 0
+        input_tokens = 0
+        output_tokens = 0
         nodes_executed = 0
         last_iteration_outputs: dict[str, str] = {}  # Track outputs from previous iteration
 
@@ -170,7 +172,10 @@ class LoopWorkflow(BaseWorkflow):
                     executor = RunnableExecutor(store=session_store)
                     result = await executor.execute(runnable, node_input, child_context)
                     node_output = result.response or ""
-                    total_tokens += result.metrics.total_tokens
+                    if result.metrics:
+                        total_tokens += result.metrics.total_tokens
+                        input_tokens += result.metrics.input_tokens
+                        output_tokens += result.metrics.output_tokens
 
                     # Update state cache
                     state.set_output(node_id, node_output)
@@ -218,6 +223,8 @@ class LoopWorkflow(BaseWorkflow):
                 metrics=RunMetrics(
                     duration=duration,
                     total_tokens=total_tokens,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
                     iterations=iteration,
                     nodes_executed=nodes_executed,
                 ),
