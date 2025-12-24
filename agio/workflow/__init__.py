@@ -10,9 +10,6 @@ This module provides:
 - ContextResolver for template variable resolution
 """
 
-from agio.domain.protocol import Runnable, RunOutput
-from agio.domain.models import RunMetrics
-from agio.domain import ExecutionContext
 from agio.workflow.mapping import InputMapping
 from agio.workflow.condition import ConditionEvaluator
 from agio.workflow.node import WorkflowNode
@@ -31,11 +28,6 @@ from agio.workflow.runnable_tool import (
 )
 
 __all__ = [
-    # Protocol
-    "Runnable",
-    "ExecutionContext",
-    "RunOutput",
-    "RunMetrics",
     # Core
     "InputMapping",
     "ConditionEvaluator",

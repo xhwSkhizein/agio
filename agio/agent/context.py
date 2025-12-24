@@ -4,13 +4,10 @@ Step-based context builder.
 This module provides context building from Steps using the StepAdapter.
 """
 
-from typing import TYPE_CHECKING
-
 from agio.domain import StepAdapter
 from agio.utils.logging import get_logger
+from agio.providers.storage import SessionStore
 
-if TYPE_CHECKING:
-    from agio.providers.storage import SessionStore
 
 logger = get_logger(__name__)
 
@@ -165,4 +162,3 @@ __all__ = [
     "build_context_from_sequence_range",
     "validate_context",
 ]
-

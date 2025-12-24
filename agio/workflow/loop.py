@@ -11,22 +11,20 @@ Wire-based Architecture:
 """
 
 import time
-from typing import TYPE_CHECKING
 
 from agio.runtime.event_factory import EventFactory
-from agio.domain import ExecutionContext
+from agio.runtime.protocol import ExecutionContext
 from agio.workflow.state import WorkflowState
 from agio.workflow.resolver import ContextResolver
 from agio.runtime import RunnableExecutor
 from agio.workflow.base import BaseWorkflow
 from agio.workflow.condition import ConditionEvaluator
-from agio.domain.protocol import RunOutput
+from agio.runtime import RunOutput
 from agio.domain.models import RunMetrics
 from agio.workflow.node import WorkflowNode
 
-if TYPE_CHECKING:
-    from agio.providers.llm import Model
-    from agio.providers.storage.base import SessionStore
+from agio.providers.llm import Model
+from agio.providers.storage.base import SessionStore
 
 
 class LoopWorkflow(BaseWorkflow):

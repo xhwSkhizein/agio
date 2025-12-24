@@ -5,15 +5,13 @@ Uses middleware pattern to wrap event streams without modifying core execution l
 """
 
 import json
-from typing import Any, AsyncIterator, TYPE_CHECKING
+from typing import Any, AsyncIterator
 from uuid import uuid4
 
+from agio.domain.models import Step
 from agio.domain.events import StepEvent, StepEventType
 from agio.observability.trace import Trace, Span, SpanKind, SpanStatus
 from agio.utils.logging import get_logger
-
-if TYPE_CHECKING:
-    from agio.domain.models import Step
 
 logger = get_logger(__name__)
 

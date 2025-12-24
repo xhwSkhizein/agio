@@ -27,6 +27,7 @@ class ExecutionConfig(BaseModel):
     max_steps: int = Field(default=30, ge=1, le=100, description="Maximum execution steps")
     timeout_per_step: float = Field(default=120.0, ge=1.0, description="Timeout per step (seconds)")
     parallel_tool_calls: bool = Field(default=True, description="Execute tools in parallel")
+    max_total_tokens: int | None = Field(default=None, description="Maximum total tokens (input + output)")
 
     # Context configuration
     max_history_messages: int = Field(default=10, description="Maximum history messages")

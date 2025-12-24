@@ -12,11 +12,10 @@ Supported variables:
 """
 
 import re
-from typing import TYPE_CHECKING, Dict, Optional, Any
+from typing import Dict, Optional, Any
 
-if TYPE_CHECKING:
-    from agio.providers.storage.base import SessionStore
-    from agio.workflow.state import WorkflowState
+from agio.providers.storage.base import SessionStore
+from agio.workflow.state import WorkflowState
 
 
 class ContextResolver:

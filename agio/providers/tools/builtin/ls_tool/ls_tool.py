@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import time
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -13,9 +13,8 @@ from agio.providers.tools.base import BaseTool, RiskLevel, ToolCategory
 from agio.providers.tools.builtin.adapter import AppSettings, SettingsRegistry, get_logger
 from agio.domain import ToolResult
 
-if TYPE_CHECKING:
-    from agio.agent.control import AbortSignal
-    from agio.domain import ExecutionContext
+from agio.runtime.control import AbortSignal
+from agio.runtime.protocol import ExecutionContext
 
 
 class FileInfo(BaseModel):

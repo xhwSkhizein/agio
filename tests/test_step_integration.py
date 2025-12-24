@@ -16,22 +16,31 @@ import pytest
 
 from agio.providers.storage import InMemorySessionStore
 from agio.domain import MessageRole, Step, StepEventType, AgentSession
-from agio.agent import AgentRunner, AgentExecutor
+from agio.agent import Agent, AgentExecutor
 from agio.runtime import Wire
-from agio.workflow import ExecutionContext
+from agio.runtime.control import fork_session
+from agio.runtime.protocol import ExecutionContext
 from agio.providers.llm import StreamChunk
-from agio.config import ExecutionConfig
 
 
-async def run_with_wire(runner, session, query):
+async def run_with_wire(agent, session, query, session_store=None):
     """Helper to run with Wire and collect events."""
+    from agio.runtime import SequenceManager
+
     wire = Wire()
-    context = ExecutionContext(wire=wire, session_id=session.session_id, run_id="run_123")
+    sequence_manager = SequenceManager(session_store) if session_store else None
+
+    context = ExecutionContext(
+        wire=wire,
+        sequence_manager=sequence_manager,
+        session_id=session.session_id,
+        run_id="run_123",
+    )
     events = []
 
     async def _run():
         try:
-            await runner.run(session, query, abort_signal=None, context=context)
+            await agent.run(query, abort_signal=None, context=context)
         finally:
             await wire.close()
 
@@ -67,14 +76,16 @@ def mock_model():
 
 
 @pytest.fixture
-def mock_agent(mock_model):
-    """Create a mock agent"""
-    agent = MagicMock()
-    agent.id = "agent_123"
-    agent.model = mock_model
-    agent.tools = []
-    agent.system_prompt = "You are a helpful assistant"
-    return agent
+def mock_agent(mock_model, session_store):
+    """Create a real Agent for integration tests"""
+    return Agent(
+        model=mock_model,
+        tools=[],
+        session_store=session_store,
+        system_prompt="You are a helpful assistant",
+        max_steps=5,
+        name="agent_123",
+    )
 
 
 @pytest.fixture
@@ -96,37 +107,49 @@ async def test_step_executor_creates_steps(mock_model, session_store):
 
     messages = [{"role": "user", "content": "Hello"}]
 
-    from agio.domain import ExecutionContext
-    from agio.runtime import Wire
+    from agio.runtime.protocol import ExecutionContext
+    from agio.runtime import Wire, SequenceManager
+    from agio.providers.storage.base import InMemorySessionStore
+
+    # Create SequenceManager for testing
+    session_store = InMemorySessionStore()
+    sequence_manager = SequenceManager(session_store)
 
     wire = Wire()
     ctx = ExecutionContext(
         session_id="session_123",
         run_id="run_456",
         wire=wire,
+        sequence_manager=sequence_manager,
         workflow_id="wf_1",
         node_id="node_1",
         parent_run_id="parent_1",
     )
 
+    # Execute and get result
+    result = await executor.execute(messages, ctx)
+
+    # Check RunOutput
+    assert result.response == "Hello there!"
+    assert result.metrics.total_tokens == 15
+    assert result.metrics.steps_count == 1
+    assert result.metrics.tool_calls_count == 0
+    assert result.termination_reason is None  # Normal completion
+    assert result.metrics.duration > 0
+
+    # Close wire and read events
+    await wire.close()
     events = []
-    seq_counter = 0
-    async def allocate_seq():
-        nonlocal seq_counter
-        seq_counter += 1
-        return seq_counter
-    
-    async for event in executor.execute(messages, ctx, allocate_sequence_fn=allocate_seq):
+    async for event in wire.read():
         events.append(event)
 
-    # Check we got delta and completed events
     delta_events = [e for e in events if e.type == StepEventType.STEP_DELTA]
     completed_events = [e for e in events if e.type == StepEventType.STEP_COMPLETED]
 
     assert len(delta_events) > 0  # Should have text deltas
     assert len(completed_events) == 1  # One assistant step completed
 
-    # Check the completed step
+    # Check the completed step from wire
     assistant_step = completed_events[0].snapshot
     assert assistant_step.role == MessageRole.ASSISTANT
     assert assistant_step.content == "Hello there!"
@@ -144,16 +167,14 @@ async def test_step_executor_creates_steps(mock_model, session_store):
 @pytest.mark.asyncio
 async def test_step_runner_end_to_end(mock_agent, session_store, session):
     """Test complete AgentRunner flow.
-    
+
     Note: AgentRunner no longer emits RUN_STARTED/RUN_COMPLETED events.
     Run lifecycle events are handled by RunnableExecutor.
     AgentRunner only emits Step-level events.
     """
-    runner = AgentRunner(
-        agent=mock_agent, config=ExecutionConfig(max_steps=5), session_store=session_store
+    events = await run_with_wire(
+        mock_agent, session, "Hello", session_store=session_store
     )
-
-    events = await run_with_wire(runner, session, "Hello")
 
     # Check event types - AgentRunner only emits Step events (not Run events)
     step_completed = [e for e in events if e.type == StepEventType.STEP_COMPLETED]
@@ -187,10 +208,8 @@ async def test_context_building_from_steps(mock_agent, session_store, session):
     """Test that context is correctly built from saved steps"""
     from agio.agent import build_context_from_steps
 
-    runner = AgentRunner(agent=mock_agent, session_store=session_store)
-
     # Run first conversation
-    await run_with_wire(runner, session, "Hello")
+    await run_with_wire(mock_agent, session, "Hello", session_store=session_store)
 
     # Build context
     messages = await build_context_from_steps(
@@ -210,10 +229,8 @@ async def test_context_building_from_steps(mock_agent, session_store, session):
 @pytest.mark.asyncio
 async def test_retry_deletes_and_regenerates(mock_agent, session_store, session):
     """Test retry functionality"""
-    runner = AgentRunner(agent=mock_agent, session_store=session_store)
-
     # Run initial conversation
-    await run_with_wire(runner, session, "Hello")
+    await run_with_wire(mock_agent, session, "Hello", session_store=session_store)
 
     # Check we have steps
     steps_before = await session_store.get_steps("session_123")
@@ -236,8 +253,6 @@ async def test_retry_deletes_and_regenerates(mock_agent, session_store, session)
 @pytest.mark.asyncio
 async def test_fork_creates_new_session(session_store):
     """Test fork functionality"""
-    from agio.agent import fork_session
-
     # Create some steps
     steps = [
         Step(
@@ -291,9 +306,7 @@ async def test_fork_creates_new_session(session_store):
 @pytest.mark.asyncio
 async def test_step_metrics_tracking(mock_agent, session_store, session):
     """Test that metrics are properly tracked"""
-    runner = AgentRunner(agent=mock_agent, session_store=session_store)
-
-    await run_with_wire(runner, session, "Hello")
+    await run_with_wire(mock_agent, session, "Hello", session_store=session_store)
 
     # Get assistant step
     steps = await session_store.get_steps("session_123")

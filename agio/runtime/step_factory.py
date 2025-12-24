@@ -14,15 +14,11 @@ Usage:
     tool_step = sf.tool_step(sequence=3, tool_call_id="call_123", name="file_read", content="...")
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from uuid import uuid4
-from datetime import datetime, timezone
 
 from agio.domain import Step, MessageRole, StepMetrics
-
-if TYPE_CHECKING:
-    from agio.domain import ExecutionContext
-
+from agio.runtime.protocol import ExecutionContext
 
 class StepFactory:
     """

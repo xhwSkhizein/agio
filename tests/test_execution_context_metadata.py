@@ -6,7 +6,7 @@ import pytest
 
 from agio.domain import MessageRole, Step
 from agio.providers.storage import InMemorySessionStore
-from agio.domain import ExecutionContext
+from agio.runtime.protocol import ExecutionContext
 from agio.runtime.wire import Wire
 
 

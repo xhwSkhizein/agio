@@ -11,18 +11,17 @@ Wire-based Architecture:
 - Returns RunOutput with response and metrics
 """
 
-from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from agio.domain import MessageRole, ExecutionContext
+from agio.domain import MessageRole
+from agio.runtime.protocol import ExecutionContext
 from agio.runtime.wire import Wire
 from agio.runtime.runnable_executor import RunnableExecutor
+from agio.runtime.protocol import RunOutput
 from agio.utils.logging import get_logger
+from agio.providers.storage import SessionStore
+from agio.config import ConfigSystem
 
-if TYPE_CHECKING:
-    from agio.providers.storage import SessionStore
-    from agio.config import ConfigSystem
-    from agio.domain.protocol import RunOutput
 
 logger = get_logger(__name__)
 
@@ -96,7 +95,9 @@ class ResumeExecutor:
         if not wire:
             raise ValueError("Wire is required for resume execution")
 
-        logger.info("resume_session_started", session_id=session_id, runnable_id=runnable_id)
+        logger.info(
+            "resume_session_started", session_id=session_id, runnable_id=runnable_id
+        )
 
         # 1. Load Steps
         steps = await self.store.get_steps(session_id, limit=10000)
@@ -126,7 +127,8 @@ class ResumeExecutor:
         # 4. Check if already completed
         if state.is_completed and not state.has_pending_tools:
             logger.info("resume_already_completed", session_id=session_id)
-            from agio.domain.protocol import RunOutput, RunMetrics
+            from agio.runtime import RunOutput
+            from agio.domain.models import RunMetrics
 
             return RunOutput(
                 response=state.final_output or "",
@@ -152,7 +154,7 @@ class ResumeExecutor:
 
         # 7. Execute via RunnableExecutor (idempotent execution)
         executor = RunnableExecutor(store=self.store)
-        
+
         # For resume, we don't need new input - just re-run
         # The Runnable will handle idempotency (Workflow skips completed nodes)
         input_query = ""  # Empty for resume
@@ -160,7 +162,7 @@ class ResumeExecutor:
             input_query = steps[0].content or ""
 
         logger.info("resume_executing", session_id=session_id, runnable_id=runnable_id)
-        
+
         return await executor.execute(runnable, input_query, context)
 
     def _analyze_execution_state(self, steps: list) -> ExecutionState:
@@ -183,7 +185,7 @@ class ResumeExecutor:
             )
 
         last_step = steps[-1]
-        
+
         # Infer runnable_id from the most recent step
         runnable_id = last_step.runnable_id
         runnable_type = last_step.runnable_type
@@ -196,10 +198,7 @@ class ResumeExecutor:
         )
 
         # Check if completed (last step is assistant without tool_calls)
-        is_completed = (
-            last_step.role == MessageRole.ASSISTANT
-            and not has_pending_tools
-        )
+        is_completed = last_step.role == MessageRole.ASSISTANT and not has_pending_tools
 
         final_output = None
         if is_completed:

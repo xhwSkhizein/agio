@@ -14,8 +14,6 @@ Usage:
     yield ef.run_completed(response, metrics)
 """
 
-from typing import TYPE_CHECKING
-
 from agio.domain import (
     Step,
     StepDelta,
@@ -28,8 +26,7 @@ from agio.domain import (
     create_step_delta_event,
 )
 
-if TYPE_CHECKING:
-    from agio.domain import ExecutionContext
+from agio.runtime.protocol import ExecutionContext
 
 
 class EventFactory:

@@ -6,9 +6,9 @@ import os
 from pathlib import Path
 
 from agio.providers.tools.builtin.ls_tool import LSTool
-from agio.domain import ExecutionContext
+from agio.runtime.protocol import ExecutionContext
 from agio.runtime import Wire
-from agio.agent import AbortSignal
+from agio.runtime.control import AbortSignal
 
 
 class TestLSTool:
@@ -22,7 +22,7 @@ class TestLSTool:
     @pytest.fixture
     def context(self):
         """创建执行上下文"""
-        from agio.domain import ExecutionContext
+        from agio.runtime.protocol import ExecutionContext
         from agio.runtime import Wire
         return ExecutionContext(run_id="test_run", session_id="test_session", wire=Wire())
 

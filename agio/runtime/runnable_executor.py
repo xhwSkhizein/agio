@@ -11,16 +11,14 @@ without modifying the Runnable.run() signature.
 """
 
 import time
-from typing import TYPE_CHECKING
 
 from agio.domain import RunStatus, Run
-from agio.domain.protocol import Runnable, RunOutput
+from agio.runtime.protocol import Runnable, RunOutput
 from agio.runtime.event_factory import EventFactory
-from agio.domain import ExecutionContext
+from agio.runtime.protocol import ExecutionContext
 from agio.utils.logging import get_logger
+from agio.providers.storage.base import SessionStore
 
-if TYPE_CHECKING:
-    from agio.providers.storage.base import SessionStore
 
 logger = get_logger(__name__)
 
@@ -74,7 +72,6 @@ class RunnableExecutor:
         Returns:
             RunOutput from the Runnable
         """
-        
 
         # 1. Create Run record
         run = Run(

@@ -12,15 +12,13 @@ Wire-based Architecture:
 """
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from agio.domain import ExecutionContext
-from agio.domain.protocol import Runnable, RunOutput
+from agio.runtime.protocol import ExecutionContext
+from agio.runtime import Runnable, RunOutput
 from agio.workflow.node import WorkflowNode
 
-if TYPE_CHECKING:
-    from agio.providers.storage.base import SessionStore
+from agio.providers.storage.base import SessionStore
 
 
 class BaseWorkflow(ABC):

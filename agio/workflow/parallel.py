@@ -12,20 +12,19 @@ Wire-based Architecture:
 
 import asyncio
 import time
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from agio.runtime.event_factory import EventFactory
-from agio.domain import ExecutionContext
+from agio.runtime.protocol import ExecutionContext
 from agio.workflow.state import WorkflowState
 from agio.workflow.resolver import ContextResolver
 from agio.runtime import RunnableExecutor
 from agio.workflow.base import BaseWorkflow
-from agio.domain.protocol import RunOutput
+from agio.runtime import RunOutput
 from agio.domain.models import RunMetrics
 from agio.workflow.node import WorkflowNode
 
-if TYPE_CHECKING:
-    from agio.providers.storage.base import SessionStore
+from agio.providers.storage.base import SessionStore
 
 
 class ParallelWorkflow(BaseWorkflow):

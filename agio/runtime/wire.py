@@ -24,10 +24,9 @@ Usage:
 """
 
 import asyncio
-from typing import AsyncIterator, TYPE_CHECKING
+from typing import AsyncIterator
 
-if TYPE_CHECKING:
-    from agio.domain import StepEvent
+from agio.domain import StepEvent
 
 
 class Wire:

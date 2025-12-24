@@ -7,18 +7,15 @@ import os
 import shlex
 import subprocess
 import time
-from datetime import datetime
-from typing import Any, TYPE_CHECKING
+from typing import Any
 
 from pydantic import BaseModel
 
 from agio.providers.tools.base import BaseTool, RiskLevel, ToolCategory
 from agio.providers.tools.builtin.adapter import AppSettings, SettingsRegistry
 from agio.domain import ToolResult
-
-if TYPE_CHECKING:
-    from agio.agent.control import AbortSignal
-    from agio.domain import ExecutionContext
+from agio.runtime.control import AbortSignal
+from agio.runtime.protocol import ExecutionContext
 
 
 class BashToolInput(BaseModel):
@@ -90,7 +87,7 @@ class PersistentShell:
                 await process.wait()
                 return {
                     "stdout": "",
-                    "stderr": f"Command timed out after {timeout/1000}s",
+                    "stderr": f"Command timed out after {timeout / 1000}s",
                     "code": -1,
                     "interrupted": True,
                 }
@@ -175,7 +172,7 @@ class BashTool(BaseTool):
 
 2. 安全检查: 
    - 为了安全和限制提示注入攻击的威胁, 某些命令是受限或禁用的
-   - 验证命令不在禁用列表中: {', '.join(self.BANNED_COMMANDS)}
+   - 验证命令不在禁用列表中: {", ".join(self.BANNED_COMMANDS)}
 
 3. 命令执行: 
    - 确保正确引用后, 执行命令
@@ -327,7 +324,9 @@ class BashTool(BaseTool):
             # 验证输入
             validation = self.validate_input(command)
             if not validation["valid"]:
-                return self._create_error_result(parameters, validation["message"], start_time)
+                return self._create_error_result(
+                    parameters, validation["message"], start_time
+                )
 
             # 再次检查中断
             if abort_signal and abort_signal.is_aborted():
@@ -379,7 +378,9 @@ class BashTool(BaseTool):
         except asyncio.CancelledError:
             return self._create_abort_result(parameters, start_time)
         except Exception as e:
-            return self._create_error_result(parameters, f"Command failed: {e!s}", start_time)
+            return self._create_error_result(
+                parameters, f"Command failed: {e!s}", start_time
+            )
 
     def _render_result_for_assistant(self, interrupted, stdout, stderr):
         error_message = stderr.strip()

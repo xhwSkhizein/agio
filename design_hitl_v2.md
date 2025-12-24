@@ -799,18 +799,17 @@ class AgentBuilder(ComponentBuilder):
 ```python
 # agio/runtime/tool_executor.py (修改)
 
-from typing import Any, TYPE_CHECKING, Optional
+from typing import Any, Optional
 from agio.domain import ToolResult
 from agio.runtime.tool_cache import get_tool_cache
 from agio.runtime.permissions import PermissionManager, PermissionDecision
 from agio.runtime.exceptions import SuspendExecution
 from agio.utils.logging import get_logger
-
-if TYPE_CHECKING:
-    from agio.providers.tools import BaseTool
-    from agio.runtime.control import AbortSignal
-    from agio.domain import ExecutionContext
-    from agio.runtime.tool_cache import ToolResultCache
+from agio.providers.tools import BaseTool
+from agio.runtime.control import AbortSignal
+from agio.domain import ExecutionContext
+from agio.runtime.tool_cache import ToolResultCache
+    
 
 logger = get_logger(__name__)
 

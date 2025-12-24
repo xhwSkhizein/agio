@@ -10,11 +10,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from agio.agent import Agent, fork_session
+from agio.runtime import fork_session
 from agio.api.deps import get_config_sys, get_session_store
 from agio.config import ConfigSystem
-from agio.domain import MessageRole, ExecutionContext
-from agio.domain.models import Step
 from agio.providers.storage import SessionStore
 from agio.runtime import Wire
 

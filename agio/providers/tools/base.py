@@ -3,15 +3,15 @@
 import time
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
 
 from agio.domain import ToolResult
+from agio.runtime.control import AbortSignal
 
 if TYPE_CHECKING:
-    from agio.agent.control import AbortSignal
-    from agio.domain import ExecutionContext
+    from agio.runtime.protocol import ExecutionContext
 
 
 class RiskLevel(str, Enum):

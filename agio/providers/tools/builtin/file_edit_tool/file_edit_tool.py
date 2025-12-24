@@ -6,7 +6,7 @@ import difflib
 import os
 import time
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -16,9 +16,8 @@ from agio.providers.tools.builtin.adapter import AppSettings
 from agio.providers.tools.builtin.common.file_operation_base import FileOperationBaseTool
 from agio.utils.logging import get_logger
 
-if TYPE_CHECKING:
-    from agio.agent.control import AbortSignal
-    from agio.domain import ExecutionContext
+from agio.runtime.control import AbortSignal
+from agio.runtime.protocol import ExecutionContext
 
 logger = get_logger(__name__)
 

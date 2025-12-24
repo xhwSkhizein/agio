@@ -7,7 +7,7 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Any, Union, TYPE_CHECKING
+from typing import Any, Union
 
 from pydantic import BaseModel
 
@@ -16,9 +16,8 @@ from agio.providers.tools.builtin.adapter import AppSettings
 from agio.providers.tools.builtin.common.file_operation_base import FileOperationBaseTool
 from agio.domain import ToolResult
 
-if TYPE_CHECKING:
-    from agio.agent.control import AbortSignal
-    from agio.domain import ExecutionContext
+from agio.runtime.control import AbortSignal
+from agio.runtime.protocol import ExecutionContext
 
 try:
     import io

@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from agio.api.app import app
-from agio.config import ComponentType, ConfigSystem
+from agio.config import ConfigSystem
 
 
 @pytest.fixture

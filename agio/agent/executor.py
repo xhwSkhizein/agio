@@ -1,39 +1,42 @@
 """
-AgentExecutor - Step-based LLM Call Loop
+AgentExecutor - Complete LLM execution unit.
 
-Responsibilities:
-- Implement LLM ↔ Tool loop logic
-- Create Steps (User, Assistant, Tool)
-- Emit StepEvents (deltas + snapshots)
-- Call ToolExecutor for tool execution
-
-Does NOT handle:
-- Run state management
-- Persistence (handled by Runner)
+This module implements the core execution logic for Agent:
+- Complete encapsulation of execution details
+- LLM loop with tool execution
+- Event streaming to wire (internal)
+- Step persistence via StepRepository (internal)
+- Metrics tracking (internal)
+- Summary generation (internal)
+- Returns clean ExecutionResult
 """
 
 import asyncio
 import time
-from typing import AsyncIterator, TYPE_CHECKING
+from datetime import datetime, timezone
 
+from agio.config import ExecutionConfig
 from agio.domain import (
-    StepDelta,
-    StepEvent,
-    StepMetrics,
-    ExecutionContext,
+    RunMetrics,
+    Step,
     StepAdapter,
+    StepDelta,
+    StepMetrics,
     normalize_usage_metrics,
 )
-from agio.tools.executor import ToolExecutor
-from agio.utils.logging import get_logger
 from agio.runtime.event_factory import EventFactory
 from agio.runtime.step_factory import StepFactory
-from agio.config import ExecutionConfig
+from agio.runtime.step_repository import StepRepository
+from agio.runtime.control import AbortSignal
+from agio.runtime.protocol import ExecutionContext
+from agio.runtime.protocol import RunOutput
+from agio.tools.executor import ToolExecutor
+from agio.utils.logging import get_logger
+from agio.agent.summarizer import build_termination_messages
+from agio.providers.llm import Model
+from agio.providers.storage import SessionStore
+from agio.providers.tools import BaseTool
 
-if TYPE_CHECKING:
-    from agio.providers.llm import Model
-    from agio.providers.tools import BaseTool
-    from agio.agent.control import AbortSignal
 
 logger = get_logger(__name__)
 
@@ -84,260 +87,444 @@ class ToolCallAccumulator:
         self._calls.clear()
 
 
+class MetricsTracker:
+    """Internal metrics tracker for aggregating execution statistics."""
+
+    def __init__(self):
+        self.total_tokens = 0
+        self.input_tokens = 0
+        self.output_tokens = 0
+        self.steps_count = 0
+        self.tool_calls_count = 0
+        self.assistant_steps_count = 0
+        self.last_assistant_had_tools = False
+        self.pending_tool_calls = None
+        self.response_content = None
+
+    def track(self, step: Step):
+        """Track step metrics."""
+        self.steps_count += 1
+
+        if step.metrics:
+            if step.metrics.total_tokens:
+                self.total_tokens += step.metrics.total_tokens
+            if step.metrics.input_tokens:
+                self.input_tokens += step.metrics.input_tokens
+            if step.metrics.output_tokens:
+                self.output_tokens += step.metrics.output_tokens
+
+        if step.is_assistant_step():
+            self.assistant_steps_count += 1
+            if step.content:
+                self.response_content = step.content
+            self.last_assistant_had_tools = step.has_tool_calls()
+            if step.tool_calls:
+                self.tool_calls_count += len(step.tool_calls)
+                self.pending_tool_calls = step.tool_calls
+        elif step.role.value == "tool":
+            self.pending_tool_calls = None
+
+
 class AgentExecutor:
     """
-    Step-based LLM Call Loop executor.
+    Complete LLM execution unit.
 
-    Key improvements:
-    1. Creates Steps directly instead of Events
-    2. Steps are LLM Messages, zero conversion
-    3. Emits StepEvents (delta + snapshot)
+    Responsibilities:
+    1. LLM loop execution
+    2. Tool batch execution
+    3. Event streaming to wire (internal)
+    4. Step persistence via StepRepository (internal)
+    5. Metrics tracking (internal)
+    6. Summary generation (internal)
+    7. Returns ExecutionResult
     """
 
     def __init__(
         self,
         model: "Model",
         tools: list["BaseTool"],
+        session_store: "SessionStore | None" = None,
         config: "ExecutionConfig | None" = None,
     ):
         """
-        Initialize Executor.
+        Initialize AgentExecutor.
 
         Args:
-            model: LLM Model instance
-            tools: Available tools list
-            config: Execution config
+            model: LLM model instance
+            tools: Available tools
+            session_store: SessionStore for persistence
+            config: Execution configuration
         """
         self.model = model
         self.tools = tools
-        self.tool_executor = ToolExecutor(tools)
+        self.session_store = session_store
         self.config = config or ExecutionConfig()
+        self.tool_executor = ToolExecutor(tools)
 
     async def execute(
         self,
         messages: list[dict],
-        ctx: "ExecutionContext",
+        context: ExecutionContext,
         *,
-        allocate_sequence_fn,
         pending_tool_calls: list[dict] | None = None,
         abort_signal: "AbortSignal | None" = None,
-    ) -> AsyncIterator[StepEvent]:
+    ) -> RunOutput:
         """
-        Execute LLM Call Loop, yield StepEvent stream.
+        Execute LLM loop and return result.
+
+        Internal handling:
+        1. LLM loop (max_steps, timeout, max_tokens controlled)
+        2. Tool batch execution
+        3. Event streaming to wire
+        4. Step persistence via StepRepository (auto-flush)
+        5. Metrics tracking
+        6. Summary generation (if needed)
 
         Args:
-            messages: Initial message list (OpenAI format), modified in place
-            ctx: ExecutionContext containing run_id, session_id, wire, depth, etc.
-            allocate_sequence_fn: Async callback to allocate next sequence number
-            pending_tool_calls: Tool calls to execute before starting LLM loop (for resume)
-            abort_signal: Abort signal (optional)
+            messages: Initial LLM messages (modified in place)
+            context: ExecutionContext with wire, sequence_manager, etc.
+            pending_tool_calls: Pending tool calls from previous execution
+            abort_signal: Abort signal
 
-        Yields:
-            StepEvent: Step event stream
+        Returns:
+            ExecutionResult with response and metrics
         """
+        start_time = time.time()
+        repo = StepRepository(self.session_store, auto_flush_size=10)
+        tracker = MetricsTracker()
+        ef = EventFactory(context)
+        termination_reason = None
 
-        ef = EventFactory(ctx)
-        current_step = 0
+        try:
+            # Execute pending tool calls first (if any)
+            if pending_tool_calls:
+                await self._execute_tool_calls(
+                    tool_calls=pending_tool_calls,
+                    messages=messages,
+                    context=context,
+                    repo=repo,
+                    tracker=tracker,
+                    ef=ef,
+                    abort_signal=abort_signal,
+                )
 
-        # Execute pending tool_calls first (for resume from assistant with tools)
-        if pending_tool_calls:
-            logger.debug(
-                "executor_executing_pending_tools",
-                session_id=ctx.session_id,
-                run_id=ctx.run_id,
-                tool_count=len(pending_tool_calls),
-            )
+            # LLM loop
+            tool_schemas = self._get_tool_schemas() if self.tools else None
+            current_step = 0
 
-            async for event in self._execute_tool_calls(
-                pending_tool_calls,
-                ctx,
-                allocate_sequence_fn,
-                messages,
-                abort_signal,
-            ):
-                yield event
+            while current_step < self.config.max_steps:
+                # Check abort
+                if abort_signal and abort_signal.is_aborted():
+                    raise asyncio.CancelledError(abort_signal.reason)
 
-        tool_schemas = self._get_tool_schemas() if self.tools else None
+                # Check timeout
+                if self.config.run_timeout:
+                    elapsed = time.time() - start_time
+                    if elapsed > self.config.run_timeout:
+                        await self._execute_summary_if_needed(
+                            messages=messages,
+                            context=context,
+                            repo=repo,
+                            tracker=tracker,
+                            ef=ef,
+                            termination_reason="timeout",
+                            pending_tool_calls=tracker.pending_tool_calls,
+                            abort_signal=abort_signal,
+                        )
+                        termination_reason = "timeout"
+                        break
 
-        while current_step < self.config.max_steps:
-            # Check abort
-            if abort_signal and abort_signal.is_aborted():
-                logger.info("step_executor_aborted", reason=abort_signal.reason)
-                raise asyncio.CancelledError(abort_signal.reason or "Execution aborted")
-
-            current_step += 1
-            step_start_time = time.time()
-
-            # Allocate sequence for assistant step
-            current_sequence = await allocate_sequence_fn()
-            
-            logger.debug(
-                "executor_step_started",
-                session_id=ctx.session_id,
-                run_id=ctx.run_id,
-                step=current_step,
-                sequence=current_sequence,
-            )
-
-            # Record LLM call start time
-            from datetime import datetime, timezone
-
-            llm_start_time = datetime.now(timezone.utc)
-
-            # 1. Call LLM, create Assistant Step using StepFactory
-            sf = StepFactory(ctx)
-            assistant_step = sf.assistant_step(
-                sequence=current_sequence,
-                content="",
-                tool_calls=None,
-                llm_messages=messages.copy() if messages else None,
-                llm_tools=tool_schemas.copy() if tool_schemas else None,
-                llm_request_params={
-                    "temperature": self.model.temperature,
-                    "max_tokens": self.model.max_tokens,
-                    "top_p": self.model.top_p,
-                }
-                if hasattr(self.model, "temperature")
-                else None,
-                metrics=StepMetrics(exec_start_at=llm_start_time),
-            )
-
-            full_content = ""
-            full_reasoning_content = ""
-            accumulator = ToolCallAccumulator()
-            first_token_time = None
-            usage_data = None
-
-            # Stream LLM response
-            async for chunk in self.model.arun_stream(messages, tools=tool_schemas):
-                if first_token_time is None and (
-                    chunk.content or chunk.reasoning_content or chunk.tool_calls
+                # Check max_tokens
+                if (
+                    self.config.max_total_tokens
+                    and tracker.total_tokens >= self.config.max_total_tokens
                 ):
-                    first_token_time = time.time()
-
-                if chunk.content:
-                    full_content += chunk.content
-                    yield ef.step_delta(
-                        assistant_step.id, StepDelta(content=chunk.content)
+                    await self._execute_summary_if_needed(
+                        messages=messages,
+                        context=context,
+                        repo=repo,
+                        tracker=tracker,
+                        ef=ef,
+                        termination_reason="max_tokens",
+                        pending_tool_calls=tracker.pending_tool_calls,
+                        abort_signal=abort_signal,
                     )
+                    termination_reason = "max_tokens"
+                    break
 
-                if chunk.reasoning_content:
-                    full_reasoning_content += chunk.reasoning_content
-                    yield ef.step_delta(
+                current_step += 1
+
+                # Call LLM and stream
+                assistant_step = await self._call_llm_and_stream(
+                    messages=messages,
+                    tool_schemas=tool_schemas,
+                    context=context,
+                    ef=ef,
+                    abort_signal=abort_signal,
+                )
+
+                # Process assistant step (queue, track, event, add to messages)
+                await self._process_step(
+                    step=assistant_step,
+                    repo=repo,
+                    tracker=tracker,
+                    context=context,
+                    ef=ef,
+                    messages=messages,
+                )
+
+                # Check if there are tool calls
+                if not assistant_step.tool_calls:
+                    # Normal completion
+                    break
+
+                # Execute tool calls
+                await self._execute_tool_calls(
+                    tool_calls=assistant_step.tool_calls,
+                    messages=messages,
+                    context=context,
+                    repo=repo,
+                    tracker=tracker,
+                    ef=ef,
+                    abort_signal=abort_signal,
+                )
+            else:
+                # Reached max_steps with pending tool calls
+                await self._execute_summary_if_needed(
+                    messages=messages,
+                    context=context,
+                    repo=repo,
+                    tracker=tracker,
+                    ef=ef,
+                    termination_reason="max_steps",
+                    pending_tool_calls=tracker.pending_tool_calls,
+                    abort_signal=abort_signal,
+                )
+                termination_reason = "max_steps"
+
+            # Build return result
+            end_time = time.time()
+            duration = end_time - start_time
+            return RunOutput(
+                response=tracker.response_content,
+                run_id=context.run_id,
+                session_id=context.session_id,
+                metrics=RunMetrics(
+                    duration=duration,
+                    total_tokens=tracker.total_tokens,
+                    input_tokens=tracker.input_tokens,
+                    output_tokens=tracker.output_tokens,
+                    steps_count=tracker.steps_count,
+                    tool_calls_count=tracker.tool_calls_count,
+                ),
+                termination_reason=termination_reason,
+            )
+
+        except asyncio.CancelledError:
+            termination_reason = "cancelled"
+            end_time = time.time()
+            duration = end_time - start_time
+            return RunOutput(
+                response=tracker.response_content,
+                run_id=context.run_id,
+                session_id=context.session_id,
+                metrics=RunMetrics(
+                    duration=duration,
+                    total_tokens=tracker.total_tokens,
+                    input_tokens=tracker.input_tokens,
+                    output_tokens=tracker.output_tokens,
+                    steps_count=tracker.steps_count,
+                    tool_calls_count=tracker.tool_calls_count,
+                ),
+                termination_reason=termination_reason,
+            )
+
+        except Exception as e:
+            # If we have successful LLM calls, return error_with_context
+            # Otherwise return error (nothing to summarize)
+            error_reason = (
+                "error_with_context" if tracker.assistant_steps_count > 0 else "error"
+            )
+
+            end_time = time.time()
+            duration = end_time - start_time
+            return RunOutput(
+                response=tracker.response_content,
+                run_id=context.run_id,
+                session_id=context.session_id,
+                metrics=RunMetrics(
+                    duration=duration,
+                    total_tokens=tracker.total_tokens,
+                    input_tokens=tracker.input_tokens,
+                    output_tokens=tracker.output_tokens,
+                    steps_count=tracker.steps_count,
+                    tool_calls_count=tracker.tool_calls_count,
+                ),
+                termination_reason=error_reason,
+            )
+
+        finally:
+            # Always flush remaining steps
+            await repo.flush()
+
+    async def _process_step(
+        self,
+        step: Step,
+        repo: StepRepository,
+        tracker: MetricsTracker,
+        context: ExecutionContext,
+        ef: EventFactory,
+        messages: list[dict],
+    ):
+        """Process step: queue, track, send event, add to messages."""
+        await repo.queue(step)
+        tracker.track(step)
+        await context.wire.write(ef.step_completed(step.id, step))
+        messages.append(StepAdapter.to_llm_message(step))
+
+    async def _call_llm_and_stream(
+        self,
+        messages: list[dict],
+        tool_schemas: list[dict] | None,
+        context: ExecutionContext,
+        ef: EventFactory,
+        abort_signal: "AbortSignal | None" = None,
+    ) -> Step:
+        """
+        Call LLM and stream response.
+
+        Returns complete Assistant Step.
+        """
+        # Allocate sequence
+        if context.sequence_manager:
+            seq = await context.sequence_manager.allocate(context.session_id, context)
+        else:
+            seq = 1
+
+        # Create assistant step
+        sf = StepFactory(context)
+
+        llm_start_time = datetime.now(timezone.utc)
+        step_start_time = time.time()
+
+        assistant_step = sf.assistant_step(
+            sequence=seq,
+            content="",
+            tool_calls=None,
+            llm_messages=messages.copy(),
+            llm_tools=tool_schemas.copy() if tool_schemas else None,
+            llm_request_params=self._get_request_params(),
+            metrics=StepMetrics(exec_start_at=llm_start_time),
+        )
+
+        # Stream processing
+        full_content = ""
+        full_reasoning_content = ""
+        accumulator = ToolCallAccumulator()
+        first_token_time = None
+        usage_data = None
+
+        async for chunk in self.model.arun_stream(messages, tools=tool_schemas):
+            # Check abort during streaming
+            if abort_signal and abort_signal.is_aborted():
+                raise asyncio.CancelledError(abort_signal.reason)
+
+            if first_token_time is None and (
+                chunk.content or chunk.reasoning_content or chunk.tool_calls
+            ):
+                first_token_time = time.time()
+
+            # Content delta
+            if chunk.content:
+                full_content += chunk.content
+                await context.wire.write(
+                    ef.step_delta(assistant_step.id, StepDelta(content=chunk.content))
+                )
+
+            # Reasoning delta
+            if chunk.reasoning_content:
+                full_reasoning_content += chunk.reasoning_content
+                await context.wire.write(
+                    ef.step_delta(
                         assistant_step.id,
                         StepDelta(reasoning_content=chunk.reasoning_content),
                     )
+                )
 
-                if chunk.tool_calls:
-                    accumulator.accumulate(chunk.tool_calls)
-                    yield ef.step_delta(
+            # Tool calls delta
+            if chunk.tool_calls:
+                accumulator.accumulate(chunk.tool_calls)
+                await context.wire.write(
+                    ef.step_delta(
                         assistant_step.id, StepDelta(tool_calls=chunk.tool_calls)
                     )
+                )
 
-                if chunk.usage:
-                    usage_data = chunk.usage
+            # Usage
+            if chunk.usage:
+                usage_data = chunk.usage
 
-            # 2. Finalize Assistant Step
-            step_end_time = time.time()
-            llm_end_time = datetime.now(timezone.utc)
-            final_tool_calls = accumulator.finalize()
+        # Complete step
+        step_end_time = time.time()
+        llm_end_time = datetime.now(timezone.utc)
 
-            assistant_step.content = full_content or None
-            assistant_step.reasoning_content = full_reasoning_content or None
-            assistant_step.tool_calls = final_tool_calls or None
+        assistant_step.content = full_content or None
+        assistant_step.reasoning_content = full_reasoning_content or None
+        assistant_step.tool_calls = accumulator.finalize() or None
 
-            if assistant_step.metrics:
-                assistant_step.metrics.exec_end_at = llm_end_time
-                assistant_step.metrics.duration_ms = (
-                    step_end_time - step_start_time
+        # Update metrics
+        if assistant_step.metrics:
+            assistant_step.metrics.exec_end_at = llm_end_time
+            assistant_step.metrics.duration_ms = (
+                step_end_time - step_start_time
+            ) * 1000
+            if first_token_time:
+                assistant_step.metrics.first_token_latency_ms = (
+                    first_token_time - step_start_time
                 ) * 1000
-                if first_token_time:
-                    assistant_step.metrics.first_token_latency_ms = (
-                        first_token_time - step_start_time
-                    ) * 1000
 
-                if usage_data:
-                    # Normalize metrics to handle both OpenAI-style and unified-style keys
-                    normalized = normalize_usage_metrics(usage_data)
-                    assistant_step.metrics.input_tokens = normalized["input_tokens"]
-                    assistant_step.metrics.output_tokens = normalized["output_tokens"]
-                    assistant_step.metrics.total_tokens = normalized["total_tokens"]
+            if usage_data:
+                normalized = normalize_usage_metrics(usage_data)
+                assistant_step.metrics.input_tokens = normalized["input_tokens"]
+                assistant_step.metrics.output_tokens = normalized["output_tokens"]
+                assistant_step.metrics.total_tokens = normalized["total_tokens"]
 
-                assistant_step.metrics.model_name = getattr(
-                    self.model, "model_name", None
-                )
-                assistant_step.metrics.provider = getattr(self.model, "provider", None)
+            assistant_step.metrics.model_name = getattr(self.model, "model_name", None)
+            assistant_step.metrics.provider = getattr(self.model, "provider", None)
 
-            yield ef.step_completed(assistant_step.id, assistant_step)
-
-            messages.append(StepAdapter.to_llm_message(assistant_step))
-
-            # 3. Check if we need to execute tools
-            if not final_tool_calls:
-                logger.debug(
-                    "executor_completed",
-                    session_id=ctx.session_id,
-                    run_id=ctx.run_id,
-                    total_steps=current_step,
-                )
-                break
-
-            # 4. Execute tools and create Tool Steps
-            logger.debug(
-                "executor_executing_tools",
-                session_id=ctx.session_id,
-                run_id=ctx.run_id,
-                tool_count=len(final_tool_calls),
-            )
-
-            async for event in self._execute_tool_calls(
-                final_tool_calls,
-                ctx,
-                allocate_sequence_fn,
-                messages,
-                abort_signal,
-            ):
-                yield event
+        return assistant_step
 
     async def _execute_tool_calls(
         self,
         tool_calls: list[dict],
-        ctx: "ExecutionContext",
-        allocate_sequence_fn,
         messages: list[dict],
-        abort_signal: "AbortSignal | None" = None,
-    ) -> AsyncIterator[StepEvent]:
-        """
-        Execute tool calls and yield step events.
-
-        Args:
-            tool_calls: Tool calls to execute
-            ctx: ExecutionContext
-            allocate_sequence_fn: Async callback to allocate sequence
-            messages: Messages list (modified in place)
-            abort_signal: Abort signal
-
-        Yields:
-            StepEvent: step_completed events
-        """
-        ef = EventFactory(ctx)
-        sf = StepFactory(ctx)
+        context: ExecutionContext,
+        repo: StepRepository,
+        tracker: MetricsTracker,
+        ef: EventFactory,
+        abort_signal: "AbortSignal | None",
+    ):
+        """Execute tool calls."""
+        sf = StepFactory(context)
 
         results = await self.tool_executor.execute_batch(
             tool_calls,
-            context=ctx,
+            context=context,
             abort_signal=abort_signal,
         )
 
         for result in results:
-            # Allocate sequence for tool step
-            tool_sequence = await allocate_sequence_fn()
-            
-            # Create Tool Step using StepFactory
-            from datetime import datetime, timezone
+            # Allocate sequence
+            if context.sequence_manager:
+                seq = await context.sequence_manager.allocate(
+                    context.session_id, context
+                )
+            else:
+                seq = 1
 
+            # Create tool step
             tool_step = sf.tool_step(
-                sequence=tool_sequence,
+                sequence=seq,
                 tool_call_id=result.tool_call_id,
                 name=result.tool_name,
                 content=result.content,
@@ -355,13 +542,104 @@ class AgentExecutor:
                 ),
             )
 
-            messages.append(StepAdapter.to_llm_message(tool_step))
+            # Process tool step
+            await self._process_step(
+                step=tool_step,
+                repo=repo,
+                tracker=tracker,
+                context=context,
+                ef=ef,
+                messages=messages,
+            )
 
-            yield ef.step_completed(tool_step.id, tool_step)
+    async def _execute_summary_if_needed(
+        self,
+        messages: list[dict],
+        context: ExecutionContext,
+        repo: StepRepository,
+        tracker: MetricsTracker,
+        ef: EventFactory,
+        termination_reason: str,
+        pending_tool_calls: list[dict] | None,
+        abort_signal: "AbortSignal | None",
+    ):
+        """
+        Execute summary if config enabled and reason requires summary.
+
+        Summary is generated for:
+        - max_steps: Hit step limit with pending tool calls
+        - timeout: Execution timeout
+        - max_tokens: Token limit exceeded
+        - error_with_context: Error after successful LLM calls
+
+        Summary is NOT generated for:
+        - None: Normal completion
+        - cancelled: User cancelled
+        - error: Error without context
+        """
+        if not self.config.enable_termination_summary:
+            return
+
+        if termination_reason not in (
+            "max_steps",
+            "timeout",
+            "max_tokens",
+            "error_with_context",
+        ):
+            return
+
+        # Execute summary generation.
+        logger.debug(
+            "executing_summary",
+            termination_reason=termination_reason,
+            pending_tool_calls=bool(pending_tool_calls),
+        )
+
+        # Build summary messages
+        summary_messages = build_termination_messages(
+            messages=messages,
+            termination_reason=termination_reason,
+            pending_tool_calls=pending_tool_calls,
+            custom_prompt=self.config.termination_summary_prompt,
+        )
+
+        # Call LLM (no tools)
+        summary_step = await self._call_llm_and_stream(
+            messages=summary_messages,
+            tool_schemas=None,
+            context=context,
+            ef=ef,
+            abort_signal=abort_signal,
+        )
+
+        # Process summary step
+        await self._process_step(
+            step=summary_step,
+            repo=repo,
+            tracker=tracker,
+            context=context,
+            ef=ef,
+            messages=[],  # Don't add summary to messages
+        )
+
+        logger.info(
+            "summary_generated",
+            tokens=summary_step.metrics.total_tokens if summary_step.metrics else 0,
+        )
 
     def _get_tool_schemas(self) -> list[dict]:
-        """Get OpenAI schema for tools."""
+        """Get tool schemas."""
         return [tool.to_openai_schema() for tool in self.tools]
 
+    def _get_request_params(self) -> dict | None:
+        """Get LLM request parameters."""
+        if hasattr(self.model, "temperature"):
+            return {
+                "temperature": self.model.temperature,
+                "max_tokens": self.model.max_tokens,
+                "top_p": self.model.top_p,
+            }
+        return None
 
-__all__ = ["AgentExecutor", "ToolCallAccumulator"]
+
+__all__ = ["AgentExecutor", "ToolCallAccumulator", "MetricsTracker"]

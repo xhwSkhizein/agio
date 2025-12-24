@@ -10,9 +10,14 @@ Wire-based Architecture:
 - All nested executions share the same wire
 """
 
-from agio.domain import AgentSession, ExecutionContext, RunOutput
+from agio.domain import AgentSession
+from agio.runtime.step_factory import StepFactory
+from agio.runtime.control import AbortSignal
+from agio.runtime.protocol import ExecutionContext
+from agio.runtime.protocol import RunOutput
 from agio.config import ExecutionConfig
-from agio.agent.runner import AgentRunner
+from agio.agent.context import build_context_from_steps
+from agio.agent.executor import AgentExecutor
 from agio.providers.llm import Model
 from agio.providers.storage.base import SessionStore
 from agio.providers.tools import BaseTool
@@ -70,13 +75,14 @@ class Agent:
         input: str,
         *,
         context: "ExecutionContext",
+        abort_signal: "AbortSignal | None" = None,
     ) -> "RunOutput":
         """
         Execute Agent, writing Step events to context.wire.
-        
+
         This is the core execution method. Step events are written to wire,
         which is created and consumed by the API layer.
-        
+
         Note: Run lifecycle events (RUN_STARTED/COMPLETED/FAILED) are handled
         by RunnableExecutor, not here.
 
@@ -93,38 +99,55 @@ class Agent:
         current_user_id = context.user_id or self.user_id
 
         session = AgentSession(session_id=session_id, user_id=current_user_id)
-
         config = ExecutionConfig(
             max_steps=self.max_steps,
             enable_termination_summary=self.enable_termination_summary,
             termination_summary_prompt=self.termination_summary_prompt,
         )
 
-        runner = AgentRunner(
-            agent=self,
-            config=config,
-            session_store=self.session_store,
+        # 1) Create and save user step
+        if context.sequence_manager:
+            seq = await context.sequence_manager.allocate(session.session_id, context)
+        else:
+            seq = 1
+
+        sf = StepFactory(context)
+        user_step = sf.user_step(
+            sequence=seq,
+            content=input,
+            runnable_id=self.id,
+            runnable_type="agent",
         )
 
-        # Execute and write Step events to wire, return RunOutput
-        return await runner.run(session, input, context=context)
+        if self.session_store:
+            await self.session_store.save_step(user_step)
 
-    async def get_steps(self, session_id: str):
-        """Get all Steps for a Session."""
-        if not self.session_store:
-            raise ValueError("SessionStore not configured")
+        # 2) Build LLM messages
+        if self.session_store:
+            messages = await build_context_from_steps(
+                session.session_id,
+                self.session_store,
+                system_prompt=self.system_prompt,
+                run_id=context.run_id,
+                runnable_id=self.id,
+            )
+        else:
+            messages = []
+            if self.system_prompt:
+                messages.append({"role": "system", "content": self.system_prompt})
 
-        return await self.session_store.get_steps(session_id)
+        # 3) Execute with AgentExecutor (returns RunOutput)
+        executor = AgentExecutor(
+            model=self.model,
+            tools=self.tools or [],
+            session_store=self.session_store,
+            config=config,
+        )
 
-    async def list_runs(
-        self, user_id: str | None = None, limit: int = 20, offset: int = 0
-    ):
-        """List historical Runs."""
-        if not self.session_store:
-            raise ValueError("SessionStore not configured")
-
-        return await self.session_store.list_runs(
-            user_id=user_id, limit=limit, offset=offset
+        return await executor.execute(
+            messages=messages,
+            context=context,
+            abort_signal=abort_signal,
         )
 
 

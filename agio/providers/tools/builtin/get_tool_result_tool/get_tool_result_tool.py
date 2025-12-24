@@ -8,16 +8,16 @@ This tool enables cross-agent reference:
 """
 
 import time
-from typing import Any, TYPE_CHECKING
+from typing import Any
 
-from agio.providers.tools.base import BaseTool, RiskLevel, ToolCategory
+
 from agio.domain import ToolResult
 from agio.utils.logging import get_logger
 
-if TYPE_CHECKING:
-    from agio.agent.control import AbortSignal
-    from agio.domain import ExecutionContext
-    from agio.providers.storage.base import SessionStore
+from agio.runtime.control import AbortSignal
+from agio.runtime.protocol import ExecutionContext
+from agio.providers.tools.base import BaseTool, RiskLevel, ToolCategory
+from agio.providers.storage.base import SessionStore
 
 logger = get_logger(__name__)
 
@@ -25,7 +25,7 @@ logger = get_logger(__name__)
 class GetToolResultTool(BaseTool):
     """
     Retrieve a historical tool call result by tool_call_id.
-    
+
     This enables cross-agent information sharing:
     - Collector executes tools, stores results as Steps
     - Collector reports: "Found auth code (tool_call: tc_001)"
@@ -110,7 +110,7 @@ Example:
                     parameters, f"Tool result not found: {tool_call_id}", start_time
                 )
 
-            result_text = f"""## Tool Result: {step.name or 'unknown'}
+            result_text = f"""## Tool Result: {step.name or "unknown"}
 **tool_call_id**: {tool_call_id}
 
 ### Content:
@@ -134,7 +134,11 @@ Example:
             )
 
         except Exception as e:
-            logger.error("get_tool_result_failed", error=str(e), tool_call_id=parameters.get("tool_call_id"))
+            logger.error(
+                "get_tool_result_failed",
+                error=str(e),
+                tool_call_id=parameters.get("tool_call_id"),
+            )
             return self._create_error_result(parameters, str(e), start_time)
 
 

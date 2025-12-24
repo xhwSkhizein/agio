@@ -3,13 +3,10 @@
 将 Model 的流式接口适配为工具友好的请求-响应接口。
 """
 
-from typing import TYPE_CHECKING
-
 from pydantic import BaseModel
 
-if TYPE_CHECKING:
-    from agio.providers.llm.base import Model
-    from agio.agent.control import AbortSignal
+from agio.providers.llm.base import Model
+from agio.runtime.control import AbortSignal
 
 from agio.utils.logging import get_logger
 
@@ -81,7 +78,9 @@ class ModelLLMAdapter:
             usage = None
             model_name = None
 
-            async for chunk in self.model.arun_stream(messages=api_messages, tools=None):
+            async for chunk in self.model.arun_stream(
+                messages=api_messages, tools=None
+            ):
                 # 检查中断
                 if abort_signal and abort_signal.is_aborted():
                     logger.info("LLM call aborted during streaming")

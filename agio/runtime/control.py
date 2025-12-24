@@ -7,14 +7,13 @@ This module consolidates:
 """
 
 import asyncio
-from typing import TYPE_CHECKING, List, Optional
+from typing import List, Optional
 from uuid import uuid4
 
 from agio.domain import Step, MessageRole
 from agio.utils.logging import get_logger
 
-if TYPE_CHECKING:
-    from agio.providers.storage import SessionStore
+from agio.providers.storage import SessionStore
 
 logger = get_logger(__name__)
 

@@ -3,8 +3,6 @@
 使用 LLM 对网页内容进行摘要和查询提取。
 """
 
-from typing import TYPE_CHECKING
-
 from agio.providers.tools.builtin.common.llm.model_adapter import (
     LLMMessage,
     ModelLLMAdapter,
@@ -14,8 +12,7 @@ from agio.providers.tools.builtin.common.web_fetch.html_extract import (
 )
 from agio.utils.logging import get_logger
 
-if TYPE_CHECKING:
-    from agio.agent.control import AbortSignal
+from agio.runtime.control import AbortSignal
 
 logger = get_logger(__name__)
 

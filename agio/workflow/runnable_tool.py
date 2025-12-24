@@ -16,16 +16,16 @@ Safety features:
 """
 
 import time
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from uuid import uuid4
 
-from agio.domain import ToolResult, ExecutionContext, Runnable
+from agio.domain import ToolResult
+from agio.runtime.protocol import ExecutionContext, Runnable
 from agio.providers.tools import BaseTool
-from agio.runtime import RunnableExecutor, Wire
+from agio.runtime import RunnableExecutor
 
-if TYPE_CHECKING:
-    from agio.agent.control import AbortSignal
-    from agio.providers.storage.base import SessionStore
+from agio.runtime.control import AbortSignal
+from agio.providers.storage.base import SessionStore
 
 
 # Default maximum nesting depth for Runnable as Tool

@@ -2,8 +2,8 @@
 
 import pytest
 
-from agio.domain import StepEvent, StepEventType, ExecutionContext
-from agio.domain.protocol import RunOutput
+from agio.domain import StepEvent, StepEventType
+from agio.runtime.protocol import ExecutionContext, RunOutput
 from agio.domain.models import RunMetrics
 from agio.workflow.runnable_tool import (
     RunnableTool,

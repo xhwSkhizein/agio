@@ -4,8 +4,8 @@ import pytest
 from pathlib import Path
 
 from agio.providers.tools.builtin.file_read_tool import FileReadTool
-from agio.agent import AbortSignal
-from agio.domain import ExecutionContext
+from agio.runtime.control import AbortSignal
+from agio.runtime.protocol import ExecutionContext
 from agio.runtime import Wire
 
 

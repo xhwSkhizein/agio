@@ -7,7 +7,7 @@ Supports multiple extraction strategies and content type detection.
 
 import time
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from agio.providers.tools.base import BaseTool, RiskLevel, ToolCategory
 from agio.providers.tools.builtin.adapter import AppSettings, SettingsRegistry
@@ -34,13 +34,10 @@ from agio.providers.tools.builtin.common.web_fetch.playwright_crawler import (
 from agio.utils.logging import get_logger
 from agio.domain import ToolResult
 
-if TYPE_CHECKING:
-    from agio.providers.llm.base import Model
-    from agio.providers.tools.builtin.common.citation import (
-        CitationSourceRepository,
-    )
-    from agio.agent.control import AbortSignal
-    from agio.domain import ExecutionContext
+from agio.providers.llm.base import Model
+from agio.providers.tools.builtin.common.citation import CitationSourceRepository
+from agio.runtime.control import AbortSignal
+from agio.runtime.protocol import ExecutionContext
 
 
 logger = get_logger(__name__)

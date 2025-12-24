@@ -4,19 +4,21 @@ from __future__ import annotations
 
 import os
 import time
-from datetime import datetime
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import Any
 
 from pydantic import BaseModel
 
 from agio.providers.tools.base import BaseTool, RiskLevel, ToolCategory
-from agio.providers.tools.builtin.adapter import AppSettings, SettingsRegistry, get_logger
+from agio.providers.tools.builtin.adapter import (
+    AppSettings,
+    SettingsRegistry,
+    get_logger,
+)
 from agio.domain import ToolResult
 
-if TYPE_CHECKING:
-    from agio.agent.control import AbortSignal
-    from agio.domain import ExecutionContext
+from agio.runtime.control import AbortSignal
+from agio.runtime.protocol import ExecutionContext
 
 
 class GlobOutput(BaseModel):
@@ -69,6 +71,7 @@ class GlobTool(BaseTool):
 - 路径安全检查
 - 权限验证机制
 """
+
     def get_parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
@@ -212,7 +215,8 @@ class GlobTool(BaseTool):
         except Exception:
             # 记录错误但不抛出异常
             self._logger.exception(
-                "Glob search failed", extra={"pattern": pattern, "path": str(search_path)}
+                "Glob search failed",
+                extra={"pattern": pattern, "path": str(search_path)},
             )
             return [], False
 
@@ -272,21 +276,35 @@ class GlobTool(BaseTool):
             # 验证输入
             validation = self.validate_input(pattern, path)
             if not validation["valid"]:
-                return self._create_error_result(parameters, validation["message"], start_time)
+                return self._create_error_result(
+                    parameters, validation["message"], start_time
+                )
 
             # 解析搜索路径
             search_path = self._resolve_path(path)
 
             # 检查路径权限
             if not self._is_path_allowed(search_path):
-                return self._create_error_result(parameters, f"Path not allowed: {search_path.as_posix()}", start_time)
+                return self._create_error_result(
+                    parameters,
+                    f"Path not allowed: {search_path.as_posix()}",
+                    start_time,
+                )
 
             # 检查路径是否存在
             if not search_path.exists():
-                return self._create_error_result(parameters, f"Directory not found: {search_path.as_posix()}", start_time)
+                return self._create_error_result(
+                    parameters,
+                    f"Directory not found: {search_path.as_posix()}",
+                    start_time,
+                )
 
             if not search_path.is_dir():
-                return self._create_error_result(parameters, f"Path is not a directory: {search_path.as_posix()}", start_time)
+                return self._create_error_result(
+                    parameters,
+                    f"Path is not a directory: {search_path.as_posix()}",
+                    start_time,
+                )
 
             # 再次检查中断
             if abort_signal and abort_signal.is_aborted():
@@ -301,12 +319,14 @@ class GlobTool(BaseTool):
 
             duration_ms = int((time.time() - start_time) * 1000)
 
-            result_text = self._format_result_for_assistant(GlobOutput(
-                duration_ms=duration_ms,
-                num_files=len(files),
-                filenames=files,
-                truncated=truncated,
-            ))
+            result_text = self._format_result_for_assistant(
+                GlobOutput(
+                    duration_ms=duration_ms,
+                    num_files=len(files),
+                    filenames=files,
+                    truncated=truncated,
+                )
+            )
 
             return ToolResult(
                 tool_name=self.name,
@@ -327,4 +347,6 @@ class GlobTool(BaseTool):
             )
 
         except Exception as e:
-            return self._create_error_result(parameters, f"Glob search failed: {e!s}", start_time)
+            return self._create_error_result(
+                parameters, f"Glob search failed: {e!s}", start_time
+            )

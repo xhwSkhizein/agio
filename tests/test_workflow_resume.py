@@ -5,9 +5,11 @@ Tests for Workflow resume functionality using WorkflowState idempotency.
 import pytest
 from unittest.mock import MagicMock, AsyncMock
 
-from agio.domain import MessageRole, Step,RunOutput, RunMetrics
+from agio.domain import MessageRole, Step
+from agio.runtime import RunOutput
+from agio.domain.models import RunMetrics
 from agio.providers.storage import InMemorySessionStore
-from agio.domain import ExecutionContext
+from agio.runtime.protocol import ExecutionContext
 from agio.runtime.wire import Wire
 from agio.workflow.pipeline import PipelineWorkflow
 from agio.workflow.node import WorkflowNode

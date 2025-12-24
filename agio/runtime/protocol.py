@@ -1,23 +1,90 @@
 """
-ExecutionContext - Unified execution context abstraction.
+Runnable protocol and RunOutput for unified execution interface.
 
-This module provides a single, immutable context object that carries all
-execution-related information through the call chain, eliminating parameter
-explosion and repetitive context building.
-
-Encapsulates:
-- Identity: run_id, session_id
-- Hierarchy: depth, parent_run_id, nested_runnable_id
-- Runnable identity: runnable_type, runnable_id, nesting_type
-- Event channel: wire
-- Observability: trace_id, span_id
+This module defines the core abstractions for executable units:
+- Runnable: protocol for Agent and Workflow
+- RunOutput: execution result with response and metrics
+- ExecutionContext: Unified execution context abstraction
 """
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from agio.runtime.wire import Wire
+from agio.domain.models import RunMetrics
+from agio.runtime.wire import Wire
+from agio.runtime.sequence_manager import SequenceManager
+
+
+@dataclass
+class RunOutput:
+    """
+    Execution result from Runnable.run().
+
+    Contains both the response and execution metrics.
+    """
+
+    response: str | None = None
+    run_id: str | None = None
+    session_id: str | None = None
+    metrics: "RunMetrics | None" = None
+
+    # Additional context
+    workflow_id: str | None = None
+    termination_reason: str | None = None  # "max_steps", "max_iterations", etc.
+    error: str | None = None
+
+
+@runtime_checkable
+class Runnable(Protocol):
+    """
+    Unified protocol for executable units.
+
+    Both Agent and Workflow implement this interface, enabling:
+    1. Unified API invocation
+    2. Mutual nesting and composition
+    3. Use as Tool (AgentAsTool, WorkflowAsTool)
+
+    Wire-based execution:
+    - run() requires context.wire
+    - Events are written to wire
+    - Returns RunOutput (response + metrics)
+    """
+
+    @property
+    def id(self) -> str:
+        """Unique identifier."""
+        ...
+
+    @property
+    def runnable_type(self) -> str:
+        """
+        Return the type of this Runnable.
+
+        - Agent returns "agent"
+        - Workflow returns "workflow"
+
+        Used by RunnableExecutor to determine run type without
+        instanceof checks on concrete classes.
+        """
+        ...
+
+    async def run(
+        self,
+        input: str,
+        *,
+        context: "ExecutionContext",
+    ) -> "RunOutput":
+        """
+        Execute and write events to context.wire.
+
+        Args:
+            input: Input string
+            context: Execution context with wire (required)
+
+        Returns:
+            RunOutput containing response and metrics
+        """
+        ...
 
 
 @dataclass(frozen=True)
@@ -32,6 +99,7 @@ class ExecutionContext:
         run_id: Current run identifier
         session_id: Session identifier
         wire: Event streaming channel
+        sequence_manager: Session-level sequence allocation service (optional)
         user_id: User identifier (optional)
         workflow_id: Workflow identifier (optional)
         depth: Nesting depth (0 = top-level)
@@ -50,8 +118,9 @@ class ExecutionContext:
     run_id: str
     session_id: str
 
-    # Event streaming channel
-    wire: "Wire"
+    # Session-level resources
+    wire: Wire
+    sequence_manager: SequenceManager | None = None
 
     # User & Workflow Context
     user_id: str | None = None
@@ -112,6 +181,7 @@ class ExecutionContext:
             run_id=run_id,
             session_id=session_id or self.session_id,
             wire=self.wire,
+            sequence_manager=self.sequence_manager,
             user_id=overrides.get("user_id", self.user_id),
             workflow_id=overrides.get("workflow_id", self.workflow_id),
             depth=self.depth + 1,
@@ -147,6 +217,7 @@ class ExecutionContext:
             run_id=self.run_id,
             session_id=self.session_id,
             wire=self.wire,
+            sequence_manager=self.sequence_manager,
             user_id=self.user_id,
             workflow_id=self.workflow_id,
             depth=self.depth,
@@ -177,6 +248,7 @@ class ExecutionContext:
             run_id=self.run_id,
             session_id=self.session_id,
             wire=self.wire,
+            sequence_manager=self.sequence_manager,
             user_id=self.user_id,
             workflow_id=self.workflow_id,
             depth=self.depth,
@@ -207,4 +279,4 @@ class ExecutionContext:
         )
 
 
-__all__ = ["ExecutionContext"]
+__all__ = ["Runnable", "RunOutput", "ExecutionContext"]

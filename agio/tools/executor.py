@@ -5,17 +5,16 @@ Unified tool executor.
 import asyncio
 import json
 import time
-from typing import Any, TYPE_CHECKING
+from typing import Any
 
 from agio.domain import ToolResult
 from agio.tools.cache import get_tool_cache
 from agio.utils.logging import get_logger
 
-if TYPE_CHECKING:
-    from agio.providers.tools import BaseTool
-    from agio.agent.control import AbortSignal
-    from agio.domain import ExecutionContext
-    from agio.tools.cache import ToolResultCache
+from agio.providers.tools import BaseTool
+from agio.runtime.control import AbortSignal
+from agio.runtime.protocol import ExecutionContext
+from agio.tools.cache import ToolResultCache
 
 logger = get_logger(__name__)
 

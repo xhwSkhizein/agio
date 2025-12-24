@@ -10,10 +10,8 @@ Key features:
 - Idempotency support: check if node already executed
 """
 
-from typing import TYPE_CHECKING, Dict, Optional
-
-if TYPE_CHECKING:
-    from agio.providers.storage.base import SessionStore
+from typing import Dict, Optional
+from agio.providers.storage.base import SessionStore
 
 
 class WorkflowState:
@@ -89,7 +87,9 @@ class WorkflowState:
             return f"{node_id}:iter_{iteration}"
         return node_id
 
-    def get_output(self, node_id: str, iteration: Optional[int] = None) -> Optional[str]:
+    def get_output(
+        self, node_id: str, iteration: Optional[int] = None
+    ) -> Optional[str]:
         """
         Get cached output for a node.
 
@@ -103,7 +103,9 @@ class WorkflowState:
         key = self._make_key(node_id, iteration)
         return self._outputs.get(key)
 
-    def set_output(self, node_id: str, content: str, iteration: Optional[int] = None) -> None:
+    def set_output(
+        self, node_id: str, content: str, iteration: Optional[int] = None
+    ) -> None:
         """
         Update cached output for a node.
 
@@ -146,4 +148,3 @@ class WorkflowState:
             Dictionary mapping node_id to output content
         """
         return dict(self._outputs)
-

@@ -6,7 +6,8 @@ import pytest
 from unittest.mock import MagicMock, AsyncMock
 
 from agio.providers.storage import InMemorySessionStore
-from agio.domain import ExecutionContext,RunOutput, RunMetrics
+from agio.runtime.protocol import ExecutionContext, RunOutput
+from agio.domain.models import RunMetrics
 from agio.runtime.wire import Wire
 from agio.workflow.parallel import ParallelWorkflow
 from agio.workflow.node import WorkflowNode

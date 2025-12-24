@@ -22,7 +22,8 @@ from agio.config import ConfigSystem, get_config_system
 from agio.api.deps import get_session_store, get_trace_store
 from agio.domain import StepEventType
 from agio.runtime import Wire, RunnableExecutor
-from agio.domain import ExecutionContext
+from agio.runtime.protocol import ExecutionContext
+from agio.runtime.sequence_manager import SequenceManager
 
 router = APIRouter(prefix="/runnables")
 
@@ -163,17 +164,20 @@ async def run_runnable(
 
     # Streaming mode
     async def event_generator():
-        # Create Wire at API entry point
+        # Create Session-level resources at API entry point
         wire = Wire()
+        session_store = get_session_store(config_sys=config_system)
+        sequence_manager = SequenceManager(session_store)
         run_id = str(uuid4())
 
         # Use runnable_type property from Runnable protocol
         runnable_type = instance.runnable_type
-        
-        # Create context with wire
+
+        # Create context with wire and sequence_manager
         context = ExecutionContext(
             run_id=run_id,
             wire=wire,
+            sequence_manager=sequence_manager,
             session_id=request.session_id or str(uuid4()),
             user_id=request.user_id,
             runnable_type=runnable_type,
@@ -186,8 +190,7 @@ async def run_runnable(
         store = get_trace_store(config_sys=config_system)
         collector = create_collector(store)
 
-        # Get session store from ConfigSystem (no reflection)
-        session_store = get_session_store(config_sys=config_system)
+        # Create RunnableExecutor
         executor = RunnableExecutor(store=session_store)
 
         # Start execution in background task using RunnableExecutor
@@ -246,7 +249,10 @@ async def _run_non_streaming(
     config_system: ConfigSystem,
 ) -> dict[str, Any]:
     """Non-streaming execution using Wire."""
+    # Create Session-level resources
     wire = Wire()
+    session_store = get_session_store(config_sys=config_system)
+    sequence_manager = SequenceManager(session_store)
     run_id = str(uuid4())
 
     # Use runnable_type property from Runnable protocol
@@ -255,6 +261,7 @@ async def _run_non_streaming(
     context = ExecutionContext(
         run_id=run_id,
         wire=wire,
+        sequence_manager=sequence_manager,
         session_id=session_id or str(uuid4()),
         user_id=user_id,
         runnable_type=runnable_type,
