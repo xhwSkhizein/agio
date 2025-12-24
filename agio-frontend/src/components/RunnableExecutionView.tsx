@@ -341,6 +341,16 @@ function ExecutionSteps({ execution }: ExecutionStepsProps) {
 
         // Single step (not grouped)
         const step = stepOrGroup as ExecutionStep
+        if (step.type === 'user') {
+          return (
+            <div key={`${step.stepId}_user_${idx}`} className="mb-2">
+              <div className="text-xs text-white font-medium leading-relaxed">
+                <MessageContent content={step.content} />
+              </div>
+            </div>
+          )
+        }
+        
         if (step.type === 'assistant_content') {
           return (
             <div key={`${step.stepId}_content_${idx}`} className="space-y-2">

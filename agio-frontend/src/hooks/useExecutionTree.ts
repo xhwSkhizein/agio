@@ -7,10 +7,8 @@
 
 import { useRef, useCallback, useState } from 'react'
 import { ExecutionTreeBuilder, createExecutionTreeBuilder } from '../utils/executionTreeBuilder'
-import type { ExecutionTree } from '../types/execution'
+import type { ExecutionTree, BackendStep } from '../types/execution'
 import { createEmptyTree } from '../types/execution'
-import type { BackendStep } from '../utils/stepsToEvents'
-import { stepsToEvents } from '../utils/stepsToEvents'
 import type { ExecutionStep, RunnableExecution } from '../types/execution'
 
 interface UseExecutionTreeResult {
@@ -28,71 +26,201 @@ function buildExecutionTreeFromSteps(steps: BackendStep[]): ExecutionTree {
     return tree
   }
 
-  const events = stepsToEvents(steps)
-  const firstTimestamp = new Date(steps[0].created_at).getTime()
-  const lastTimestamp = new Date(steps[steps.length - 1].created_at).getTime()
-
-  const exec: RunnableExecution = {
-    id: 'history',
-    runnableId: 'history',
-    runnableType: 'agent',
-    depth: 0,
-    status: 'completed',
-    steps: [],
-    children: [],
-    startTime: firstTimestamp,
-    endTime: lastTimestamp,
+  // Sort steps by sequence to ensure correct order
+  const sortedSteps = [...steps].sort((a, b) => a.sequence - b.sequence)
+  
+  // Group steps by run_id to build executions
+  const runStepsMap = new Map<string, BackendStep[]>()
+  
+  // First pass: group all steps by run_id (including user steps)
+  for (const step of sortedSteps) {
+    if (step.run_id) {
+      if (!runStepsMap.has(step.run_id)) {
+        runStepsMap.set(step.run_id, [])
+      }
+      runStepsMap.get(step.run_id)!.push(step)
+    }
   }
 
-  for (const event of events) {
-    if (event.type === 'user') {
-      tree.messages.push({
-        id: event.id,
-        type: 'user',
-        content: event.content || '',
-        timestamp: event.timestamp,
-      })
-      continue
-    }
-
-    if (event.type === 'assistant') {
-      const step: ExecutionStep = {
-        type: 'assistant_content',
-        stepId: event.id,
-        content: event.content || '',
-        reasoning_content: event.reasoning_content,
+  // Build executions from steps
+  const executionsMap = new Map<string, RunnableExecution>()
+  
+  // First pass: create all executions
+  for (const [runId, runSteps] of runStepsMap.entries()) {
+    if (runSteps.length === 0) continue
+    
+    const firstStep = runSteps[0]
+    const lastStep = runSteps[runSteps.length - 1]
+    const firstTimestamp = new Date(firstStep.created_at).getTime()
+    const lastTimestamp = new Date(lastStep.created_at).getTime()
+    
+    // Determine runnable type
+    const runnableType = (firstStep.runnable_type === 'workflow' ? 'workflow' : 'agent') as 'agent' | 'workflow'
+    
+    // Determine workflow type
+    let workflowType: 'pipeline' | 'parallel' | 'loop' | undefined = undefined
+    if (runnableType === 'workflow' && firstStep.workflow_id) {
+      // Try to infer workflow type from branch_key or node_id patterns
+      // This is a heuristic - ideally workflow_type should be stored in Run metadata
+      if (firstStep.branch_key) {
+        workflowType = 'parallel'
+      } else if (firstStep.node_id) {
+        // Could be pipeline or loop - default to pipeline
+        workflowType = 'pipeline'
       }
-      exec.steps.push(step)
-      continue
     }
-
-    if (event.type === 'tool') {
-      // Create tool_call entry
-      exec.steps.push({
-        type: 'tool_call',
-        stepId: `${event.id}_call`,
-        toolCallId: event.id,
-        toolName: event.toolName || 'Tool',
-        toolArgs: event.toolArgs || '{}',
-      })
-
-      // If tool result exists, add result entry
-      if (event.toolResult !== undefined) {
-        exec.steps.push({
-          type: 'tool_result',
-          stepId: `${event.id}_result`,
-          toolCallId: event.id,
-          result: event.toolResult,
-          status: event.toolStatus === 'failed' ? 'failed' : 'completed',
+    
+    // Determine nesting type
+    let nestingType: 'tool_call' | 'workflow_node' | undefined = undefined
+    if (firstStep.parent_run_id) {
+      // Check if this is a tool_call nested execution
+      // We'll determine this when linking parent-child relationships
+      nestingType = 'workflow_node' // Default for now
+    }
+    
+    const exec: RunnableExecution = {
+      id: runId,
+      runnableId: firstStep.runnable_id || 'unknown',
+      runnableType,
+      nestingType,
+      parentRunId: firstStep.parent_run_id || undefined,
+      depth: firstStep.depth || 0,
+      workflowType,
+      workflowId: firstStep.workflow_id || undefined,
+      nodeId: firstStep.node_id || undefined,
+      branchId: firstStep.branch_key || undefined,
+      status: 'completed',
+      steps: [],
+      children: [],
+      startTime: firstTimestamp,
+      endTime: lastTimestamp,
+    }
+    
+    // Build execution steps directly from BackendStep
+    // First, collect tool results by tool_call_id for matching
+    const toolResultsMap = new Map<string, BackendStep>()
+    for (const step of runSteps) {
+      if (step.role === 'tool' && step.tool_call_id) {
+        toolResultsMap.set(step.tool_call_id, step)
+      }
+    }
+    
+    // Process steps in sequence order
+    for (const step of runSteps) {
+      if (step.role === 'user') {
+        // Add user step to execution only if this is a nested execution
+        // Top-level user messages will be added to tree.messages later
+        if (firstStep.parent_run_id) {
+          exec.steps.push({
+            type: 'user',
+            stepId: step.id,
+            content: step.content || '',
+          })
+        }
+      } else if (step.role === 'assistant') {
+        // Add assistant content step
+        if (step.content || step.reasoning_content) {
+          exec.steps.push({
+            type: 'assistant_content',
+            stepId: step.id,
+            content: step.content || '',
+            reasoning_content: step.reasoning_content || undefined,
+            // Note: metrics not available in BackendStep currently
+            // Can be added later if needed from backend API
+          })
+        }
+        
+        // Add tool call steps
+        if (step.tool_calls && Array.isArray(step.tool_calls)) {
+          for (const tc of step.tool_calls) {
+            const toolCallId = tc.id || `${step.id}_tool_${tc.index ?? 0}`
+            const toolResultStep = toolCallId ? toolResultsMap.get(toolCallId) : undefined
+            
+            exec.steps.push({
+              type: 'tool_call',
+              stepId: `${toolCallId}_call`,
+              toolCallId,
+              toolName: tc.function?.name || 'Unknown Tool',
+              toolArgs: tc.function?.arguments || '{}',
+            })
+            
+            // Add tool result if exists
+            if (toolResultStep) {
+              exec.steps.push({
+                type: 'tool_result',
+                stepId: `${toolCallId}_result`,
+                toolCallId,
+                result: toolResultStep.content || '',
+                status: 'completed', // Tool steps are always completed when stored
+                // Note: duration not available in BackendStep currently
+              })
+            }
+          }
+        }
+      }
+      // Note: tool role steps are handled via toolResultsMap above
+    }
+    
+    executionsMap.set(runId, exec)
+  }
+  
+  // Second pass: establish parent-child relationships
+  for (const exec of executionsMap.values()) {
+    if (exec.parentRunId && executionsMap.has(exec.parentRunId)) {
+      const parent = executionsMap.get(exec.parentRunId)!
+      parent.children.push(exec)
+      
+      // Determine nesting type based on tool calls
+      // If parent has a tool_call that matches this execution's runnableId, it's a tool_call nesting
+      const matchingToolCall = parent.steps.find(
+        step => step.type === 'tool_call' && 
+        (step.toolName.startsWith('call_') 
+          ? step.toolName.slice(5) === exec.runnableId
+          : step.toolName === exec.runnableId)
+      ) as Extract<ExecutionStep, { type: 'tool_call' }> | undefined
+      
+      if (matchingToolCall) {
+        exec.nestingType = 'tool_call'
+        matchingToolCall.childRunId = exec.id
+      } else {
+        exec.nestingType = 'workflow_node'
+      }
+    } else {
+      // Root execution
+      tree.executions.push(exec)
+    }
+    
+    // Add to execution map
+    tree.executionMap.set(exec.id, exec)
+  }
+  
+  // Third pass: add top-level user messages to tree
+  // Top-level user messages are those without run_id, or whose run_id corresponds to a root execution
+  const rootRunIds = new Set(tree.executions.map(e => e.id))
+  
+  for (const step of sortedSteps) {
+    if (step.role === 'user') {
+      // Only add top-level user messages:
+      // 1. No run_id (session-level user message)
+      // 2. run_id corresponds to a root execution (no parent_run_id)
+      if (!step.run_id || rootRunIds.has(step.run_id)) {
+        tree.messages.push({
+          id: step.id,
+          type: 'user',
+          content: step.content || '',
+          timestamp: new Date(step.created_at).getTime(),
         })
       }
-      continue
+      // Nested execution user messages are already added to their execution's steps above
     }
   }
-
-  tree.executions.push(exec)
-  tree.executionMap.set(exec.id, exec)
-
+  
+  // Sort executions by start time
+  tree.executions.sort((a, b) => (a.startTime || 0) - (b.startTime || 0))
+  
+  // Sort messages by timestamp
+  tree.messages.sort((a, b) => a.timestamp - b.timestamp)
+  
   return tree
 }
 

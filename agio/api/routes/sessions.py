@@ -4,7 +4,6 @@ Session management routes.
 
 import asyncio
 import json
-from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -53,6 +52,15 @@ class StepResponse(BaseModel):
     # Tool step: ID linking to the tool_call in assistant step
     tool_call_id: str | None = None
     created_at: str
+    # Hierarchy fields for building execution tree
+    run_id: str | None = None
+    parent_run_id: str | None = None
+    workflow_id: str | None = None
+    node_id: str | None = None
+    branch_key: str | None = None  # Branch identifier for parallel execution
+    runnable_id: str | None = None
+    runnable_type: str | None = None  # "agent" or "workflow"
+    depth: int = 0
 
 
 class SessionResponse(BaseModel):
@@ -291,6 +299,14 @@ async def get_session_steps(
             name=step.name,
             tool_call_id=step.tool_call_id,
             created_at=step.created_at.isoformat() if step.created_at else "",
+            run_id=step.run_id,
+            parent_run_id=step.parent_run_id,
+            workflow_id=step.workflow_id,
+            node_id=step.node_id,
+            branch_key=step.branch_key,
+            runnable_id=step.runnable_id,
+            runnable_type=step.runnable_type,
+            depth=step.depth,
         )
         for step in steps
     ]
