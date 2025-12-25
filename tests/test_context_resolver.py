@@ -5,7 +5,7 @@ Tests for ContextResolver - template variable resolution.
 import pytest
 
 from agio.domain import MessageRole, Step
-from agio.providers.storage import InMemorySessionStore
+from agio.storage.session import InMemorySessionStore
 from agio.workflow.state import WorkflowState
 from agio.workflow.resolver import ContextResolver
 

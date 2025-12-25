@@ -1,10 +1,11 @@
 type: tool
 name: get_tool_result
-description: ""
-tool_name: web_fetch
+description: "Get tool execution result by tool call ID"
+tool_name: get_tool_result
 params:
   tool_name: str
-enabled: true
+enabled: false  # Disabled: tool not implemented yet
 session_store: session_store
 tags:
   - tool
+  - utility

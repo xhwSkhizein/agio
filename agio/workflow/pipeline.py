@@ -21,7 +21,7 @@ from agio.workflow.resolver import ContextResolver
 from agio.workflow.base import BaseWorkflow
 from agio.workflow.node import WorkflowNode
 
-from agio.providers.storage.base import SessionStore
+from agio.storage.session.base import SessionStore
 
 
 class PipelineWorkflow(BaseWorkflow):

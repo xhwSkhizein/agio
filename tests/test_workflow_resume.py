@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, AsyncMock
 from agio.domain import MessageRole, Step
 from agio.runtime import RunOutput
 from agio.domain.models import RunMetrics
-from agio.providers.storage import InMemorySessionStore
+from agio.storage.session import InMemorySessionStore
 from agio.runtime.protocol import ExecutionContext
 from agio.runtime.wire import Wire
 from agio.workflow.pipeline import PipelineWorkflow

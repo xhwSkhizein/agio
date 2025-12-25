@@ -5,7 +5,7 @@ Tests for SessionStore filtering capabilities (run_id, workflow_id, node_id, bra
 import pytest
 
 from agio.domain import MessageRole, Step
-from agio.providers.storage import InMemorySessionStore
+from agio.storage.session import InMemorySessionStore
 
 
 @pytest.fixture

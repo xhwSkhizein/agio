@@ -19,7 +19,7 @@ from agio.config import ExecutionConfig
 from agio.agent.context import build_context_from_steps
 from agio.agent.executor import AgentExecutor
 from agio.providers.llm import Model
-from agio.providers.storage.base import SessionStore
+from agio.storage.session.base import SessionStore
 from agio.providers.tools import BaseTool
 
 

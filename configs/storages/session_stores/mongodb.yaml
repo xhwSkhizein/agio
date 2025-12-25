@@ -1,11 +1,16 @@
 type: session_store
 name: mongodb_session_store
 description: "MongoDB session store for agent runs and steps"
-store_type: mongodb
-mongo_uri: "${AGIO_MONGO_URI:mongodb://localhost:27017}"
-mongo_db_name: "${AGIO_MONGO_DB:agio}"
 enabled: true
 tags:
   - persistence
   - mongodb
   - production
+
+backend:
+  type: mongodb
+  uri: "${AGIO_MONGO_URI:mongodb://localhost:27017}"
+  db_name: "${AGIO_MONGO_DB:agio}"
+
+enable_indexing: true
+batch_size: 100

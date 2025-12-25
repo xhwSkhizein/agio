@@ -14,7 +14,7 @@ from typing import Any
 
 from agio.providers.tools.base import BaseTool, RiskLevel, ToolCategory
 from agio.providers.tools.builtin.adapter import AppSettings, SettingsRegistry
-from agio.providers.tools.builtin.common.citation import (
+from agio.storage.citation import (
     CitationSourceRaw,
     CitationSourceSimplified,
     CitationSourceType,
@@ -22,7 +22,7 @@ from agio.providers.tools.builtin.common.citation import (
 )
 from agio.domain import ToolResult
 
-from agio.providers.tools.builtin.common.citation import CitationSourceRepository
+from agio.storage.citation import CitationSourceRepository
 from agio.runtime.control import AbortSignal
 from agio.runtime.protocol import ExecutionContext
 

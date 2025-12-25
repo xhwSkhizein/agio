@@ -6,7 +6,7 @@ from datetime import datetime
 
 import pytest
 
-from agio.providers.storage import InMemorySessionStore
+from agio.storage.session import InMemorySessionStore
 from agio.domain import MessageRole, Step, StepAdapter, StepMetrics
 
 

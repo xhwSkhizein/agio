@@ -19,7 +19,7 @@ from agio.runtime.wire import Wire
 from agio.runtime.runnable_executor import RunnableExecutor
 from agio.runtime.protocol import RunOutput
 from agio.utils.logging import get_logger
-from agio.providers.storage import SessionStore
+from agio.storage.session import SessionStore
 from agio.config import ConfigSystem
 
 

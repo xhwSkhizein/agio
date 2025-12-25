@@ -5,7 +5,7 @@ Tests for build_context_from_steps filtering capabilities.
 import pytest
 
 from agio.domain import MessageRole, Step
-from agio.providers.storage import InMemorySessionStore
+from agio.storage.session import InMemorySessionStore
 from agio.agent import build_context_from_steps
 
 

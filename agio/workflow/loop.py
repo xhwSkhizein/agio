@@ -24,7 +24,7 @@ from agio.domain.models import RunMetrics
 from agio.workflow.node import WorkflowNode
 
 from agio.providers.llm import Model
-from agio.providers.storage.base import SessionStore
+from agio.storage.session.base import SessionStore
 
 
 class LoopWorkflow(BaseWorkflow):

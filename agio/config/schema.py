@@ -12,6 +12,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from agio.config.backends import StorageBackend
+
 
 # ============================================================================
 # Runtime Execution Configuration
@@ -93,12 +95,17 @@ class ModelConfig(ComponentConfig):
     """Configuration for LLM model components"""
 
     type: Literal["model"] = "model"
-    provider: str  # "openai", "anthropic", "deepseek"
-    model_name: str
-    api_key: str | None = None
-    base_url: str | None = None
-    temperature: float = 0.7
-    max_tokens: int | None = None
+    
+    # Provider configuration
+    provider: str = Field(..., description="Provider type: openai, anthropic, deepseek, etc.")
+    model_name: str = Field(..., description="Model name")
+    api_key: str | None = Field(default=None, description="API key (optional, can use env var)")
+    base_url: str | None = Field(default=None, description="Custom API base URL (optional)")
+    
+    # Model parameters
+    temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="Sampling temperature")
+    max_tokens: int | None = Field(default=None, ge=1, description="Maximum tokens to generate")
+    timeout: float | None = Field(default=None, ge=1.0, description="Request timeout in seconds")
 
 
 class ToolConfig(ComponentConfig):
@@ -146,31 +153,46 @@ class MemoryConfig(ComponentConfig):
     """Configuration for memory components"""
 
     type: Literal["memory"] = "memory"
-    backend: str  # "redis", "inmemory"
-    params: dict = Field(default_factory=dict)
+    
+    # Backend configuration (future: migrate to BackendConfig structure)
+    backend: str = Field(..., description="Backend type: redis, inmemory")
+    
+    # Memory-specific configuration
+    ttl: int | None = Field(default=None, ge=1, description="Time-to-live in seconds (optional)")
+    max_size: int | None = Field(default=None, ge=1, description="Maximum cache size (optional)")
+    
+    # Legacy params field for backward compatibility
+    params: dict = Field(default_factory=dict, description="Additional backend parameters")
 
 
 class KnowledgeConfig(ComponentConfig):
     """Configuration for knowledge base components"""
 
     type: Literal["knowledge"] = "knowledge"
-    backend: str  # "chroma", "pinecone"
-    params: dict = Field(default_factory=dict)
+    
+    # Backend configuration (future: migrate to BackendConfig structure)
+    backend: str = Field(..., description="Backend type: chroma, pinecone")
+    
+    # Knowledge-specific configuration
+    embedding_model: str | None = Field(default=None, description="Embedding model name (optional)")
+    chunk_size: int = Field(default=512, ge=1, description="Text chunk size")
+    chunk_overlap: int = Field(default=50, ge=0, description="Chunk overlap size")
+    
+    # Legacy params field for backward compatibility
+    params: dict = Field(default_factory=dict, description="Additional backend parameters")
 
 
 class SessionStoreConfig(ComponentConfig):
     """Configuration for session store components (stores Run and Step data)"""
 
     type: Literal["session_store"] = "session_store"
-    store_type: str  # "mongodb", "inmemory", "postgres"
-    params: dict = Field(default_factory=dict)
-
-    # MongoDB specific
-    mongo_uri: str | None = None
-    mongo_db_name: str | None = None
-
-    # Postgres specific
-    postgres_url: str | None = None
+    
+    # Unified backend configuration
+    backend: "StorageBackend"  # Forward reference, imported from backends module
+    
+    # SessionStore specific configuration
+    enable_indexing: bool = Field(default=True, description="Enable database indexing")
+    batch_size: int = Field(default=100, ge=1, description="Batch operation size")
 
 
 class TraceStoreConfig(ComponentConfig):
@@ -178,24 +200,26 @@ class TraceStoreConfig(ComponentConfig):
 
     type: Literal["trace_store"] = "trace_store"
     
-    # MongoDB specific
-    mongo_uri: str | None = None
-    mongo_db_name: str | None = None
+    # Unified backend configuration
+    backend: "StorageBackend"  # Forward reference, imported from backends module
     
-    # Buffer configuration
-    buffer_size: int = Field(default=1000, description="In-memory buffer size")
-    flush_interval: int = Field(default=60, description="Flush interval in seconds")
+    # TraceStore specific configuration
+    buffer_size: int = Field(default=1000, ge=1, description="In-memory buffer size")
+    flush_interval: int = Field(default=60, ge=1, description="Flush interval in seconds")
+    enable_persistence: bool = Field(default=True, description="Enable persistent storage")
 
 
 class CitationStoreConfig(ComponentConfig):
     """Configuration for citation store components"""
 
     type: Literal["citation_store"] = "citation_store"
-    store_type: str  # "mongodb", "inmemory"
     
-    # MongoDB specific
-    mongo_uri: str | None = None
-    mongo_db_name: str | None = None
+    # Unified backend configuration
+    backend: "StorageBackend"  # Forward reference, imported from backends module
+    
+    # CitationStore specific configuration
+    auto_cleanup: bool = Field(default=False, description="Enable automatic cleanup")
+    cleanup_after_days: int = Field(default=30, ge=1, description="Cleanup after N days")
 
 
 class RunnableToolConfig(BaseModel):
@@ -294,3 +318,20 @@ __all__ = [
     "StageConfig",
     "WorkflowConfig",
 ]
+
+
+# Resolve forward references for Pydantic models
+def _resolve_forward_refs():
+    """Resolve forward references in Store configs after backends module is available."""
+    from agio.config.backends import StorageBackend
+    
+    SessionStoreConfig.model_rebuild()
+    TraceStoreConfig.model_rebuild()
+    CitationStoreConfig.model_rebuild()
+
+
+# Call resolution on module import
+try:
+    _resolve_forward_refs()
+except ImportError:
+    pass

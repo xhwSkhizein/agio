@@ -5,7 +5,7 @@
 
 from typing import Any
 
-from agio.providers.tools.builtin.common.citation.models import (
+from agio.storage.citation.models import (
     CitationSourceRaw,
     CitationSourceSimplified,
 )
@@ -160,3 +160,4 @@ class InMemoryCitationStore:
                 for session_id, sources in self._sources.items()
             },
         }
+

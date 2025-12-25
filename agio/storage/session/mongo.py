@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from agio.providers.storage.base import SessionStore
+from agio.storage.session.base import SessionStore
 from agio.domain import Run, Step
 from agio.utils.logging import get_logger
 
@@ -19,9 +19,6 @@ def filter_none_values(data: dict) -> dict:
     """
     Recursively filter out None values from a dictionary.
     """
-    if not isinstance(data, dict):
-        return data
-
     filtered = {}
     for key, value in data.items():
         if value is None:
@@ -402,3 +399,4 @@ class MongoSessionStore(SessionStore):
 
 
 __all__ = ["MongoSessionStore"]
+

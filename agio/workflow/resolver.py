@@ -14,7 +14,7 @@ Supported variables:
 import re
 from typing import Dict, Optional, Any
 
-from agio.providers.storage.base import SessionStore
+from agio.storage.session.base import SessionStore
 from agio.workflow.state import WorkflowState
 
 

@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from agio.providers.storage import InMemorySessionStore
+from agio.storage.session import InMemorySessionStore
 from agio.domain import MessageRole, Step, StepEventType, AgentSession
 from agio.agent import Agent, AgentExecutor
 from agio.runtime import Wire
@@ -105,7 +105,7 @@ async def test_step_executor_creates_steps(mock_model, session_store):
 
     from agio.runtime.protocol import ExecutionContext
     from agio.runtime import Wire
-    from agio.providers.storage.base import InMemorySessionStore
+    from agio.storage.session.base import InMemorySessionStore
 
     # Create session store for testing
     session_store = InMemorySessionStore()

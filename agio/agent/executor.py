@@ -34,7 +34,7 @@ from agio.tools.executor import ToolExecutor
 from agio.utils.logging import get_logger
 from agio.agent.summarizer import build_termination_messages
 from agio.providers.llm import Model
-from agio.providers.storage import SessionStore
+from agio.storage.session import SessionStore
 from agio.providers.tools import BaseTool
 
 

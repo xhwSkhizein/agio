@@ -4,7 +4,7 @@ from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from agio.providers.tools.builtin.common.citation.models import (
+from agio.storage.citation.models import (
     CitationSourceRaw,
     CitationSourceSimplified,
 )
@@ -254,3 +254,4 @@ class MongoCitationStore:
 
 
 __all__ = ["MongoCitationStore"]
+

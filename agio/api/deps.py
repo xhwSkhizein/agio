@@ -10,8 +10,8 @@ from typing import Any
 from fastapi import Depends, HTTPException
 
 from agio.config import ComponentType, ConfigSystem, get_config_system
-from agio.observability.trace_store import TraceStore
-from agio.providers.storage import SessionStore
+from agio.storage.trace.store import TraceStore
+from agio.storage.session import SessionStore
 from agio.utils.logging import get_logger
 from agio.runtime.permission import (
     ConsentStore,
@@ -60,7 +60,7 @@ def get_session_store(
 
     # Fallback: create singleton InMemorySessionStore
     if _default_session_store is None:
-        from agio.providers.storage import InMemorySessionStore
+        from agio.storage.session import InMemorySessionStore
         _default_session_store = InMemorySessionStore()
 
     return _default_session_store
@@ -147,6 +147,7 @@ def get_trace_store(
 
     # Fallback: create singleton in-memory TraceStore
     if _default_trace_store is None:
+        from agio.storage.trace.store import TraceStore
         _default_trace_store = TraceStore()
 
     return _default_trace_store
@@ -199,7 +200,7 @@ def get_consent_store(
         return _consent_store
 
     from agio.runtime.permission import InMemoryConsentStore, MongoConsentStore
-    from agio.providers.storage import MongoSessionStore
+    from agio.storage.session import MongoSessionStore
 
     # Try to reuse MongoDB connection from MongoSessionStore
     if isinstance(session_store, MongoSessionStore):

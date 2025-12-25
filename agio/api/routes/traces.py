@@ -12,7 +12,7 @@ from sse_starlette.sse import EventSourceResponse
 from agio.api.deps import get_trace_store
 from agio.config import ConfigSystem, get_config_system
 from agio.observability.trace import Trace, Span, SpanKind, SpanStatus
-from agio.observability.trace_store import TraceStore, TraceQuery
+from agio.storage.trace.store import TraceStore, TraceQuery
 
 router = APIRouter(prefix="/traces", tags=["Observability"])
 

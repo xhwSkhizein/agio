@@ -24,7 +24,7 @@ from agio.runtime import RunOutput
 from agio.domain.models import RunMetrics
 from agio.workflow.node import WorkflowNode
 
-from agio.providers.storage.base import SessionStore
+from agio.storage.session.base import SessionStore
 
 
 class ParallelWorkflow(BaseWorkflow):

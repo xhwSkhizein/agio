@@ -12,7 +12,7 @@ from sse_starlette.sse import EventSourceResponse
 from agio.runtime import fork_session
 from agio.api.deps import get_config_sys, get_session_store
 from agio.config import ConfigSystem
-from agio.providers.storage import SessionStore
+from agio.storage.session import SessionStore
 from agio.runtime import Wire
 
 router = APIRouter(prefix="/sessions")

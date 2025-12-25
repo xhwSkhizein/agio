@@ -101,7 +101,11 @@ def nested_config_dir():
         storage_config = {
             "type": "session_store",
             "name": "shared_storage",
-            "store_type": "inmemory",
+            "backend": {
+                "type": "inmemory",
+            },
+            "enable_indexing": False,
+            "batch_size": 100,
         }
         with open(shared_dir / "storages" / "shared_storage.yaml", "w") as f:
             yaml.dump(storage_config, f)

@@ -208,11 +208,14 @@ class SessionStoreBuilder(ComponentBuilder):
     ) -> Any:
         """Build session store instance."""
         try:
-            if config.store_type == "mongodb":
-                from agio.providers.storage import MongoSessionStore
+            backend = config.backend
+            
+            if backend.type == "mongodb":
+                from agio.storage.session import MongoSessionStore
 
                 store = MongoSessionStore(
-                    uri=config.mongo_uri, db_name=config.mongo_db_name
+                    uri=backend.uri,
+                    db_name=backend.db_name,
                 )
 
                 # Initialize connection
@@ -221,14 +224,28 @@ class SessionStoreBuilder(ComponentBuilder):
 
                 return store
 
-            elif config.store_type == "inmemory":
-                from agio.providers.storage import InMemorySessionStore
+            elif backend.type == "postgres":
+                from agio.storage.session import PostgresSessionStore
+                
+                store = PostgresSessionStore(
+                    url=backend.url,
+                    pool_size=backend.pool_size,
+                    max_overflow=backend.max_overflow,
+                )
+                
+                if hasattr(store, "connect"):
+                    await store.connect()
+                
+                return store
+
+            elif backend.type == "inmemory":
+                from agio.storage.session import InMemorySessionStore
 
                 return InMemorySessionStore()
 
             else:
                 raise ComponentBuildError(
-                    f"Unknown session store type: {config.store_type}"
+                    f"Unknown session store backend type: {backend.type}"
                 )
 
         except Exception as e:
@@ -377,19 +394,36 @@ class TraceStoreBuilder(ComponentBuilder):
 
     async def build(self, config: TraceStoreConfig, dependencies: dict[str, Any]) -> Any:
         """Build TraceStore instance."""
-        from agio.observability.trace_store import TraceStore
+        from agio.storage.trace.store import TraceStore
 
         try:
-            store = TraceStore(
-                mongo_uri=config.mongo_uri,
-                db_name=config.mongo_db_name,
-                buffer_size=config.buffer_size,
-            )
+            backend = config.backend
             
-            # Initialize MongoDB connection
-            await store.initialize()
+            if backend.type == "mongodb":
+                store = TraceStore(
+                    mongo_uri=backend.uri,
+                    db_name=backend.db_name,
+                    buffer_size=config.buffer_size,
+                )
+                
+                # Initialize MongoDB connection
+                await store.initialize()
+                
+                return store
             
-            return store
+            elif backend.type == "inmemory":
+                # TraceStore with in-memory only mode
+                store = TraceStore(
+                    mongo_uri=None,
+                    db_name=None,
+                    buffer_size=config.buffer_size,
+                )
+                return store
+            
+            else:
+                raise ComponentBuildError(
+                    f"Unknown trace store backend type: {backend.type}"
+                )
 
         except Exception as e:
             raise ComponentBuildError(f"Failed to build trace_store {config.name}: {e}")
@@ -401,12 +435,14 @@ class CitationStoreBuilder(ComponentBuilder):
     async def build(self, config: CitationStoreConfig, dependencies: dict[str, Any]) -> Any:
         """Build CitationStore instance."""
         try:
-            if config.store_type == "mongodb":
-                from agio.providers.tools.builtin.common.citation import MongoCitationStore
+            backend = config.backend
+            
+            if backend.type == "mongodb":
+                from agio.storage.citation import MongoCitationStore
 
                 store = MongoCitationStore(
-                    uri=config.mongo_uri,
-                    db_name=config.mongo_db_name,
+                    uri=backend.uri,
+                    db_name=backend.db_name,
                 )
                 
                 # Initialize connection
@@ -414,14 +450,14 @@ class CitationStoreBuilder(ComponentBuilder):
                 
                 return store
 
-            elif config.store_type == "inmemory":
-                from agio.providers.tools.builtin.common.citation import InMemoryCitationStore
+            elif backend.type == "inmemory":
+                from agio.storage.citation import InMemoryCitationStore
 
                 return InMemoryCitationStore()
 
             else:
                 raise ComponentBuildError(
-                    f"Unknown citation store type: {config.store_type}"
+                    f"Unknown citation store backend type: {backend.type}"
                 )
 
         except Exception as e:

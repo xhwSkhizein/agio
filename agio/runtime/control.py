@@ -13,7 +13,7 @@ from uuid import uuid4
 from agio.domain import Step, MessageRole
 from agio.utils.logging import get_logger
 
-from agio.providers.storage import SessionStore
+from agio.storage.session import SessionStore
 
 logger = get_logger(__name__)
 

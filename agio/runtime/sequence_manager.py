@@ -4,7 +4,7 @@ Sequence Manager for Agent execution.
 Manages sequence allocation for all Steps within a Session.
 """
 
-from agio.providers.storage.base import SessionStore
+from agio.storage.session.base import SessionStore
 
 
 class SequenceManager:

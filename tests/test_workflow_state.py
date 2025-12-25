@@ -5,7 +5,7 @@ Tests for WorkflowState - in-memory cache for workflow node outputs.
 import pytest
 
 from agio.domain import MessageRole, Step
-from agio.providers.storage import InMemorySessionStore
+from agio.storage.session import InMemorySessionStore
 from agio.workflow.state import WorkflowState
 
 

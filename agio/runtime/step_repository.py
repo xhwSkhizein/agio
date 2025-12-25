@@ -8,7 +8,7 @@ Provides a unified interface for Step persistence with support for:
 """
 
 from agio.domain import Step
-from agio.providers.storage.base import SessionStore
+from agio.storage.session.base import SessionStore
 
 
 class StepRepository:

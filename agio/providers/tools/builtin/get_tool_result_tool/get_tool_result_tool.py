@@ -17,7 +17,7 @@ from agio.utils.logging import get_logger
 from agio.runtime.control import AbortSignal
 from agio.runtime.protocol import ExecutionContext
 from agio.providers.tools.base import BaseTool, RiskLevel, ToolCategory
-from agio.providers.storage.base import SessionStore
+from agio.storage.session.base import SessionStore
 
 logger = get_logger(__name__)
 

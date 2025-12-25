@@ -5,7 +5,7 @@
 
 from typing import Any, Protocol
 
-from agio.providers.tools.builtin.common.citation.models import (
+from agio.storage.citation.models import (
     CitationSourceRaw,
     CitationSourceSimplified,
 )
@@ -124,3 +124,4 @@ class CitationSourceRepository(Protocol):
             session_id: 要清理的会话 ID
         """
         ...
+

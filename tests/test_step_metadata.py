@@ -5,7 +5,7 @@ Tests for Step model metadata fields (node_id, parent_run_id, branch_key).
 import pytest
 
 from agio.domain import MessageRole, Step
-from agio.providers.storage import InMemorySessionStore
+from agio.storage.session import InMemorySessionStore
 
 
 @pytest.mark.asyncio

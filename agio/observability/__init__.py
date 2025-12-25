@@ -5,7 +5,6 @@ LLM Observability module - Track and monitor all Runnable calls.
 
 from .trace import Trace, Span, SpanKind, SpanStatus
 from .collector import TraceCollector, create_collector
-from .trace_store import TraceStore, TraceQuery
 from .otlp_exporter import OTLPExporter, get_otlp_exporter
 
 __all__ = [
@@ -15,8 +14,6 @@ __all__ = [
     SpanStatus,
     TraceCollector,
     create_collector,
-    TraceStore,
-    TraceQuery,
     OTLPExporter,
     get_otlp_exporter,
 ]

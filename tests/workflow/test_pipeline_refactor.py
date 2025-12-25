@@ -5,7 +5,7 @@ Tests for refactored PipelineWorkflow with WorkflowState and idempotency.
 import pytest
 from unittest.mock import MagicMock, AsyncMock
 
-from agio.providers.storage import InMemorySessionStore
+from agio.storage.session import InMemorySessionStore
 from agio.runtime.protocol import ExecutionContext, RunOutput
 from agio.domain.models import RunMetrics
 from agio.runtime.wire import Wire

@@ -1,9 +1,14 @@
 type: session_store
 name: inmemory_session_store
 description: "In-memory session store for testing and development"
-store_type: inmemory
 enabled: false  # Disabled: using MongoDB for persistence
 tags:
   - testing
   - inmemory
   - development
+
+backend:
+  type: inmemory
+
+enable_indexing: false
+batch_size: 100

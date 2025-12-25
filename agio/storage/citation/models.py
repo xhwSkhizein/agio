@@ -73,3 +73,4 @@ class CitationSourceSimplified(BaseModel):
     date_published: str | None = Field(default=None, description="发布日期")
     source: str | None = Field(default=None, description="来源")
     created_at: datetime | None = Field(default=None, description="创建时间")
+

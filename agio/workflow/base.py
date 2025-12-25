@@ -18,7 +18,7 @@ from agio.runtime.protocol import ExecutionContext
 from agio.runtime import Runnable, RunOutput
 from agio.workflow.node import WorkflowNode
 
-from agio.providers.storage.base import SessionStore
+from agio.storage.session.base import SessionStore
 
 
 class BaseWorkflow(ABC):

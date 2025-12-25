@@ -6,7 +6,7 @@ This module provides context building from Steps using the StepAdapter.
 
 from agio.domain import StepAdapter
 from agio.utils.logging import get_logger
-from agio.providers.storage import SessionStore
+from agio.storage.session import SessionStore
 
 
 logger = get_logger(__name__)

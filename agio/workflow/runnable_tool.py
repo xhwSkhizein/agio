@@ -25,7 +25,7 @@ from agio.providers.tools import BaseTool
 from agio.runtime import RunnableExecutor
 
 from agio.runtime.control import AbortSignal
-from agio.providers.storage.base import SessionStore
+from agio.storage.session.base import SessionStore
 
 
 # Default maximum nesting depth for Runnable as Tool

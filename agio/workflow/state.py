@@ -11,7 +11,7 @@ Key features:
 """
 
 from typing import Dict, Optional
-from agio.providers.storage.base import SessionStore
+from agio.storage.session.base import SessionStore
 
 
 class WorkflowState:
