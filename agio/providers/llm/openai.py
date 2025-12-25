@@ -137,7 +137,9 @@ class OpenAIModel(Model):
                     stream_chunk.reasoning_content = delta.reasoning_content
 
                 if delta.tool_calls:
-                    stream_chunk.tool_calls = [tc.model_dump() for tc in delta.tool_calls]
+                    stream_chunk.tool_calls = [
+                        tc.model_dump(exclude_none=True) for tc in delta.tool_calls
+                    ]
 
                 if choice.finish_reason:
                     stream_chunk.finish_reason = choice.finish_reason

@@ -112,7 +112,7 @@ class TraceStore:
         # Persist to MongoDB
         if self._collection is not None:
             try:
-                doc = trace.model_dump(mode="json")
+                doc = trace.model_dump(mode="json", exclude_none=True)
                 await self._collection.replace_one(
                     {"trace_id": trace.trace_id},
                     doc,

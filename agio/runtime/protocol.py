@@ -12,7 +12,6 @@ from typing import Protocol, runtime_checkable
 
 from agio.domain.models import RunMetrics
 from agio.runtime.wire import Wire
-from agio.runtime.sequence_manager import SequenceManager
 
 
 @dataclass
@@ -99,7 +98,6 @@ class ExecutionContext:
         run_id: Current run identifier
         session_id: Session identifier
         wire: Event streaming channel
-        sequence_manager: Session-level sequence allocation service (optional)
         user_id: User identifier (optional)
         workflow_id: Workflow identifier (optional)
         depth: Nesting depth (0 = top-level)
@@ -120,7 +118,6 @@ class ExecutionContext:
 
     # Session-level resources
     wire: Wire
-    sequence_manager: SequenceManager | None = None
 
     # User & Workflow Context
     user_id: str | None = None
@@ -181,7 +178,6 @@ class ExecutionContext:
             run_id=run_id,
             session_id=session_id or self.session_id,
             wire=self.wire,
-            sequence_manager=self.sequence_manager,
             user_id=overrides.get("user_id", self.user_id),
             workflow_id=overrides.get("workflow_id", self.workflow_id),
             depth=self.depth + 1,
@@ -217,7 +213,6 @@ class ExecutionContext:
             run_id=self.run_id,
             session_id=self.session_id,
             wire=self.wire,
-            sequence_manager=self.sequence_manager,
             user_id=self.user_id,
             workflow_id=self.workflow_id,
             depth=self.depth,
@@ -248,7 +243,6 @@ class ExecutionContext:
             run_id=self.run_id,
             session_id=self.session_id,
             wire=self.wire,
-            sequence_manager=self.sequence_manager,
             user_id=self.user_id,
             workflow_id=self.workflow_id,
             depth=self.depth,

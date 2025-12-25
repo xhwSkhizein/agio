@@ -60,7 +60,7 @@ class MongoCitationStore:
             source.session_id = session_id
 
             try:
-                source_data = source.model_dump(mode="json")
+                source_data = source.model_dump(mode="json", exclude_none=True)
                 await self.citations_collection.update_one(
                     {"citation_id": source.citation_id},
                     {"$set": source_data},

@@ -112,7 +112,6 @@ class RunnableTool(BaseTool):
         }
 
     def is_concurrency_safe(self) -> bool:
-        # Each execution uses independent session
         return True
 
     async def execute(
@@ -127,9 +126,8 @@ class RunnableTool(BaseTool):
         Execution flow:
         1. Check depth limit and circular references
         2. Build input and context
-        3. Execute Runnable, collect event stream
-        4. Forward events via event_callback (if provided)
-        5. Return final output as ToolResult
+        3. Execute Runnable
+        4. Return final output as ToolResult
 
         Safety checks:
         - Raises MaxDepthExceededError if depth > max_depth

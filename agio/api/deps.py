@@ -13,6 +13,12 @@ from agio.config import ComponentType, ConfigSystem, get_config_system
 from agio.observability.trace_store import TraceStore
 from agio.providers.storage import SessionStore
 from agio.utils.logging import get_logger
+from agio.runtime.permission import (
+    ConsentStore,
+    ConsentWaiter,
+    PermissionManager,
+    PermissionService,
+)
 
 logger = get_logger(__name__)
 
@@ -144,3 +150,91 @@ def get_trace_store(
         _default_trace_store = TraceStore()
 
     return _default_trace_store
+
+
+# Singleton ConsentWaiter
+_consent_waiter: "ConsentWaiter | None" = None
+
+
+def get_consent_waiter() -> "ConsentWaiter":
+    """Get global ConsentWaiter instance"""
+    global _consent_waiter
+    if _consent_waiter is None:
+        from agio.runtime.permission import ConsentWaiter
+
+        _consent_waiter = ConsentWaiter(default_timeout=300.0)
+    return _consent_waiter
+
+
+# Singleton PermissionService
+_permission_service: "PermissionService | None" = None
+
+
+def get_permission_service() -> "PermissionService":
+    """Get global PermissionService instance"""
+    global _permission_service
+    if _permission_service is None:
+        from agio.runtime.permission import PermissionService
+
+        _permission_service = PermissionService()
+    return _permission_service
+
+
+# Singleton ConsentStore
+_consent_store: "ConsentStore | None" = None
+
+
+def get_consent_store(
+    config_sys: ConfigSystem = Depends(get_config_sys),
+    session_store: SessionStore = Depends(get_session_store),
+) -> "ConsentStore":
+    """
+    Get ConsentStore instance.
+
+    Reuses SessionStore's MongoDB connection if available.
+    Falls back to InMemoryConsentStore.
+    """
+    global _consent_store
+    if _consent_store is not None:
+        return _consent_store
+
+    from agio.runtime.permission import InMemoryConsentStore, MongoConsentStore
+    from agio.providers.storage import MongoSessionStore
+
+    # Try to reuse MongoDB connection from MongoSessionStore
+    if isinstance(session_store, MongoSessionStore):
+        # Reuse MongoDB connection (connection will be established on first use)
+        # Note: client may be None initially, but will be set when _ensure_connection is called
+        _consent_store = MongoConsentStore(
+            client=session_store.client, db_name=session_store.db_name
+        )
+    else:
+        # Fallback to in-memory
+        _consent_store = InMemoryConsentStore()
+        logger.info("using_inmemory_consent_store")
+
+    return _consent_store
+
+
+# Singleton PermissionManager
+_permission_manager: "PermissionManager | None" = None
+
+
+def get_permission_manager(
+    consent_store: "ConsentStore" = Depends(get_consent_store),
+    consent_waiter: "ConsentWaiter" = Depends(get_consent_waiter),
+    permission_service: "PermissionService" = Depends(get_permission_service),
+) -> "PermissionManager":
+    """Get global PermissionManager instance"""
+    global _permission_manager
+    if _permission_manager is None:
+        from agio.runtime.permission import PermissionManager
+
+        _permission_manager = PermissionManager(
+            consent_store=consent_store,
+            consent_waiter=consent_waiter,
+            permission_service=permission_service,
+            cache_ttl=300,
+            cache_size=1000,
+        )
+    return _permission_manager

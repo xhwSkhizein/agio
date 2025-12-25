@@ -125,6 +125,12 @@ class ToolConfig(ComponentConfig):
         description="Dependencies mapping: {param_name: component_name}",
     )
     
+    # Permission configuration
+    requires_consent: bool = Field(
+        default=False,
+        description="Whether this tool requires user consent before execution",
+    )
+    
     @property
     def effective_params(self) -> dict:
         """Get params, defaulting to empty dict if None."""
@@ -222,6 +228,12 @@ class AgentConfig(ComponentConfig):
     enable_memory_update: bool = False
     user_id: str | None = None
     hooks: list[str] = Field(default_factory=list)
+
+    # Permission configuration
+    enable_permission: bool = Field(
+        default=False,
+        description="Enable permission checking for tool execution"
+    )
 
     # Termination summary configuration
     enable_termination_summary: bool = Field(

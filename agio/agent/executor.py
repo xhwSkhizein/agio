@@ -144,7 +144,9 @@ class AgentExecutor:
         model: "Model",
         tools: list["BaseTool"],
         session_store: "SessionStore | None" = None,
+        sequence_manager=None,
         config: "ExecutionConfig | None" = None,
+        permission_manager=None,
     ):
         """
         Initialize AgentExecutor.
@@ -153,13 +155,16 @@ class AgentExecutor:
             model: LLM model instance
             tools: Available tools
             session_store: SessionStore for persistence
+            sequence_manager: SequenceManager for sequence allocation
             config: Execution configuration
+            permission_manager: PermissionManager for tool permission checking
         """
         self.model = model
         self.tools = tools
         self.session_store = session_store
+        self.sequence_manager = sequence_manager
         self.config = config or ExecutionConfig()
-        self.tool_executor = ToolExecutor(tools)
+        self.tool_executor = ToolExecutor(tools, permission_manager=permission_manager)
 
     async def execute(
         self,
@@ -396,8 +401,8 @@ class AgentExecutor:
         Returns complete Assistant Step.
         """
         # Allocate sequence
-        if context.sequence_manager:
-            seq = await context.sequence_manager.allocate(context.session_id, context)
+        if self.sequence_manager:
+            seq = await self.sequence_manager.allocate(context.session_id, context)
         else:
             seq = 1
 
@@ -515,8 +520,8 @@ class AgentExecutor:
 
         for result in results:
             # Allocate sequence
-            if context.sequence_manager:
-                seq = await context.sequence_manager.allocate(
+            if self.sequence_manager:
+                seq = await self.sequence_manager.allocate(
                     context.session_id, context
                 )
             else:

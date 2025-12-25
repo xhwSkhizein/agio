@@ -41,6 +41,7 @@ class Agent:
         memory=None,
         knowledge=None,
         session_store=None,
+        permission_manager=None,
         name: str = "agio_agent",
         user_id: str | None = None,
         system_prompt: str | None = None,
@@ -54,11 +55,13 @@ class Agent:
         self.memory = memory
         self.knowledge = knowledge
         self.session_store: SessionStore = session_store
+        self.permission_manager = permission_manager
         self.user_id = user_id
         self.system_prompt = system_prompt
         self.max_steps = max_steps
         self.enable_termination_summary = enable_termination_summary
         self.termination_summary_prompt = termination_summary_prompt
+        self._sequence_manager = None
 
     @property
     def id(self) -> str:
@@ -69,6 +72,18 @@ class Agent:
     def runnable_type(self) -> str:
         """Return runnable type identifier."""
         return "agent"
+
+    def _get_sequence_manager(self):
+        """Get or create sequence manager (internal resource)."""
+        if not self.session_store:
+            return None
+
+        if self._sequence_manager is None:
+            from agio.runtime.sequence_manager import SequenceManager
+
+            self._sequence_manager = SequenceManager(self.session_store)
+
+        return self._sequence_manager
 
     async def run(
         self,
@@ -105,9 +120,12 @@ class Agent:
             termination_summary_prompt=self.termination_summary_prompt,
         )
 
+        # Get sequence manager (internal resource)
+        seq_mgr = self._get_sequence_manager()
+
         # 1) Create and save user step
-        if context.sequence_manager:
-            seq = await context.sequence_manager.allocate(session.session_id, context)
+        if seq_mgr:
+            seq = await seq_mgr.allocate(session.session_id, context)
         else:
             seq = 1
 
@@ -128,8 +146,8 @@ class Agent:
                 session.session_id,
                 self.session_store,
                 system_prompt=self.system_prompt,
-                run_id=context.run_id,
-                runnable_id=self.id,
+                # 移除 run_id=context.run_id，这样才能获取整个 session 的历史
+                runnable_id=self.id,  # 保留 runnable_id 用于隔离不同 agent
             )
         else:
             messages = []
@@ -141,7 +159,9 @@ class Agent:
             model=self.model,
             tools=self.tools or [],
             session_store=self.session_store,
+            sequence_manager=seq_mgr,
             config=config,
+            permission_manager=self.permission_manager,
         )
 
         return await executor.execute(

@@ -108,12 +108,18 @@ export default function ConfigList() {
     )
   }
 
-  // Group configs by type
+  // Group configs by type and ensure each config has type field
   const configsByType: Record<string, Config[]> = {}
   if (configs) {
     Object.entries(configs).forEach(([type, items]) => {
       if (Array.isArray(items) && items.length > 0) {
+        // Ensure each config item has the type field (from the key)
         configsByType[type] = items
+          .map((item: any) => ({
+            ...item,
+            type: item.type || type,
+          }))
+          .filter((item: Config) => item.name && item.type) // Filter out items without name or type
       }
     })
   }
@@ -217,18 +223,20 @@ export default function ConfigList() {
               {isExpanded && (
                 <div className="border-t border-border">
                   <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {items.map((config) => (
-                      <ConfigCard 
-                        key={`${config.type}-${config.name}`} 
-                        config={config}
-                        typeMeta={meta}
-                        onDelete={(type, name) => {
-                          if (confirm(`Are you sure you want to delete ${name}?`)) {
-                            deleteMutation.mutate({ type, name })
-                          }
-                        }}
-                      />
-                    ))}
+                    {items
+                      .filter((config) => config.type && config.name)
+                      .map((config, index) => (
+                        <ConfigCard 
+                          key={`${config.type}-${config.name}-${index}`} 
+                          config={config}
+                          typeMeta={meta}
+                          onDelete={(type, name) => {
+                            if (confirm(`Are you sure you want to delete ${name}?`)) {
+                              deleteMutation.mutate({ type, name })
+                            }
+                          }}
+                        />
+                      ))}
                   </div>
                 </div>
               )}

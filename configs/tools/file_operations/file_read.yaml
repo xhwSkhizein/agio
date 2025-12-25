@@ -1,5 +1,6 @@
 type: tool
 name: file_read
+requires_consent: false
 description: "Read file contents with support for text and images"
 tool_name: file_read  # References built-in tool from registry
 params:

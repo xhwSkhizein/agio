@@ -103,7 +103,7 @@ class MongoSessionStore(SessionStore):
         await self._ensure_connection()
 
         try:
-            run_data = run.model_dump(mode="json")
+            run_data = run.model_dump(mode="json", exclude_none=True)
             run_data = filter_none_values(run_data)
 
             await self.runs_collection.update_one({"id": run.id}, {"$set": run_data}, upsert=True)
@@ -209,7 +209,7 @@ class MongoSessionStore(SessionStore):
         try:
             operations = []
             for step in steps:
-                step_data = step.model_dump(mode="json")
+                step_data = step.model_dump(mode="json", exclude_none=True)
                 step_data = filter_none_values(step_data)
 
                 from pymongo import UpdateOne

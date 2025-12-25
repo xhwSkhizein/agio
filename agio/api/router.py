@@ -35,6 +35,7 @@ def create_router(prefix: str = "/agio") -> APIRouter:
         metrics,
         runnables,
         sessions,
+        tool_consent,
         traces,
         workflows,
     )
@@ -67,6 +68,9 @@ def create_router(prefix: str = "/agio") -> APIRouter:
 
     # Metrics
     router.include_router(metrics.router, tags=["Metrics"])
+
+    # Tool Consent
+    router.include_router(tool_consent.router, tags=["Tool Consent"])
 
     # Traces (Observability)
     router.include_router(traces.router, tags=["Observability"])

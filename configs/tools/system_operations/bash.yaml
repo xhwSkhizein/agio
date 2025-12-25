@@ -2,6 +2,7 @@ type: tool
 name: bash
 description: "Execute bash commands in a controlled environment"
 tool_name: bash
+requires_consent: true
 params:
   # timeout_seconds: 300
   # max_output_length: 30000

@@ -159,7 +159,7 @@ class ConfigSystem:
     ) -> dict | None:
         """获取配置（返回 dict 格式以保持向后兼容）"""
         config = self.registry.get(component_type, name)
-        return config.model_dump() if config else None
+        return config.model_dump(exclude_none=True) if config else None
 
     def list_configs(
         self, component_type: ComponentType | None = None
@@ -169,7 +169,8 @@ class ConfigSystem:
             configs = self.registry.list_all()
         else:
             configs = self.registry.list_by_type(component_type)
-        return [config.model_dump() for config in configs]
+        # Use model_dump with exclude_none=False to ensure all fields are included
+        return [config.model_dump(exclude_none=True) for config in configs]
 
     async def build_all(self) -> dict[str, int]:
         """
@@ -256,7 +257,7 @@ class ConfigSystem:
         return {
             "name": name,
             "type": metadata.component_type.value,
-            "config": metadata.config.model_dump(),
+            "config": metadata.config.model_dump(exclude_none=True),
             "dependencies": metadata.dependencies,
             "created_at": metadata.created_at.isoformat(),
         }
@@ -364,7 +365,7 @@ class ConfigSystem:
         from agio.config.tool_reference import parse_tool_reference
 
         if isinstance(tool_ref, RunnableToolConfig):
-            parsed = parse_tool_reference(tool_ref.model_dump())
+            parsed = parse_tool_reference(tool_ref.model_dump(exclude_none=True))
         elif isinstance(tool_ref, dict):
             parsed = parse_tool_reference(tool_ref)
         else:

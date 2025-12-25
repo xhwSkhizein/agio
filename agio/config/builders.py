@@ -270,6 +270,11 @@ class AgentBuilder(ComponentBuilder):
             if "session_store" in dependencies:
                 kwargs["session_store"] = dependencies["session_store"]
 
+            # Auto-inject PermissionManager if enabled
+            if config.enable_permission:
+                from agio.runtime.permission.factory import get_permission_manager
+                kwargs["permission_manager"] = get_permission_manager()
+
             return Agent(**kwargs)
 
         except Exception as e:

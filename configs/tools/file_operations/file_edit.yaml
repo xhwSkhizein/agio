@@ -1,5 +1,6 @@
 type: tool
 name: file_edit
+requires_consent: true
 description: "Edit files with structured patches"
 tool_name: file_edit
 params:

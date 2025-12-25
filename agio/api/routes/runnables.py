@@ -23,7 +23,6 @@ from agio.api.deps import get_session_store, get_trace_store
 from agio.domain import StepEventType
 from agio.runtime import Wire, RunnableExecutor
 from agio.runtime.protocol import ExecutionContext
-from agio.runtime.sequence_manager import SequenceManager
 
 router = APIRouter(prefix="/runnables")
 
@@ -167,17 +166,15 @@ async def run_runnable(
         # Create Session-level resources at API entry point
         wire = Wire()
         session_store = get_session_store(config_sys=config_system)
-        sequence_manager = SequenceManager(session_store)
         run_id = str(uuid4())
 
         # Use runnable_type property from Runnable protocol
         runnable_type = instance.runnable_type
 
-        # Create context with wire and sequence_manager
+        # Create context with wire
         context = ExecutionContext(
             run_id=run_id,
             wire=wire,
-            sequence_manager=sequence_manager,
             session_id=request.session_id or str(uuid4()),
             user_id=request.user_id,
             runnable_type=runnable_type,
@@ -252,7 +249,6 @@ async def _run_non_streaming(
     # Create Session-level resources
     wire = Wire()
     session_store = get_session_store(config_sys=config_system)
-    sequence_manager = SequenceManager(session_store)
     run_id = str(uuid4())
 
     # Use runnable_type property from Runnable protocol
@@ -261,7 +257,6 @@ async def _run_non_streaming(
     context = ExecutionContext(
         run_id=run_id,
         wire=wire,
-        sequence_manager=sequence_manager,
         session_id=session_id or str(uuid4()),
         user_id=user_id,
         runnable_type=runnable_type,

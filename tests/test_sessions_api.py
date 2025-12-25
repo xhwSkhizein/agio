@@ -183,7 +183,7 @@ class TestStepResponseSerialization:
         )
         
         # Simulate JSON serialization
-        data = response.model_dump()
+        data = response.model_dump(exclude_none=True)
         
         # Frontend expects these fields for tool display
         assert "name" in data
@@ -223,8 +223,8 @@ class TestStepResponseSerialization:
             tool_call_id=None,
             created_at="2024-01-01T00:00:00",
         )
-        
-        data = response.model_dump()
+
+        data = response.model_dump(exclude_none=True)
         
         # Frontend parses tool_calls[].id and tool_calls[].function.name/arguments
         assert data["tool_calls"] is not None

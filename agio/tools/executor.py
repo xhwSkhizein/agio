@@ -26,6 +26,7 @@ class ToolExecutor:
         self,
         tools: list["BaseTool"],
         cache: "ToolResultCache | None" = None,
+        permission_manager=None,
     ):
         """
         Initialize tool executor.
@@ -33,9 +34,11 @@ class ToolExecutor:
         Args:
             tools: List of tools (BaseTool only)
             cache: Optional cache for expensive tool results
+            permission_manager: Optional PermissionManager for permission checking
         """
         self.tools_map = {t.name: t for t in tools}
         self._cache = cache or get_tool_cache()
+        self._permission_manager = permission_manager
     
     async def execute(
         self,
@@ -91,6 +94,42 @@ class ToolExecutor:
 
         args["tool_call_id"] = call_id
 
+        # ===== Permission check (if permission manager is configured) =====
+        if self._permission_manager:
+            try:
+                consent_result = await self._permission_manager.check_and_wait_consent(
+                    tool_call_id=call_id,
+                    tool_name=fn_name,
+                    tool_args=args,
+                    context=context,
+                    timeout=300.0,
+                )
+
+                # Critical: Return explicit ToolResult if authorization failed
+                if not consent_result.allowed:
+                    return self._create_denied_result(
+                        call_id=call_id,
+                        tool_name=fn_name,
+                        reason=consent_result.reason,
+                        start_time=start_time,
+                    )
+            except Exception as e:
+                logger.error(
+                    "permission_check_failed",
+                    tool_name=fn_name,
+                    tool_call_id=call_id,
+                    error=str(e),
+                    exc_info=True,
+                )
+                # On error, treat as requires consent and deny
+                return self._create_denied_result(
+                    call_id=call_id,
+                    tool_name=fn_name,
+                    reason=f"Permission check failed: {e}",
+                    start_time=start_time,
+                )
+
+        # Authorization passed or not required, continue with tool execution
         # Check cache for cacheable tools
         session_id = context.session_id
         if session_id and tool.cacheable:
@@ -188,6 +227,33 @@ class ToolExecutor:
             content=error,
             output=None,
             error=error,
+            start_time=start_time,
+            end_time=end_time,
+            duration=end_time - start_time,
+            is_success=False,
+        )
+
+    def _create_denied_result(
+        self,
+        call_id: str,
+        tool_name: str,
+        reason: str,
+        start_time: float,
+    ) -> ToolResult:
+        """
+        Create authorization denied ToolResult.
+        
+        Critical: Must return explicit ToolResult with error information,
+        so LLM can understand why tool call failed.
+        """
+        end_time = time.time()
+        return ToolResult(
+            tool_name=tool_name,
+            tool_call_id=call_id,
+            input_args={},
+            content=f"Tool execution denied: {reason}. Please ask the user for permission or use a different approach.",
+            output=None,
+            error=f"Permission denied: {reason}",
             start_time=start_time,
             end_time=end_time,
             duration=end_time - start_time,

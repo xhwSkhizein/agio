@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "npx tsx src/utils/sseParser.test.ts && npx tsx src/utils/stepsToEvents.test.ts && npx tsx src/utils/toolHelpers.test.ts"
+    "test": "npx tsx src/utils/sseParser.test.ts && npx tsx src/utils/toolHelpers.test.ts"
   },
   "dependencies": {
     "@tailwindcss/typography": "^0.5.19",

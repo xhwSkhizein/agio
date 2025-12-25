@@ -1,5 +1,6 @@
 type: tool
 name: file_write
+requires_consent: true
 description: "Write content to files with safety checks"
 tool_name: file_write
 params:

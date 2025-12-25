@@ -25,14 +25,10 @@ from agio.providers.llm import StreamChunk
 
 async def run_with_wire(agent, session, query, session_store=None):
     """Helper to run with Wire and collect events."""
-    from agio.runtime import SequenceManager
-
     wire = Wire()
-    sequence_manager = SequenceManager(session_store) if session_store else None
 
     context = ExecutionContext(
         wire=wire,
-        sequence_manager=sequence_manager,
         session_id=session.session_id,
         run_id="run_123",
     )
@@ -108,19 +104,17 @@ async def test_step_executor_creates_steps(mock_model, session_store):
     messages = [{"role": "user", "content": "Hello"}]
 
     from agio.runtime.protocol import ExecutionContext
-    from agio.runtime import Wire, SequenceManager
+    from agio.runtime import Wire
     from agio.providers.storage.base import InMemorySessionStore
 
-    # Create SequenceManager for testing
+    # Create session store for testing
     session_store = InMemorySessionStore()
-    sequence_manager = SequenceManager(session_store)
 
     wire = Wire()
     ctx = ExecutionContext(
         session_id="session_123",
         run_id="run_456",
         wire=wire,
-        sequence_manager=sequence_manager,
         workflow_id="wf_1",
         node_id="node_1",
         parent_run_id="parent_1",

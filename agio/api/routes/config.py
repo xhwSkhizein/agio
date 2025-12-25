@@ -49,7 +49,8 @@ async def list_all_configs(
     for comp_type in ComponentType:
         configs = config_sys.list_configs(comp_type)
         if configs:
-            result[comp_type.value] = [c.get("config", {}) for c in configs]
+            # list_configs already returns dict objects, not nested structures
+            result[comp_type.value] = configs
     return result
 
 
@@ -65,7 +66,8 @@ async def list_configs_by_type(
         raise HTTPException(status_code=400, detail=f"Invalid config type: {config_type}")
 
     configs = config_sys.list_configs(comp_type)
-    return [c.get("config", {}) for c in configs]
+    # list_configs already returns dict objects, not nested structures
+    return configs
 
 
 @router.get("/{config_type}/{name}")

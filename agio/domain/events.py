@@ -37,6 +37,10 @@ class StepEventType(str, Enum):
     # Error events
     ERROR = "error"
 
+    # Tool permission events
+    TOOL_AUTH_REQUIRED = "tool_auth_required"  # Requires authorization
+    TOOL_AUTH_DENIED = "tool_auth_denied"  # Authorization denied
+
 
 class StepDelta(BaseModel):
     """
@@ -115,7 +119,7 @@ class StepEvent(BaseModel):
         """
         import json
 
-        data = self.model_dump(mode="json")
+        data = self.model_dump(mode="json", exclude_none=True)
         return f"data: {json.dumps(data)}\n\n"
 
 

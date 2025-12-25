@@ -70,6 +70,7 @@ class AppSettings:
         web_fetch_max_retries: int = 1
         web_fetch_wait_strategy: str = "domcontentloaded"
         web_fetch_tool_max_size_mb: float = 10.0
+        web_fetch_headless: bool = False
 
     def __init__(self):
         import os
