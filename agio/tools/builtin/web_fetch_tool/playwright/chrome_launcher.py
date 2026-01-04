@@ -221,7 +221,7 @@ class ChromeLauncher:
                     timeout=5,
                 )
                 version = result.stdout.strip() if result.stdout else "Unknown Version"
-            except:
+            except Exception:
                 version = "Unknown Version"
 
             return name, version

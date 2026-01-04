@@ -105,10 +105,6 @@ async def test_step_executor_creates_steps(mock_model, session_store):
 
     from agio.runtime.protocol import ExecutionContext
     from agio.runtime import Wire
-    from agio.storage.session.base import InMemorySessionStore
-
-    # Create session store for testing
-    session_store = InMemorySessionStore()
 
     wire = Wire()
     ctx = ExecutionContext(

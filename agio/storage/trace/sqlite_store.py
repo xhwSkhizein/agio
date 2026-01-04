@@ -5,12 +5,10 @@ SQLite implementation of TraceStore.
 import asyncio
 import json
 from collections import deque
-from datetime import datetime
-from typing import Any
 
 import aiosqlite
 
-from agio.observability.trace import SpanStatus, Trace
+from agio.observability.trace import Trace
 from agio.storage.trace.store import TraceQuery
 from agio.utils.logging import get_logger
 

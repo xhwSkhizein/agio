@@ -4,8 +4,6 @@ Config Registry - Configuration storage and query.
 Manages validated Pydantic configuration models and provides query interfaces.
 """
 
-from typing import Any
-
 from agio.config.schema import ComponentConfig, ComponentType
 from agio.utils.logging import get_logger
 

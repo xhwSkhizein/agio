@@ -8,12 +8,11 @@ and caches metadata for efficient access.
 
 import re
 from pathlib import Path
-from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field
 
-from agio.skills.exceptions import SkillError, SkillParseError
+from agio.skills.exceptions import SkillParseError
 from agio.utils.logging import get_logger
 
 logger = get_logger(__name__)

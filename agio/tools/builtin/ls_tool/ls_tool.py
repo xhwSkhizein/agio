@@ -371,13 +371,6 @@ Usage:
             # Format outputs
             assistant_output = self._format_result_for_assistant(tree_output, is_truncated)
 
-            # Prepare output data
-            output = LSToolOutput(
-                directory_path=resolved_path.as_posix(),
-                items=formatted_files,
-                total_items=len(formatted_files),
-            )
-
             return ToolResult(
                 tool_name=self.name,
                 tool_call_id=parameters.get("tool_call_id", ""),

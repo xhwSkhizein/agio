@@ -164,8 +164,8 @@ class ParallelWorkflow(BaseWorkflow):
                     "output": output,
                     "metrics": result.metrics,
                 }
-            except Exception as e:
-                raise e
+            except Exception:
+                raise
 
         try:
             # Run all branches concurrently with idempotency
@@ -229,5 +229,5 @@ class ParallelWorkflow(BaseWorkflow):
                 ),
             )
 
-        except Exception as e:
+        except Exception:
             raise

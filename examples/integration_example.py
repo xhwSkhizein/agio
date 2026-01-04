@@ -27,8 +27,8 @@ app = create_app_with_frontend(
 # ============================================================================
 # 如果你只需要 API 功能，不需要前端
 
-from fastapi import FastAPI
-from agio.api import create_router
+from fastapi import FastAPI  # noqa: E402
+from agio.api import create_router  # noqa: E402
 
 app = FastAPI(title="My Application")
 
@@ -50,8 +50,8 @@ async def custom():
 # ============================================================================
 # 如果你需要更多控制，可以分别挂载 API 和前端
 
-from fastapi import FastAPI
-from agio.api import create_router, mount_frontend
+from fastapi import FastAPI  # noqa: E402
+from agio.api import create_router, mount_frontend  # noqa: E402
 
 app = FastAPI(title="My Application")
 
@@ -62,8 +62,8 @@ app.include_router(create_router(prefix="/agio"))
 mount_frontend(app, path="/", api_prefix="/agio")
 
 # 3. 你的其他路由
-@app.get("/api/custom")
-async def custom():
+@app.get("/api/custom2")
+async def custom2():
     return {"message": "Custom endpoint"}
 
 
@@ -72,8 +72,8 @@ async def custom():
 # ============================================================================
 # 如果你想把 Agio 挂载到子路径（例如 /admin/agio）
 
-from fastapi import FastAPI
-from agio.api import create_router, mount_frontend
+from fastapi import FastAPI  # noqa: E402
+from agio.api import create_router, mount_frontend  # noqa: E402
 
 app = FastAPI()
 
@@ -93,8 +93,9 @@ mount_frontend(app, path="/admin/agio/panel", api_prefix="/admin/agio")
 # ============================================================================
 # 如果你只需要使用 Agio 的 Agent 功能，不需要 API 服务器
 
-import asyncio
-from agio import Agent, get_config_system
+import asyncio  # noqa: E402
+from agio import get_config_system  # noqa: E402
+
 
 async def main():
     # 初始化配置系统

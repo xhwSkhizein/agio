@@ -76,7 +76,6 @@ async def test_collector_builds_trace_from_events():
 async def test_collector_creates_correct_span_types():
     """Test TraceCollector creates correct span types"""
     run_id = str(uuid4())
-    session_id = str(uuid4())
 
     events = [
         StepEvent(

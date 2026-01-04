@@ -85,7 +85,7 @@ async def test_workflow_resume_skips_completed_nodes(mock_runnable, session_stor
     mock_runnable.run.reset_mock()
 
     # Resume workflow
-    result = await workflow.run("Hello", context=workflow_context)
+    await workflow.run("Hello", context=workflow_context)
 
     # node_1 should be skipped (idempotency)
     # Only node_2 should execute
@@ -139,7 +139,7 @@ async def test_workflow_resume_all_nodes_completed(mock_runnable, session_store,
     mock_runnable.run.reset_mock()
 
     # Resume - both nodes should be skipped
-    result = await workflow.run("Hello", context=workflow_context)
+    await workflow.run("Hello", context=workflow_context)
 
     # No nodes should execute
     assert mock_runnable.run.call_count == 0
@@ -184,7 +184,7 @@ async def test_workflow_resume_partial_execution(mock_runnable, session_store, w
     mock_runnable.run.reset_mock()
 
     # Resume - node_1 skipped, node_2 and node_3 execute
-    result = await workflow.run("Hello", context=workflow_context)
+    await workflow.run("Hello", context=workflow_context)
 
     # node_2 and node_3 should execute
     assert mock_runnable.run.call_count == 2

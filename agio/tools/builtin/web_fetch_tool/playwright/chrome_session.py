@@ -8,7 +8,6 @@ import asyncio
 import os
 
 from playwright.async_api import (
-    Browser,
     BrowserContext,
     BrowserType,
     Playwright,

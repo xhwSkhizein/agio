@@ -2,7 +2,6 @@
 Tests for ConfigSystem.
 """
 
-import os
 import tempfile
 from pathlib import Path
 
@@ -11,7 +10,7 @@ import yaml
 
 from agio.config.system import ConfigSystem
 from agio.config.exceptions import ConfigNotFoundError, ComponentNotFoundError
-from agio.config import ComponentType, ModelConfig, AgentConfig
+from agio.config import ComponentType, ModelConfig
 
 
 @pytest.fixture

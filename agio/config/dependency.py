@@ -8,6 +8,7 @@ and detects circular dependencies.
 from collections import deque
 from dataclasses import dataclass
 
+from agio.config.container import ComponentMetadata
 from agio.config.exceptions import ConfigError
 from agio.config.schema import (
     AgentConfig,
@@ -182,7 +183,7 @@ class DependencyResolver:
         return [name_to_config[name] for name in sorted_names]
 
     def get_affected_components(
-        self, target_name: str, all_metadata: dict[str, "ComponentMetadata"]
+        self, target_name: str, all_metadata: dict[str, ComponentMetadata]
     ) -> list[str]:
         """
         Get list of affected components (including dependents) - BFS traversal.

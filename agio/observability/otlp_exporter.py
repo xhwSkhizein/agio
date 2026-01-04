@@ -4,11 +4,7 @@ OpenTelemetry OTLP exporter for traces.
 Exports Agio traces to OTLP-compatible backends (Jaeger, Zipkin, SkyWalking, etc.)
 """
 
-import struct
-import time
-from typing import Any
-
-from agio.observability.trace import Span, SpanKind, SpanStatus, Trace
+from agio.observability.trace import SpanKind, SpanStatus, Trace
 from agio.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -123,7 +119,6 @@ class OTLPExporter:
             otlp_spans = self._convert_trace_to_otlp(trace)
 
             # Export via SDK
-            from opentelemetry.sdk.trace import ReadableSpan
             from opentelemetry.sdk.trace.export import SpanExportResult
 
             # Note: This is a simplified approach. In production, you'd use
@@ -161,8 +156,6 @@ class OTLPExporter:
         This is a simplified conversion. Full implementation would use
         opentelemetry.sdk.trace.ReadableSpan with proper context propagation.
         """
-        from opentelemetry.sdk.resources import Resource
-        from opentelemetry.sdk.trace import ReadableSpan
         from opentelemetry.trace import SpanContext, TraceFlags
         from opentelemetry.trace.status import Status, StatusCode
 

@@ -329,8 +329,6 @@ __all__ = [
 # Resolve forward references for Pydantic models
 def _resolve_forward_refs():
     """Resolve forward references in Store configs after backends module is available."""
-    from agio.config.backends import StorageBackend
-
     SessionStoreConfig.model_rebuild()
     TraceStoreConfig.model_rebuild()
     CitationStoreConfig.model_rebuild()
