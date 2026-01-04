@@ -108,7 +108,7 @@ async def test_parallel_workflow_idempotency(mock_runnable, session_store, workf
     workflow = ParallelWorkflow(id="wf_1", stages=nodes, session_store=session_store)
     workflow.set_registry({"agent_1": mock_runnable})
 
-    result = await workflow.run("Hello", context=workflow_context)
+    await workflow.run("Hello", context=workflow_context)
 
     # branch_1 should be skipped, only branch_2 should execute
     assert mock_runnable.run.call_count == 1
@@ -117,8 +117,6 @@ async def test_parallel_workflow_idempotency(mock_runnable, session_store, workf
 @pytest.mark.asyncio
 async def test_parallel_workflow_branch_key(mock_runnable, session_store, workflow_context):
     """Test that Steps are marked with branch_key"""
-    from agio.domain import MessageRole
-
     nodes = [
         WorkflowNode(
             id="branch_1",
@@ -135,6 +133,5 @@ async def test_parallel_workflow_branch_key(mock_runnable, session_store, workfl
     # Check that steps can be filtered by branch_key
     # Note: This requires the Runnable to actually create Steps with branch_key
     # In real execution, Agent would create steps with branch_key from metadata
-    steps = await session_store.get_steps("session_123", branch_key="branch_branch_1")
     # This test would need a real Agent to verify branch_key is set correctly
 

@@ -4,8 +4,6 @@ Workflow-specific API routes.
 Provides endpoints for workflow management and visualization.
 """
 
-from typing import Any
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 

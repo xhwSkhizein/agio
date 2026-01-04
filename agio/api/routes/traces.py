@@ -6,13 +6,13 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from agio.api.deps import get_trace_store
 from agio.config import ConfigSystem, get_config_system
 from agio.observability.trace import Span, SpanKind, SpanStatus, Trace
-from agio.storage.trace.store import TraceQuery, TraceStore
+from agio.storage.trace.store import TraceQuery
 
 router = APIRouter(prefix="/traces", tags=["Observability"])
 

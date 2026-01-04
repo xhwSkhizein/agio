@@ -4,7 +4,6 @@ Static file serving for Agio frontend.
 Provides utilities to mount the Agio frontend as static files in FastAPI applications.
 """
 
-import os
 from pathlib import Path
 from typing import Optional
 

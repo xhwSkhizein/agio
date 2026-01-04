@@ -107,7 +107,7 @@ async def test_pipeline_workflow_idempotency(mock_runnable, session_store, workf
     workflow = PipelineWorkflow(id="wf_1", stages=nodes, session_store=session_store)
     workflow.set_registry({"agent_1": mock_runnable})
 
-    result = await workflow.run("Hello", context=workflow_context)
+    await workflow.run("Hello", context=workflow_context)
 
     # node_1 should be skipped (idempotency)
     # Only node_2 should execute
@@ -119,7 +119,6 @@ async def test_pipeline_workflow_unified_session(mock_runnable, session_store, w
     """Test that all nested executions share the same session_id"""
     # Create a mock Runnable that creates Steps
     from agio.domain import MessageRole, Step
-    from uuid import uuid4
     
     async def mock_run_with_steps(input, *, context, emit_run_events=True):
         
