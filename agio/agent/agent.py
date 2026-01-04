@@ -45,6 +45,7 @@ class Agent:
         knowledge=None,
         session_store=None,
         permission_manager=None,
+        skill_manager=None,
         name: str = "agio_agent",
         user_id: str | None = None,
         system_prompt: str | None = None,
@@ -59,6 +60,7 @@ class Agent:
         self.knowledge = knowledge
         self.session_store: SessionStore = session_store
         self.permission_manager = permission_manager
+        self.skill_manager = skill_manager
         self.user_id = user_id
         self.system_prompt = system_prompt
         self.max_steps = max_steps
@@ -144,12 +146,20 @@ class Agent:
             await self.session_store.save_step(user_step)
 
         # 2) Render system_prompt at runtime (if it contains Jinja2 syntax)
-        rendered_prompt = self.system_prompt
         prompt_context = {
             "work_dir": os.getcwd(),
             "date": datetime.datetime.now().strftime("%Y-%m-%d"),
         }
         rendered_prompt = renderer.render(self.system_prompt or "", **prompt_context)
+
+        # Inject skills section if skill manager is available
+        if self.skill_manager:
+            skills_section = self.skill_manager.render_skills_section()
+            if skills_section:
+                if rendered_prompt:
+                    rendered_prompt = f"{rendered_prompt}\n\n{skills_section}"
+                else:
+                    rendered_prompt = skills_section
 
         # 3) Build LLM messages
         if self.session_store:

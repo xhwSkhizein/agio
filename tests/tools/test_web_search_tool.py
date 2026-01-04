@@ -1,7 +1,9 @@
 """WebSearchTool 测试用例"""
 
-import pytest
+from unittest.mock import patch
+
 import os
+import pytest
 
 from agio.tools.builtin.web_search_tool import WebSearchTool
 from agio.runtime.control import AbortSignal
@@ -63,19 +65,40 @@ class TestWebSearchTool:
 
     @pytest.mark.asyncio
     async def test_output_structure(self, tool, context):
-        """测试输出结构（如果有 API key）"""
-        if not tool.serper_api_key:
-            pytest.skip("SERPER_API_KEY not set")
-        
-        result = await tool.execute({
-            "tool_call_id": "test_output",
-            "query": "Python programming",
-        }, context=context)
+        """测试输出结构（使用 mock 避免真实 API 调用）"""
+        # Mock Google 搜索 API 响应，避免真实网络调用
+        mock_search_results = [
+            {
+                "url": "https://example.com/python",
+                "title": "Python Programming Guide",
+                "snippet": "Learn Python programming...",
+                "date_published": "2024-01-01",
+                "source": "Example.com",
+            },
+            {
+                "url": "https://example.com/python2",
+                "title": "Advanced Python",
+                "snippet": "Advanced Python techniques...",
+                "date_published": "2024-01-02",
+                "source": "Example.com",
+            },
+        ]
 
-        if result.is_success:
-            assert result.output is not None
-            # WebSearchTool 输出应该包含搜索结果
-            assert isinstance(result.output, dict)
+        with patch.object(
+            tool, "_google_search_with_serp", return_value=mock_search_results
+        ):
+            result = await tool.execute(
+                {
+                    "tool_call_id": "test_output",
+                    "query": "Python programming",
+                },
+                context=context,
+            )
+
+            if result.is_success:
+                assert result.output is not None
+                # WebSearchTool 输出应该包含搜索结果
+                assert isinstance(result.output, dict)
 
     @pytest.mark.asyncio
     async def test_abort_signal(self, tool, context):
@@ -97,17 +120,31 @@ class TestWebSearchTool:
 
     @pytest.mark.asyncio
     async def test_timing_information(self, tool, context):
-        """测试时间信息"""
-        if not tool.serper_api_key:
-            pytest.skip("SERPER_API_KEY not set")
-        
-        result = await tool.execute({
-            "tool_call_id": "test_timing",
-            "query": "test",
-        }, context=context)
+        """测试时间信息（使用 mock 避免真实 API 调用）"""
+        # Mock Google 搜索 API 响应，避免真实网络调用
+        mock_search_results = [
+            {
+                "url": "https://example.com/test",
+                "title": "Test Result",
+                "snippet": "Test content...",
+                "date_published": "2024-01-01",
+                "source": "Example.com",
+            },
+        ]
 
-        if result.is_success:
-            assert result.start_time > 0
-            assert result.end_time > result.start_time
-            assert result.duration > 0
+        with patch.object(
+            tool, "_google_search_with_serp", return_value=mock_search_results
+        ):
+            result = await tool.execute(
+                {
+                    "tool_call_id": "test_timing",
+                    "query": "test",
+                },
+                context=context,
+            )
+
+            if result.is_success:
+                assert result.start_time > 0
+                assert result.end_time > result.start_time
+                assert result.duration > 0
 

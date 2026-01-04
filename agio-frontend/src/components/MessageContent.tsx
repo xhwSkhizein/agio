@@ -74,6 +74,39 @@ export const MessageContent = memo(function MessageContent({ content }: MessageC
         {children}
       </blockquote>
     ),
+    // Table components with borders and dividers
+    table: ({ children }: any) => (
+      <div className="my-2 overflow-x-auto">
+        <table className="min-w-full border-collapse border border-border">
+          {children}
+        </table>
+      </div>
+    ),
+    thead: ({ children }: any) => (
+      <thead className="bg-surfaceHighlight">
+        {children}
+      </thead>
+    ),
+    tbody: ({ children }: any) => (
+      <tbody>
+        {children}
+      </tbody>
+    ),
+    tr: ({ children }: any) => (
+      <tr className="border-b border-border">
+        {children}
+      </tr>
+    ),
+    th: ({ children }: any) => (
+      <th className="border border-border px-2 py-1 text-left font-semibold text-gray-200 text-xs">
+        {children}
+      </th>
+    ),
+    td: ({ children }: any) => (
+      <td className="border border-border px-2 py-1 text-gray-300 text-xs">
+        {children}
+      </td>
+    ),
   }), []);
 
   return (

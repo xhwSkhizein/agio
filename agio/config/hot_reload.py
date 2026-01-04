@@ -134,3 +134,43 @@ class HotReloadManager:
                 callback(name, change_type)
             except Exception as e:
                 logger.error(f"Hot reload callback error: {e}")
+
+    async def handle_skill_change(
+        self, skill_name: str | None = None, rebuild_func: Callable[[str], Any] | None = None
+    ) -> None:
+        """
+        Handle skill file change (SKILL.md modified).
+
+        Reloads skill metadata and rebuilds affected agents that use skills.
+
+        Args:
+            skill_name: Name of the skill that changed (None for all skills)
+            rebuild_func: Function to rebuild affected agents
+        """
+        logger.info("handling_skill_change", skill_name=skill_name)
+
+        # Find all agents that have skills enabled
+        affected_agents = []
+        all_metadata = self._container.get_all_metadata()
+        for name, metadata in all_metadata.items():
+            if metadata.component_type.value == "agent":
+                config = metadata.config
+                if hasattr(config, "enable_skills") and config.enable_skills:
+                    affected_agents.append(name)
+
+        if not affected_agents:
+            logger.debug("no_agents_with_skills")
+            return
+
+        # Rebuild affected agents
+        if rebuild_func:
+            for agent_name in affected_agents:
+                try:
+                    await rebuild_func(agent_name)
+                    logger.info("agent_rebuilt_for_skill_change", agent_name=agent_name)
+                except Exception as e:
+                    logger.error(
+                        "failed_to_rebuild_agent_for_skill_change",
+                        agent_name=agent_name,
+                        error=str(e),
+                    )

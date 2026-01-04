@@ -2,30 +2,43 @@
  * Hook for managing scroll behavior in chat
  */
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 
 export function useScrollManagement() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const isUserScrolledUpRef = useRef(false)
+  const scrollTimeoutRef = useRef<number | null>(null)
+  const lastScrollHeightRef = useRef<number>(0)
 
-  const scrollToBottom = (force = false) => {
+  const scrollToBottom = useCallback((force = false) => {
     if (!force && isUserScrolledUpRef.current) {
-      // User has scrolled up, don't auto-scroll unless forced
       return
     }
+
+    const scrollContainer = scrollContainerRef.current
+    if (!scrollContainer) return
+
+    // Clear any pending scroll
+    if (scrollTimeoutRef.current !== null) {
+      cancelAnimationFrame(scrollTimeoutRef.current)
+    }
+
     // Use requestAnimationFrame to ensure DOM is updated
-    requestAnimationFrame(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: force ? 'auto' : 'smooth' })
+    scrollTimeoutRef.current = requestAnimationFrame(() => {
+      // Use scrollTop instead of scrollIntoView to avoid visual jumps
+      // This provides smoother scrolling during streaming updates
+      scrollContainer.scrollTop = scrollContainer.scrollHeight
+      scrollTimeoutRef.current = null
     })
-  }
+  }, [])
 
   // Check if user is near bottom of scroll container
-  const isNearBottom = (element: HTMLElement): boolean => {
-    const threshold = 150 // pixels from bottom - consider "near bottom" if within 150px
+  const isNearBottom = useCallback((element: HTMLElement): boolean => {
+    const threshold = 150
     const distanceFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight
     return distanceFromBottom < threshold
-  }
+  }, [])
 
   // Handle scroll events to detect user scrolling up
   useEffect(() => {
@@ -38,6 +51,15 @@ export function useScrollManagement() {
 
     scrollContainer.addEventListener('scroll', handleScroll, { passive: true })
     return () => scrollContainer.removeEventListener('scroll', handleScroll)
+  }, [isNearBottom])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (scrollTimeoutRef.current !== null) {
+        cancelAnimationFrame(scrollTimeoutRef.current)
+      }
+    }
   }, [])
 
   return {

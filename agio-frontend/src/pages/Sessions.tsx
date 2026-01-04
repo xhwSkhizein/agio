@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { sessionService, SessionSummary } from '../services/api'
+import { sessionService, SessionSummary, SessionStep } from '../services/api'
 import { History, Trash2, ChevronRight, Loader2, MessageSquare, GitBranch, X, Maximize2, Minimize2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -21,6 +21,8 @@ export default function Sessions() {
   const [forkContent, setForkContent] = useState('')
   const [forkToolCalls, setForkToolCalls] = useState('')
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set())
+  const [stepsOffset, setStepsOffset] = useState(0)
+  const [allLoadedSteps, setAllLoadedSteps] = useState<SessionStep[]>([])
   const queryClient = useQueryClient()
   const navigate = useNavigate()
 
@@ -30,11 +32,39 @@ export default function Sessions() {
     queryFn: () => sessionService.listSessionSummaries({ limit: 50 }),
   })
 
-  const { data: sessionSteps, isLoading: stepsLoading } = useQuery({
-    queryKey: ['session-steps', selectedSession],
-    queryFn: () => sessionService.getSessionSteps(selectedSession!),
+  const { data: stepsPage, isLoading: stepsLoading } = useQuery({
+    queryKey: ['session-steps', selectedSession, stepsOffset],
+    queryFn: () => sessionService.getSessionSteps(selectedSession!, 100, stepsOffset),
     enabled: !!selectedSession,
   })
+
+  // Reset and load first page when session changes
+  useEffect(() => {
+    if (selectedSession) {
+      setStepsOffset(0)
+      setAllLoadedSteps([])
+    }
+  }, [selectedSession])
+
+  // Accumulate loaded steps
+  useEffect(() => {
+    if (stepsPage) {
+      if (stepsOffset === 0) {
+        setAllLoadedSteps(stepsPage.items)
+      } else {
+        setAllLoadedSteps(prev => [...prev, ...stepsPage.items])
+      }
+    }
+  }, [stepsPage, stepsOffset])
+
+  const handleLoadMore = () => {
+    if (stepsPage && allLoadedSteps.length < stepsPage.total) {
+      setStepsOffset(allLoadedSteps.length)
+    }
+  }
+
+  const hasMore = stepsPage ? allLoadedSteps.length < stepsPage.total : false
+  const sessionSteps = allLoadedSteps
 
   const deleteMutation = useMutation({
     mutationFn: (sessionId: string) => sessionService.deleteSession(sessionId),
@@ -342,6 +372,24 @@ export default function Sessions() {
                         </div>
                       )
                     })}
+                    {hasMore && (
+                      <div className="flex justify-center mt-4">
+                        <button
+                          onClick={handleLoadMore}
+                          disabled={stepsLoading}
+                          className="px-4 py-2 text-sm bg-surface border border-border rounded-lg text-gray-300 hover:bg-surfaceHighlight transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                          {stepsLoading ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Loading...
+                            </>
+                          ) : (
+                            `Load More (${allLoadedSteps.length} / ${stepsPage?.total || 0})`
+                          )}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

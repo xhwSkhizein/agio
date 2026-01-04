@@ -1,8 +1,11 @@
 """WebFetchTool 测试用例"""
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 from agio.tools.builtin.web_fetch_tool import WebFetchTool
+from agio.tools.builtin.web_fetch_tool.html_extract import HtmlContent
 from agio.runtime.control import AbortSignal
 from agio.runtime.protocol import ExecutionContext
 from agio.runtime import Wire
@@ -71,27 +74,58 @@ class TestWebFetchTool:
     @pytest.mark.asyncio
     async def test_output_structure(self, tool, context):
         """测试输出结构（如果成功获取内容）"""
-        # 使用一个简单的测试 URL
-        result = await tool.execute({
-            "tool_call_id": "test_output",
-            "url": "https://example.com",
-        }, context=context)
+        # Mock HTTP 请求，避免真实网络调用
+        mock_content = HtmlContent(
+            url="https://example.com",
+            title="Example Domain",
+            text="This is a test content",
+            raw_text="This is a test content",
+        )
 
-        # 如果成功，检查输出结构
-        if result.is_success:
-            assert result.output is not None
-            assert isinstance(result.output, dict)
+        with patch.object(
+            tool._curl_cffi_client, "fetch", new_callable=AsyncMock
+        ) as mock_fetch:
+            mock_fetch.return_value = mock_content
+
+            result = await tool.execute(
+                {
+                    "tool_call_id": "test_output",
+                    "url": "https://example.com",
+                },
+                context=context,
+            )
+
+            # 如果成功，检查输出结构
+            if result.is_success:
+                assert result.output is not None
+                assert isinstance(result.output, dict)
 
     @pytest.mark.asyncio
     async def test_timing_information(self, tool, context):
         """测试时间信息"""
-        result = await tool.execute({
-            "tool_call_id": "test_timing",
-            "url": "https://example.com",
-        }, context=context)
+        # Mock HTTP 请求，避免真实网络调用
+        mock_content = HtmlContent(
+            url="https://example.com",
+            title="Example Domain",
+            text="This is a test content",
+            raw_text="This is a test content",
+        )
 
-        if result.is_success:
-            assert result.start_time > 0
-            assert result.end_time > result.start_time
-            assert result.duration > 0
+        with patch.object(
+            tool._curl_cffi_client, "fetch", new_callable=AsyncMock
+        ) as mock_fetch:
+            mock_fetch.return_value = mock_content
+
+            result = await tool.execute(
+                {
+                    "tool_call_id": "test_timing",
+                    "url": "https://example.com",
+                },
+                context=context,
+            )
+
+            if result.is_success:
+                assert result.start_time > 0
+                assert result.end_time > result.start_time
+                assert result.duration > 0
 

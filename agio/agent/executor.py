@@ -434,6 +434,7 @@ class AgentExecutor:
                 tool_call_id=result.tool_call_id,
                 name=result.tool_name,
                 content=result.content,
+                content_for_user=result.content_for_user,
                 metrics=StepMetrics(
                     duration_ms=result.duration * 1000 if result.duration else None,
                     tool_exec_time_ms=result.duration * 1000

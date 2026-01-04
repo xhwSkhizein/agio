@@ -30,12 +30,14 @@ API Entry Point
 `Runnable` 协议是核心抽象，Agent 和 Workflow 都实现此协议：
 
 ```python
+from agio.runtime.protocol import RunnableType
+
 class Runnable(Protocol):
     @property
     def id(self) -> str: ...
     
     @property
-    def runnable_type(self) -> str: ...  # "agent" | "workflow"
+    def runnable_type(self) -> RunnableType: ...
     
     async def run(
         self,
@@ -194,7 +196,28 @@ configs/
 
 详见：[可观测性文档](./OBSERVABILITY.md)
 
-### 6. API Control Panel
+### 6. Agent Skills System
+
+**职责**：
+- 技能发现和元数据管理
+- 技能内容加载和资源解析
+- 技能激活工具实现
+- 渐进式披露机制
+
+**关键组件**：
+- `SkillRegistry`: 技能发现和元数据缓存
+- `SkillLoader`: 技能内容加载和路径解析
+- `SkillTool`: 技能激活工具
+- `SkillManager`: 统一管理入口
+
+**渐进式披露**：
+1. **启动阶段**：仅加载技能元数据（name + description）
+2. **激活阶段**：LLM 调用 Skill 工具后加载完整 SKILL.md
+3. **执行阶段**：按需加载 scripts/、references/、assets/
+
+详见：[Agent Skills 集成方案](../refactor_support_agent_skills.md)
+
+### 7. API Control Panel
 
 **职责**：
 - RESTful API 接口

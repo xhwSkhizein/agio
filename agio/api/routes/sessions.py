@@ -106,6 +106,15 @@ class PaginatedSessionSummaries(BaseModel):
     offset: int
 
 
+class PaginatedSteps(BaseModel):
+    """Paginated response model for steps list."""
+
+    total: int
+    items: list[dict]  # Using dict to allow exclude_none serialization
+    limit: int
+    offset: int
+
+
 # Routes
 @router.get("/summary")
 async def list_session_summaries(
@@ -294,12 +303,21 @@ async def get_session_runs(
 async def get_session_steps(
     session_id: str,
     limit: int = 100,
+    offset: int = 0,
     session_store: SessionStore = Depends(get_session_store),
-) -> list[StepResponse]:
-    """Get all steps for a session."""
-    steps = await session_store.get_steps(session_id, limit=limit)
+) -> PaginatedSteps:
+    """Get steps for a session with pagination."""
+    # Get total count
+    total = await session_store.get_step_count(session_id)
 
-    return [
+    # Use start_seq to implement offset (sequence starts from 1)
+    # offset 0 means start from sequence 1, offset 100 means start from sequence 101
+    start_seq = offset + 1
+
+    # Get steps with pagination
+    steps = await session_store.get_steps(session_id, start_seq=start_seq, limit=limit)
+
+    items = [
         StepResponse(
             id=step.id,
             session_id=step.session_id,
@@ -319,9 +337,11 @@ async def get_session_steps(
             runnable_id=step.runnable_id,
             runnable_type=step.runnable_type,
             depth=step.depth,
-        )
+        ).model_dump(exclude_none=True)
         for step in steps
     ]
+
+    return PaginatedSteps(total=total, items=items, limit=limit, offset=offset)
 
 
 # Request Models for Fork/Retry

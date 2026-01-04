@@ -78,6 +78,8 @@ max_steps: 5
 enable_memory_update: false
 enable_termination_summary: true
 
+enable_skills: false  # 禁用 Skills
+
 tags:
   - collector
   - one-shot

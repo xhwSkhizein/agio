@@ -5,6 +5,8 @@ Runnable 协议是 Agio 的核心抽象，统一了 Agent 和 Workflow 的执行
 ## 协议定义
 
 ```python
+from agio.runtime.protocol import RunnableType
+
 @runtime_checkable
 class Runnable(Protocol):
     @property
@@ -13,12 +15,12 @@ class Runnable(Protocol):
         ...
     
     @property
-    def runnable_type(self) -> str:
+    def runnable_type(self) -> RunnableType:
         """
         返回 Runnable 类型
         
-        - Agent 返回 "agent"
-        - Workflow 返回 "workflow"
+        - Agent 返回 RunnableType.AGENT
+        - Workflow 返回 RunnableType.WORKFLOW
         """
         ...
     
@@ -125,13 +127,12 @@ class ExecutionContext:
     nested_runnable_id: str | None = None
     
     # Runnable 身份
-    runnable_type: str = "agent"  # "agent" | "workflow"
+    runnable_type: RunnableType = RunnableType.AGENT
     runnable_id: str | None = None
     nesting_type: str | None = None  # "tool_call" | "workflow_node" | None
     
     # 工作流节点信息
     node_id: str | None = None
-    iteration: int | None = None  # Loop 迭代次数
     
     # 可观测性
     trace_id: str | None = None
@@ -465,9 +466,10 @@ RunnableExecutor.execute()
 
 ## 相关代码
 
-- `agio/runtime/protocol.py`: Runnable 协议定义
-- `agio/runtime/runnable_executor.py`: RunnableExecutor
-- `agio/workflow/runnable_tool.py`: RunnableTool
+- `agio/runtime/protocol.py`: Runnable 协议定义、ExecutionContext、RunOutput
+- `agio/runtime/runnable_executor.py`: RunnableExecutor（统一执行引擎）
+- `agio/runtime/wire.py`: Wire（事件流通道）
+- `agio/workflow/runnable_tool.py`: RunnableTool、as_tool 工厂函数
 - `agio/agent/agent.py`: Agent 实现
 - `agio/workflow/base.py`: BaseWorkflow 实现
 

@@ -220,7 +220,8 @@ class Step(BaseModel):
 
     # --- Core Content (Standard LLM Message) ---
     role: MessageRole
-    content: str | None = None
+    content: str | None = None  # LLM message content
+    content_for_user: str | None = None  # Display content for frontend (preferred for UI)
     reasoning_content: str | None = None  # Reasoning content (e.g., DeepSeek thinking mode)
 
     # Assistant-specific fields

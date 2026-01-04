@@ -196,9 +196,32 @@ export const sessionService = {
     await api.delete(`/sessions/${sessionId}`)
   },
 
-  async getSessionSteps(sessionId: string): Promise<SessionStep[]> {
-    const response = await api.get(`/sessions/${sessionId}/steps`)
+  async getSessionSteps(
+    sessionId: string,
+    limit: number = 100,
+    offset: number = 0
+  ): Promise<PaginatedResponse<SessionStep>> {
+    const params = { limit, offset }
+    const response = await api.get(`/sessions/${sessionId}/steps`, { params })
     return response.data
+  },
+
+  async getAllSessionSteps(sessionId: string): Promise<SessionStep[]> {
+    const allSteps: SessionStep[] = []
+    let offset = 0
+    const limit = 100
+    
+    while (true) {
+      const response = await this.getSessionSteps(sessionId, limit, offset)
+      allSteps.push(...response.items)
+      
+      if (response.items.length < limit || allSteps.length >= response.total) {
+        break
+      }
+      offset += limit
+    }
+    
+    return allSteps
   },
 
   async forkSession(

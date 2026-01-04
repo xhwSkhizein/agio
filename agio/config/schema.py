@@ -267,6 +267,14 @@ class AgentConfig(ComponentConfig):
         default=None, description="Custom prompt for termination summary"
     )
 
+    # Skills configuration
+    enable_skills: bool = Field(
+        default=True, description="Enable Agent Skills support"
+    )
+    skill_dirs: list[str] | None = Field(
+        default=None, description="Custom skill directories for this agent (overrides global)"
+    )
+
 
 class StageConfig(BaseModel):
     """Configuration for a workflow stage"""

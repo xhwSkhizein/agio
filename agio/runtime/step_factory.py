@@ -141,6 +141,7 @@ class StepFactory:
         tool_call_id: str,
         name: str,
         content: str,
+        content_for_user: str | None = None,
         metrics: StepMetrics | None = None,
         **overrides,
     ) -> Step:
@@ -152,6 +153,7 @@ class StepFactory:
             sequence=sequence,
             role=MessageRole.TOOL,
             content=content,
+            content_for_user=content_for_user,
             tool_call_id=tool_call_id,
             name=name,
             # Runnable binding

@@ -160,6 +160,10 @@ class ConfigLoader:
     def _resolve_env_vars(self, data: dict[str, Any]) -> dict[str, Any]:
         """Recursively render Jinja2 templates in configuration.
 
+        Only renders environment variable references ({{ env.VAR_NAME }}).
+        Other template variables (like {{ work_dir }}, {{ date }}) are preserved
+        for runtime rendering.
+
         Supported formats:
         - {{ env.VAR_NAME }}
         - {{ env.VAR_NAME | default('default_value') }}
@@ -174,13 +178,18 @@ class ConfigLoader:
 
         def resolve_value(value: Any) -> Any:
             if isinstance(value, str):
-                try:
-                    return renderer.render(value, env=os.environ)
-                except Exception as e:
-                    logger.warning(
-                        f"Template render failed: {e}, using original value: {value[:100]}..."
-                    )
-                    return value
+                # Only render if it contains env variable references
+                # Skip rendering if it only contains runtime variables like {{ work_dir }}, {{ date }}
+                if "{{ env." in value or "{% if env." in value:
+                    try:
+                        return renderer.render(value, env=os.environ)
+                    except Exception as e:
+                        logger.warning(
+                            f"Template render failed: {e}, using original value: {value[:100]}..."
+                        )
+                        return value
+                # Preserve runtime variables ({{ work_dir }}, {{ date }}, etc.)
+                return value
             elif isinstance(value, dict):
                 return {k: resolve_value(v) for k, v in value.items()}
             elif isinstance(value, list):

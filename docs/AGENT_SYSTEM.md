@@ -50,11 +50,12 @@ class Agent:
 
 **关键属性**：
 - `model`: LLM 模型实例
-- `tools`: 工具列表
+- `tools`: 工具列表（包括 Skill 工具，如果启用技能）
 - `session_store`: 会话存储（用于持久化 Steps）
-- `system_prompt`: 系统提示词（运行时用 Jinja2 渲染，自动注入 agent/model/tools/session/env）
+- `system_prompt`: 系统提示词（运行时用 Jinja2 渲染，自动注入 agent/model/tools/session/env 和可用技能列表）
 - `max_steps`: 最大执行步数
 - `enable_termination_summary`: 是否启用终止摘要
+- `_skill_manager`: SkillManager 实例（如果启用技能）
 
 ### AgentExecutor
 
@@ -426,6 +427,56 @@ tools:
 5. **错误处理**：工具执行失败时，Agent 可以继续执行
 6. **终止摘要**：对于长时间运行的 Agent，启用终止摘要
 
+## Agent Skills 集成
+
+Agio 支持 [Agent Skills](https://agentskills.io/specification) 规范，通过渐进式披露机制优化上下文使用。
+
+### 技能发现
+
+技能存储在 `skills/` 目录（或通过 `AGIO_SKILLS_DIR` 环境变量配置）。每个技能是一个包含 `SKILL.md` 文件的目录：
+
+```
+skills/
+└── skill-name/
+    ├── SKILL.md          # 必需：技能定义文件
+    ├── scripts/          # 可选：可执行脚本
+    ├── references/       # 可选：参考文档
+    └── assets/           # 可选：静态资源
+```
+
+### 技能激活
+
+1. **启动阶段**：系统启动时发现所有技能，仅加载元数据（name + description）到系统提示词
+2. **激活阶段**：LLM 通过 Skill 工具激活技能，加载完整 SKILL.md 内容到上下文
+3. **执行阶段**：按需加载 scripts/、references/、assets/ 资源
+
+### 配置
+
+在 Agent 配置中启用技能：
+
+```yaml
+type: agent
+name: my_agent
+model: claude
+enable_skills: true  # 默认启用
+skill_dirs:          # 可选：覆盖全局配置
+  - skills
+  - ~/.agio/skills
+```
+
+### 使用示例
+
+当用户任务匹配技能描述时，LLM 会自动调用 Skill 工具激活技能：
+
+```
+User: "提取 PDF 文本"
+→ LLM 调用 Skill(skill_name="pdf-processing")
+→ 技能内容注入上下文
+→ LLM 按照技能指令执行任务
+```
+
+详见：[Agent Skills 集成方案](../refactor_support_agent_skills.md)
+
 ## 相关代码
 
 - `agio/agent/agent.py`: Agent 类
@@ -433,4 +484,5 @@ tools:
 - `agio/agent/context.py`: 上下文构建
 - `agio/agent/summarizer.py`: 终止摘要
 - `agio/tools/executor.py`: ToolExecutor
+- `agio/skills/`: Agent Skills 系统
 

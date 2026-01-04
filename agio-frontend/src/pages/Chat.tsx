@@ -108,9 +108,10 @@ export default function Chat() {
   })
 
   // Load existing session steps if sessionId is provided in URL
+  // Use getAllSessionSteps to fetch all steps via pagination for continue functionality
   const { data: existingSteps, refetch: refetchSteps } = useQuery({
     queryKey: ['session-steps', urlSessionId],
-    queryFn: () => sessionService.getSessionSteps(urlSessionId!),
+    queryFn: () => sessionService.getAllSessionSteps(urlSessionId!),
     enabled: !!urlSessionId,
   })
 
@@ -172,17 +173,34 @@ export default function Chat() {
     }
   }, [])
 
-  // Auto-scroll only if user is near bottom
+  // Track previous scroll height to detect content growth
+  const prevScrollHeightRef = useRef<number>(0)
+
+  // Auto-scroll only if user is near bottom (with debouncing for streaming)
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current
     if (!scrollContainer) return
 
-    // Only auto-scroll if user is near bottom (hasn't scrolled up)
-    if (isNearBottom(scrollContainer)) {
-      scrollToBottom()
-      isUserScrolledUpRef.current = false
+    const currentScrollHeight = scrollContainer.scrollHeight
+    const hasContentGrown = currentScrollHeight > prevScrollHeightRef.current
+    prevScrollHeightRef.current = currentScrollHeight
+
+    // Only auto-scroll if:
+    // 1. User is near bottom (hasn't scrolled up)
+    // 2. Content has actually grown (new content added)
+    if (hasContentGrown && isNearBottom(scrollContainer)) {
+      // Use a small delay to batch rapid updates during streaming
+      // This prevents excessive scrolling when content updates frequently
+      const timeoutId = setTimeout(() => {
+        if (scrollContainer && isNearBottom(scrollContainer)) {
+          scrollToBottom()
+          isUserScrolledUpRef.current = false
+        }
+      }, 50)
+
+      return () => clearTimeout(timeoutId)
     }
-  }, [executionTree])
+  }, [executionTree, isNearBottom, scrollToBottom])
 
   const handleCancel = () => {
     if (abortControllerRef.current) {

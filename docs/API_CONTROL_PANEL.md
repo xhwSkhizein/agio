@@ -36,11 +36,18 @@ FastAPI Application
 ```json
 {
   "query": "Research AI trends",
+  "message": "Research AI trends",
   "session_id": "session_123",
   "user_id": "user_456",
   "stream": true
 }
 ```
+
+**字段说明**：
+- `query` 或 `message`: 输入消息（二选一，`message` 用于向后兼容）
+- `session_id`: 会话 ID（可选，不提供会自动生成）
+- `user_id`: 用户 ID（可选）
+- `stream`: 是否使用流式响应（默认 true）
 
 **流式响应（SSE）**：
 ```
@@ -54,10 +61,11 @@ event: RUN_COMPLETED
 data: {"type": "RUN_COMPLETED", "run_id": "..."}
 ```
 
-**非流式响应**：
+**非流式响应**（`stream=false`）：
 ```json
 {
   "run_id": "run_123",
+  "session_id": "session_123",
   "response": "Research results...",
   "metrics": {
     "total_tokens": 1500,
@@ -81,16 +89,18 @@ data: {"type": "RUN_COMPLETED", "run_id": "..."}
 **响应**：
 ```json
 {
-  "items": [
+  "agents": [
     {
       "id": "research_agent",
-      "type": "agent",
-      "description": "Research assistant"
-    },
+      "type": "Agent",
+      "description": null
+    }
+  ],
+  "workflows": [
     {
       "id": "research_pipeline",
-      "type": "workflow",
-      "workflow_type": "pipeline"
+      "type": "PipelineWorkflow",
+      "description": null
     }
   ]
 }
@@ -100,14 +110,30 @@ data: {"type": "RUN_COMPLETED", "run_id": "..."}
 
 获取 Runnable 详细信息。
 
-**响应**：
+**响应（Agent）**：
 ```json
 {
   "id": "research_agent",
-  "type": "agent",
-  "model": "deepseek",
-  "tools": ["web_search", "web_fetch"],
-  "system_prompt": "You are a research assistant."
+  "type": "Agent"
+}
+```
+
+**响应（Workflow）**：
+```json
+{
+  "id": "research_pipeline",
+  "type": "PipelineWorkflow",
+  "stages": [
+    {
+      "id": "research",
+      "runnable": "researcher",
+      "input_template": "Research: {input}",
+      "condition": null
+    }
+  ],
+  "loop_condition": null,
+  "max_iterations": null,
+  "merge_template": null
 }
 ```
 
@@ -115,25 +141,64 @@ data: {"type": "RUN_COMPLETED", "run_id": "..."}
 
 #### GET `/agio/agents`
 
-列出所有 Agent 配置。
+列出所有 Agent 配置（分页）。
+
+**查询参数**：
+- `limit`: 每页数量（默认 20）
+- `offset`: 偏移量（默认 0）
 
 **响应**：
 ```json
 {
+  "total": 10,
   "items": [
     {
       "name": "research_agent",
       "model": "deepseek",
-      "tools": ["web_search"],
-      "system_prompt": "..."
+      "tools": [
+        {
+          "type": "function",
+          "name": "web_search",
+          "agent": null,
+          "workflow": null,
+          "description": null
+        }
+      ],
+      "memory": null,
+      "knowledge": null,
+      "system_prompt": "...",
+      "tags": []
     }
-  ]
+  ],
+  "limit": 20,
+  "offset": 0
 }
 ```
 
 #### GET `/agio/agents/{name}`
 
 获取 Agent 详细信息。
+
+**响应**：
+```json
+{
+  "name": "research_agent",
+  "model": "deepseek",
+  "tools": [
+    {
+      "type": "function",
+      "name": "web_search",
+      "agent": null,
+      "workflow": null,
+      "description": null
+    }
+  ],
+  "memory": null,
+  "knowledge": null,
+  "system_prompt": "You are a research assistant.",
+  "tags": []
+}
+```
 
 #### GET `/agio/agents/{name}/status`
 
@@ -145,19 +210,26 @@ data: {"type": "RUN_COMPLETED", "run_id": "..."}
 
 列出所有 Workflow 配置。
 
+**响应**：
+```json
+[
+  {
+    "id": "research_pipeline",
+    "type": "PipelineWorkflow",
+    "stage_count": 2
+  }
+]
+```
+
 #### GET `/agio/workflows/{workflow_id}`
-
-获取 Workflow 详细信息。
-
-#### GET `/agio/workflows/{workflow_id}/structure`
 
 获取 Workflow 结构（节点列表、依赖关系）。
 
 **响应**：
 ```json
 {
-  "workflow_id": "research_pipeline",
-  "workflow_type": "pipeline",
+  "id": "research_pipeline",
+  "type": "PipelineWorkflow",
   "stages": [
     {
       "id": "research",
@@ -171,13 +243,16 @@ data: {"type": "RUN_COMPLETED", "run_id": "..."}
       "input_template": "Analyze: {research.output}",
       "condition": "{research.output} contains 'data'"
     }
-  ]
+  ],
+  "loop_condition": null,
+  "max_iterations": null,
+  "merge_template": null
 }
 ```
 
 #### GET `/agio/workflows/{workflow_id}/dependencies`
 
-获取 Workflow 依赖关系。
+获取 Workflow 依赖关系图。
 
 **响应**：
 ```json
@@ -187,7 +262,39 @@ data: {"type": "RUN_COMPLETED", "run_id": "..."}
 }
 ```
 
+**说明**：返回每个 stage 依赖的其他 stage IDs（基于 input_template 中的引用）。
+
 ### Sessions（会话管理）
+
+#### GET `/agio/sessions`
+
+列出所有会话（Runs）（分页）。
+
+**查询参数**：
+- `user_id`: 过滤用户 ID（可选）
+- `limit`: 每页数量（默认 20）
+- `offset`: 偏移量（默认 0）
+
+**响应**：
+```json
+{
+  "total": 100,
+  "items": [
+    {
+      "id": "run_123",
+      "agent_id": "research_agent",
+      "user_id": "user_456",
+      "session_id": "session_123",
+      "status": "completed",
+      "input_query": "Research AI trends",
+      "response_content": "Research results...",
+      "created_at": "2024-01-01T12:00:00Z"
+    }
+  ],
+  "limit": 20,
+  "offset": 0
+}
+```
 
 #### GET `/agio/sessions/summary`
 
@@ -196,9 +303,7 @@ data: {"type": "RUN_COMPLETED", "run_id": "..."}
 **查询参数**：
 - `limit`: 每页数量（默认 20）
 - `offset`: 偏移量（默认 0）
-- `user_id`: 过滤用户 ID
-- `agent_id`: 过滤 Agent ID
-- `workflow_id`: 过滤 Workflow ID
+- `user_id`: 过滤用户 ID（可选）
 
 **响应**：
 ```json
@@ -208,6 +313,8 @@ data: {"type": "RUN_COMPLETED", "run_id": "..."}
     {
       "session_id": "session_123",
       "agent_id": "research_agent",
+      "user_id": "user_456",
+      "workflow_id": null,
       "run_count": 5,
       "step_count": 25,
       "last_message": "Research AI trends",
@@ -232,6 +339,8 @@ data: {"type": "RUN_COMPLETED", "run_id": "..."}
     {
       "id": "run_123",
       "agent_id": "research_agent",
+      "user_id": "user_456",
+      "session_id": "session_123",
       "status": "completed",
       "input_query": "Research AI trends",
       "response_content": "Research results...",
@@ -242,20 +351,53 @@ data: {"type": "RUN_COMPLETED", "run_id": "..."}
 }
 ```
 
+#### DELETE `/agio/sessions/{session_id}`
+
+删除会话及其所有数据（Runs 和 Steps）。
+
+**响应**：204 No Content
+
+#### GET `/agio/sessions/{session_id}/runs`
+
+获取会话的所有 Runs（分页）。
+
+**查询参数**：
+- `limit`: 每页数量（默认 20）
+- `offset`: 偏移量（默认 0）
+
+**响应**：
+```json
+{
+  "total": 5,
+  "items": [
+    {
+      "id": "run_123",
+      "agent_id": "research_agent",
+      "user_id": "user_456",
+      "session_id": "session_123",
+      "status": "completed",
+      "input_query": "Research AI trends",
+      "response_content": "Research results...",
+      "created_at": "2024-01-01T12:00:00Z"
+    }
+  ],
+  "limit": 20,
+  "offset": 0
+}
+```
+
 #### GET `/agio/sessions/{session_id}/steps`
 
 获取会话的所有 Steps。
 
 **查询参数**：
-- `limit`: 数量限制
-- `offset`: 偏移量
-- `run_id`: 过滤 Run ID
-- `workflow_id`: 过滤 Workflow ID
-- `node_id`: 过滤节点 ID
+- `limit`: 数量限制（默认 100）
+- `offset`: 偏移量（默认 0）
 
 **响应**：
 ```json
 {
+  "total": 25,
   "items": [
     {
       "id": "step_123",
@@ -263,7 +405,18 @@ data: {"type": "RUN_COMPLETED", "run_id": "..."}
       "sequence": 1,
       "role": "user",
       "content": "Research AI trends",
+      "reasoning_content": null,
+      "tool_calls": null,
+      "name": null,
+      "tool_call_id": null,
       "run_id": "run_123",
+      "parent_run_id": null,
+      "workflow_id": null,
+      "node_id": null,
+      "branch_key": null,
+      "runnable_id": "research_agent",
+      "runnable_type": "agent",
+      "depth": 0,
       "created_at": "2024-01-01T12:00:00Z"
     },
     {
@@ -272,45 +425,69 @@ data: {"type": "RUN_COMPLETED", "run_id": "..."}
       "sequence": 2,
       "role": "assistant",
       "content": "I'll research AI trends...",
+      "reasoning_content": null,
       "tool_calls": [...],
       "run_id": "run_123",
       "created_at": "2024-01-01T12:00:01Z"
     }
-  ]
+  ],
+  "limit": 100,
+  "offset": 0
 }
 ```
 
 #### POST `/agio/sessions/{session_id}/fork`
 
-Fork 会话（创建新会话，复制历史 Steps）。
+Fork 会话（在指定 Step 处创建新会话，复制历史 Steps）。
 
 **请求体**：
 ```json
 {
-  "new_session_id": "session_456"
+  "sequence": 10,
+  "content": null,
+  "tool_calls": null
 }
 ```
+
+**字段说明**：
+- `sequence`: 要 fork 的 Step 的 sequence 号（必需）
+- `content`: 可选，用于修改 assistant step 的 content
+- `tool_calls`: 可选，用于修改 assistant step 的 tool_calls
 
 **响应**：
 ```json
 {
   "new_session_id": "session_456",
-  "copied_steps": 25
+  "copied_steps": 10,
+  "last_sequence": 10,
+  "pending_user_message": null
 }
 ```
 
+**说明**：
+- 对于 assistant step：复制所有 steps 到指定 sequence（包含），可选择性修改 content 或 tool_calls
+- 对于 user step：复制指定 sequence 之前的所有 steps，返回 user message 内容在 `pending_user_message` 字段
+
 #### POST `/agio/sessions/{session_id}/resume`
 
-Resume 会话（从指定 Step 继续执行）。
+Resume 会话（继续执行，支持 Agent 和 Workflow）。
 
 **请求体**：
 ```json
 {
-  "from_step_id": "step_123",
-  "runnable_id": "research_agent",
-  "input": "Continue from here"
+  "runnable_id": "research_agent"
 }
 ```
+
+**字段说明**：
+- `runnable_id`: 可选，如果不提供会自动从 Steps 中推断
+
+**响应**：SSE 事件流
+
+**说明**：
+- 自动从 Steps 中推断 `runnable_id`（如果未提供）
+- Agent：从 pending tool_calls 继续执行
+- Workflow：幂等重新执行（跳过已完成的节点）
 
 ### Traces（追踪查询）
 
@@ -319,31 +496,36 @@ Resume 会话（从指定 Step 继续执行）。
 查询 Traces。
 
 **查询参数**：
-- `workflow_id`: Workflow ID
-- `agent_id`: Agent ID
-- `session_id`: Session ID
-- `status`: 状态（running, ok, error）
-- `start_time`: 开始时间
-- `end_time`: 结束时间
-- `min_duration_ms`: 最小持续时间
-- `limit`: 数量限制
+- `workflow_id`: Workflow ID（可选）
+- `agent_id`: Agent ID（可选）
+- `session_id`: Session ID（可选）
+- `status`: 状态（running, ok, error）（可选）
+- `start_time`: 开始时间（可选）
+- `end_time`: 结束时间（可选）
+- `min_duration_ms`: 最小持续时间（可选）
+- `max_duration_ms`: 最大持续时间（可选）
+- `limit`: 数量限制（默认 50，最大 500）
+- `offset`: 偏移量（默认 0）
 
 **响应**：
 ```json
-{
-  "items": [
-    {
-      "trace_id": "trace_123",
-      "agent_id": "research_agent",
-      "start_time": "2024-01-01T12:00:00Z",
-      "duration_ms": 1500.5,
-      "status": "ok",
-      "total_tokens": 1500,
-      "total_llm_calls": 3,
-      "total_tool_calls": 2
-    }
-  ]
-}
+[
+  {
+    "trace_id": "trace_123",
+    "workflow_id": null,
+    "agent_id": "research_agent",
+    "session_id": "session_123",
+    "start_time": "2024-01-01T12:00:00Z",
+    "duration_ms": 1500.5,
+    "status": "ok",
+    "total_tokens": 1500,
+    "total_llm_calls": 3,
+    "total_tool_calls": 2,
+    "max_depth": 2,
+    "input_preview": "Research AI trends...",
+    "output_preview": "Research results..."
+  }
+]
 ```
 
 #### GET `/agio/traces/{trace_id}`
@@ -357,27 +539,48 @@ Resume 会话（从指定 Step 继续执行）。
 **响应**：
 ```json
 {
+  "trace_id": "trace_123",
+  "total_duration_ms": 1500.5,
   "spans": [
     {
       "span_id": "span_123",
-      "name": "research_agent",
-      "kind": "AGENT",
-      "start_time": "2024-01-01T12:00:00Z",
-      "duration_ms": 1500.5,
       "parent_span_id": null,
+      "kind": "AGENT",
+      "name": "research_agent",
       "depth": 0,
-      "spans": [
-        {
-          "span_id": "span_124",
-          "name": "deepseek",
-          "kind": "LLM_CALL",
-          "duration_ms": 800.2,
-          "parent_span_id": "span_123",
-          "depth": 1
-        }
-      ]
+      "start_offset_ms": 0.0,
+      "duration_ms": 1500.5,
+      "status": "ok",
+      "error_message": null,
+      "label": "research_agent",
+      "sublabel": null,
+      "tokens": null,
+      "metrics": {},
+      "llm_details": null
+    },
+    {
+      "span_id": "span_124",
+      "parent_span_id": "span_123",
+      "kind": "LLM_CALL",
+      "name": "deepseek",
+      "depth": 1,
+      "start_offset_ms": 100.0,
+      "duration_ms": 800.2,
+      "status": "ok",
+      "error_message": null,
+      "label": "deepseek",
+      "sublabel": "1500 tokens",
+      "tokens": 1500,
+      "metrics": {"tokens": {"total": 1500}},
+      "llm_details": {...}
     }
-  ]
+  ],
+  "metrics": {
+    "total_tokens": 1500,
+    "total_llm_calls": 3,
+    "total_tool_calls": 2,
+    "max_depth": 2
+  }
 }
 ```
 
@@ -385,27 +588,175 @@ Resume 会话（从指定 Step 继续执行）。
 
 实时订阅 Traces（SSE）。
 
+**响应**：SSE 事件流
+
+#### GET `/agio/traces/spans/llm-calls`
+
+查询所有 Traces 中的 LLM 调用。
+
+**查询参数**：
+- `agent_id`: 过滤 Agent ID（可选）
+- `session_id`: 过滤 Session ID（可选）
+- `run_id`: 过滤 Run ID（可选）
+- `model_id`: 过滤模型 ID（可选）
+- `provider`: 过滤 Provider（可选）
+- `start_time`: 开始时间（可选）
+- `end_time`: 结束时间（可选）
+- `limit`: 数量限制（默认 50，最大 500）
+- `offset`: 偏移量（默认 0）
+
+**响应**：
+```json
+[
+  {
+    "span_id": "span_124",
+    "trace_id": "trace_123",
+    "agent_id": "research_agent",
+    "session_id": "session_123",
+    "run_id": "run_123",
+    "start_time": "2024-01-01T12:00:00Z",
+    "duration_ms": 800.2,
+    "model_name": "deepseek-chat",
+    "provider": "deepseek",
+    "input_tokens": 1000,
+    "output_tokens": 500,
+    "total_tokens": 1500,
+    "llm_details": {...}
+  }
+]
+```
+
 ### Config（配置管理）
 
 #### GET `/agio/config`
 
-列出所有配置。
+列出所有配置（按类型分组）。
 
-#### GET `/agio/config/{type}/{name}`
+**响应**：
+```json
+{
+  "agent": [...],
+  "tool": [...],
+  "workflow": [...],
+  "model": [...],
+  "session_store": [...],
+  "trace_store": [...]
+}
+```
+
+#### GET `/agio/config/{config_type}`
+
+列出指定类型的配置。
+
+**路径参数**：
+- `config_type`: 配置类型（agent, tool, workflow, model, session_store, trace_store, citation_store）
+
+**响应**：
+```json
+[
+  {
+    "type": "agent",
+    "name": "research_agent",
+    "model": "deepseek",
+    ...
+  }
+]
+```
+
+#### GET `/agio/config/{config_type}/{name}`
 
 获取特定配置。
 
-#### PUT `/agio/config/{type}/{name}`
+**路径参数**：
+- `config_type`: 配置类型
+- `name`: 配置名称
 
-更新配置（触发热重载）。
+**响应**：
+```json
+{
+  "type": "agent",
+  "name": "research_agent",
+  "model": "deepseek",
+  "tools": [...],
+  ...
+}
+```
 
-#### DELETE `/agio/config/{type}/{name}`
+#### PUT `/agio/config/{config_type}/{name}`
+
+创建或更新配置（触发热重载）。
+
+**请求体**：
+```json
+{
+  "config": {
+    "type": "agent",
+    "name": "research_agent",
+    "model": "deepseek",
+    ...
+  }
+}
+```
+
+**响应**：
+```json
+{
+  "message": "Config 'agent/research_agent' saved"
+}
+```
+
+#### DELETE `/agio/config/{config_type}/{name}`
 
 删除配置。
+
+**响应**：
+```json
+{
+  "message": "Config 'agent/research_agent' deleted"
+}
+```
+
+#### GET `/agio/config/components`
+
+列出所有已构建的组件实例。
+
+**响应**：
+```json
+[
+  {
+    "name": "research_agent",
+    "type": "agent",
+    "dependencies": ["deepseek", "web_search"],
+    "created_at": "2024-01-01T12:00:00Z"
+  }
+]
+```
+
+#### POST `/agio/config/components/{name}/rebuild`
+
+重建组件及其依赖项。
+
+**响应**：
+```json
+{
+  "message": "Component 'research_agent' rebuilt"
+}
+```
 
 #### POST `/agio/config/reload`
 
 重新加载所有配置。
+
+**响应**：
+```json
+{
+  "message": "Configs reloaded",
+  "details": {
+    "loaded": 10,
+    "failed": 0
+  }
+}
+```
 
 ### Health（健康检查）
 
@@ -416,7 +767,8 @@ Resume 会话（从指定 Step 继续执行）。
 **响应**：
 ```json
 {
-  "status": "ok",
+  "status": "healthy",
+  "version": "0.1.0",
   "timestamp": "2024-01-01T12:00:00Z"
 }
 ```
@@ -460,23 +812,42 @@ data: {"type": "RUN_COMPLETED", "run_id": "...", "metrics": {...}}
 ### 客户端示例
 
 ```javascript
-const eventSource = new EventSource('/agio/runnables/research_agent/run?stream=true', {
+// 使用 fetch 和 EventSource API
+const response = await fetch('/agio/runnables/research_agent/run', {
   method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
   body: JSON.stringify({
     query: 'Research AI trends',
     session_id: 'session_123',
+    stream: true,
   }),
 });
 
-eventSource.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  if (data.type === 'STEP_CREATED') {
-    console.log('Step created:', data.step);
-  } else if (data.type === 'RUN_COMPLETED') {
-    console.log('Run completed:', data.metrics);
-    eventSource.close();
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+
+  const chunk = decoder.decode(value);
+  const lines = chunk.split('\n\n');
+  
+  for (const line of lines) {
+    if (line.startsWith('event: ')) {
+      const eventType = line.substring(7);
+    } else if (line.startsWith('data: ')) {
+      const data = JSON.parse(line.substring(6));
+      if (data.type === 'STEP_CREATED') {
+        console.log('Step created:', data.step);
+      } else if (data.type === 'RUN_COMPLETED') {
+        console.log('Run completed:', data.metrics);
+      }
+    }
   }
-};
+}
 ```
 
 ## 依赖注入
@@ -484,17 +855,17 @@ eventSource.onmessage = (event) => {
 API 层使用 FastAPI 的依赖注入系统：
 
 ```python
-from agio.api.deps import get_config_system, get_session_store, get_trace_store
+from agio.api.deps import get_config_sys, get_session_store, get_trace_store
 
 @router.get("/agents")
 async def list_agents(
-    config_system: ConfigSystem = Depends(get_config_system),
+    config_sys: ConfigSystem = Depends(get_config_sys),
 ):
     ...
 ```
 
 **依赖项**：
-- `get_config_system`: 获取 ConfigSystem 实例
+- `get_config_sys`: 获取 ConfigSystem 实例
 - `get_session_store`: 获取 SessionStore 实例
 - `get_trace_store`: 获取 TraceStore 实例
 

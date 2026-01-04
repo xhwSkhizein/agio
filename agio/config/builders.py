@@ -346,6 +346,26 @@ class AgentBuilder(ComponentBuilder):
 
                 kwargs["permission_manager"] = get_permission_manager()
 
+            # Initialize skills if enabled
+            if config.enable_skills:
+                from pathlib import Path
+
+                from agio.config.settings import settings
+                from agio.skills.manager import SkillManager
+
+                skill_dirs = config.skill_dirs or settings.skills_dirs
+                skill_manager = SkillManager(
+                    skill_dirs=[Path(d) for d in skill_dirs],
+                )
+                await skill_manager.initialize()
+
+                # Add Skill tool to tools list
+                skill_tool = skill_manager.get_skill_tool()
+                kwargs["tools"].append(skill_tool)
+
+                # Inject skill_manager through constructor
+                kwargs["skill_manager"] = skill_manager
+
             return Agent(**kwargs)
 
         except Exception as e:
