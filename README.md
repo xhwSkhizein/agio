@@ -7,6 +7,15 @@ Agio is a modern Agent framework focused on **composable, multi-agent orchestrat
 
 ## 📦 Installation
 
+### System Requirements
+
+Agio requires the following system dependencies:
+
+- **ripgrep (rg)**: Required for the `grep` tool. Install via:
+  - **Linux (Ubuntu/Debian)**: `sudo apt-get install ripgrep`
+  - **macOS**: `brew install ripgrep`
+  - **Windows**: `choco install ripgrep` or `scoop install ripgrep`
+
 ### Install from PyPI (Recommended)
 
 ```bash
