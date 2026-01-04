@@ -10,15 +10,15 @@ from typing import Any
 from fastapi import Depends, HTTPException
 
 from agio.config import ComponentType, ConfigSystem, get_config_system
-from agio.storage.trace.store import TraceStore
-from agio.storage.session import SessionStore
-from agio.utils.logging import get_logger
 from agio.runtime.permission import (
     ConsentStore,
     ConsentWaiter,
     PermissionManager,
     PermissionService,
 )
+from agio.storage.session import SessionStore
+from agio.storage.trace.store import TraceStore
+from agio.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -43,7 +43,7 @@ def get_session_store(
     2. Fall back to singleton InMemorySessionStore
     """
     global _default_session_store
-    
+
     # Try to get session_store from config system
     stores = config_sys.list_configs(ComponentType.SESSION_STORE)
     if stores:
@@ -61,6 +61,7 @@ def get_session_store(
     # Fallback: create singleton InMemorySessionStore
     if _default_session_store is None:
         from agio.storage.session import InMemorySessionStore
+
         _default_session_store = InMemorySessionStore()
 
     return _default_session_store
@@ -111,9 +112,7 @@ def get_knowledge(
     try:
         return config_sys.get(name)
     except Exception as e:
-        raise HTTPException(
-            status_code=404, detail=f"Knowledge '{name}' not found: {e}"
-        )
+        raise HTTPException(status_code=404, detail=f"Knowledge '{name}' not found: {e}")
 
 
 # Singleton InMemoryTraceStore for fallback
@@ -148,6 +147,7 @@ def get_trace_store(
     # Fallback: create singleton in-memory TraceStore
     if _default_trace_store is None:
         from agio.storage.trace.store import TraceStore
+
         _default_trace_store = TraceStore()
 
     return _default_trace_store

@@ -3,7 +3,7 @@
 import pytest
 from pathlib import Path
 
-from agio.providers.tools.builtin.file_read_tool import FileReadTool
+from agio.tools.builtin.file_read_tool import FileReadTool
 from agio.runtime.control import AbortSignal
 from agio.runtime.protocol import ExecutionContext
 from agio.runtime import Wire

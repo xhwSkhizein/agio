@@ -19,20 +19,20 @@ stages:
           runnable: collector
           input: |
             Gather local information:
-            Task: {input}
+            Task: {{ input }}
             Focus on codebase, files, and local resources.
         - id: web_info
           runnable: collector
           input: |
             Gather web information:
-            Task: {input}
+            Task: {{ input }}
             Focus on external resources and documentation.
       merge_template: |
         Local Information:
         {{results}}
         
         Note: Current implementation uses {{results}} placeholder for all branch outputs
-    input: "{input}"
+    input: "{{ input }}"
 
   # Stage 2: Analysis phase (sequential)
   - id: analyze
@@ -40,8 +40,8 @@ stages:
     input: |
       Analyze the research results:
       
-      Research Summary: {parallel_research.output}
-      Original Request: {input}
+      Research Summary: {{ nodes.parallel_research.output }}
+      Original Request: {{ input }}
       
       Provide a comprehensive analysis with key insights.
 
@@ -57,9 +57,9 @@ stages:
           input: |
             Review the current version:
             
-            Analysis: {input}
-            Current Content: {loop.last.improve or 'Initial draft'}
-            Iteration: {loop.iteration}
+            Analysis: {{ input }}
+            Current Content: {{ loop.last.improve | default('Initial draft') }}
+            Iteration: {{ loop.iteration }}
             
             Provide feedback: PASS or NEEDS_REVISION
         
@@ -68,14 +68,14 @@ stages:
           input: |
             Improve based on feedback:
             
-            Original Analysis: {input}
-            Feedback: {review.output}
-            Previous Version: {loop.last.improve or 'Initial draft'}
+            Original Analysis: {{ input }}
+            Feedback: {{ nodes.review.output }}
+            Previous Version: {{ loop.last.improve | default('Initial draft') }}
             
             Make improvements.
-      condition: "{review} contains 'NEEDS_REVISION'"
+      condition: "{{ 'NEEDS_REVISION' in nodes.review.output }}"
       max_iterations: 3
-    input: "{analyze}"
+    input: "{{ nodes.analyze.output }}"
 
   # Stage 4: Final formatting
   - id: finalize
@@ -83,8 +83,8 @@ stages:
     input: |
       Format the final output:
       
-      Improved Content: {improve_loop.output}
-      Original Request: {input}
+      Improved Content: {{ nodes.improve_loop.output }}
+      Original Request: {{ input }}
       
       Create a polished, well-formatted final response.
 

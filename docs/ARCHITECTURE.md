@@ -129,7 +129,7 @@ configs/
 - `BuilderRegistry`: 构建器注册表
 - `HotReloadManager`: 热重载管理
 
-详见：[配置系统文档](./CONFIG_SYSTEM.md)
+详见：[配置系统文档](./CONFIG_SYSTEM_V2.md)
 
 ### 2. Agent 系统
 
@@ -313,7 +313,7 @@ class StepEvent:
 
 ## 相关文档
 
-- [配置系统](./CONFIG_SYSTEM.md)
+- [配置系统](./CONFIG_SYSTEM_V2.md)
 - [Agent 系统](./AGENT_SYSTEM.md)
 - [Workflow 编排](./WORKFLOW_ORCHESTRATION.md)
 - [Runnable 协议](./RUNNABLE_PROTOCOL.md)

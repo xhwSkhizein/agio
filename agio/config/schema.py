@@ -14,7 +14,6 @@ from pydantic import BaseModel, Field
 
 from agio.config.backends import StorageBackend
 
-
 # ============================================================================
 # Runtime Execution Configuration
 # ============================================================================
@@ -29,7 +28,9 @@ class ExecutionConfig(BaseModel):
     max_steps: int = Field(default=30, ge=1, le=100, description="Maximum execution steps")
     timeout_per_step: float = Field(default=120.0, ge=1.0, description="Timeout per step (seconds)")
     parallel_tool_calls: bool = Field(default=True, description="Execute tools in parallel")
-    max_total_tokens: int | None = Field(default=None, description="Maximum total tokens (input + output)")
+    max_total_tokens: int | None = Field(
+        default=None, description="Maximum total tokens (input + output)"
+    )
 
     # Context configuration
     max_history_messages: int = Field(default=10, description="Maximum history messages")
@@ -53,12 +54,12 @@ class ExecutionConfig(BaseModel):
 
     # Termination summary configuration
     enable_termination_summary: bool = Field(
-        default=False, 
-        description="Generate summary when execution reaches limits (max_steps, timeout, etc.)"
+        default=False,
+        description="Generate summary when execution reaches limits (max_steps, timeout, etc.)",
     )
     termination_summary_prompt: str | None = Field(
         default=None,
-        description="Custom prompt for termination summary. If None, uses default template."
+        description="Custom prompt for termination summary. If None, uses default template.",
     )
 
 
@@ -95,13 +96,13 @@ class ModelConfig(ComponentConfig):
     """Configuration for LLM model components"""
 
     type: Literal["model"] = "model"
-    
+
     # Provider configuration
     provider: str = Field(..., description="Provider type: openai, anthropic, deepseek, etc.")
     model_name: str = Field(..., description="Model name")
     api_key: str | None = Field(default=None, description="API key (optional, can use env var)")
     base_url: str | None = Field(default=None, description="Custom API base URL (optional)")
-    
+
     # Model parameters
     temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="Sampling temperature")
     max_tokens: int | None = Field(default=None, ge=1, description="Maximum tokens to generate")
@@ -112,37 +113,37 @@ class ToolConfig(ComponentConfig):
     """Configuration for tool components."""
 
     type: Literal["tool"] = "tool"
-    
+
     # For built-in tools: just specify the tool name
     tool_name: str | None = None
-    
+
     # For custom tools: specify module and class
     module: str | None = None
     class_name: str | None = None
-    
+
     # Tool configuration parameters
     params: dict | None = Field(
         default=None,
         description="Configuration parameters passed to tool constructor",
     )
-    
+
     # Dependencies on other components
     dependencies: dict[str, str] | None = Field(
         default=None,
         description="Dependencies mapping: {param_name: component_name}",
     )
-    
+
     # Permission configuration
     requires_consent: bool = Field(
         default=False,
         description="Whether this tool requires user consent before execution",
     )
-    
+
     @property
     def effective_params(self) -> dict:
         """Get params, defaulting to empty dict if None."""
         return self.params or {}
-    
+
     @property
     def effective_dependencies(self) -> dict[str, str]:
         """Get dependencies, defaulting to empty dict if None."""
@@ -153,14 +154,14 @@ class MemoryConfig(ComponentConfig):
     """Configuration for memory components"""
 
     type: Literal["memory"] = "memory"
-    
+
     # Backend configuration (future: migrate to BackendConfig structure)
     backend: str = Field(..., description="Backend type: redis, inmemory")
-    
+
     # Memory-specific configuration
     ttl: int | None = Field(default=None, ge=1, description="Time-to-live in seconds (optional)")
     max_size: int | None = Field(default=None, ge=1, description="Maximum cache size (optional)")
-    
+
     # Legacy params field for backward compatibility
     params: dict = Field(default_factory=dict, description="Additional backend parameters")
 
@@ -169,15 +170,15 @@ class KnowledgeConfig(ComponentConfig):
     """Configuration for knowledge base components"""
 
     type: Literal["knowledge"] = "knowledge"
-    
+
     # Backend configuration (future: migrate to BackendConfig structure)
     backend: str = Field(..., description="Backend type: chroma, pinecone")
-    
+
     # Knowledge-specific configuration
     embedding_model: str | None = Field(default=None, description="Embedding model name (optional)")
     chunk_size: int = Field(default=512, ge=1, description="Text chunk size")
     chunk_overlap: int = Field(default=50, ge=0, description="Chunk overlap size")
-    
+
     # Legacy params field for backward compatibility
     params: dict = Field(default_factory=dict, description="Additional backend parameters")
 
@@ -186,10 +187,10 @@ class SessionStoreConfig(ComponentConfig):
     """Configuration for session store components (stores Run and Step data)"""
 
     type: Literal["session_store"] = "session_store"
-    
+
     # Unified backend configuration
     backend: "StorageBackend"  # Forward reference, imported from backends module
-    
+
     # SessionStore specific configuration
     enable_indexing: bool = Field(default=True, description="Enable database indexing")
     batch_size: int = Field(default=100, ge=1, description="Batch operation size")
@@ -199,10 +200,10 @@ class TraceStoreConfig(ComponentConfig):
     """Configuration for trace store components"""
 
     type: Literal["trace_store"] = "trace_store"
-    
+
     # Unified backend configuration
     backend: "StorageBackend"  # Forward reference, imported from backends module
-    
+
     # TraceStore specific configuration
     buffer_size: int = Field(default=1000, ge=1, description="In-memory buffer size")
     flush_interval: int = Field(default=60, ge=1, description="Flush interval in seconds")
@@ -213,10 +214,10 @@ class CitationStoreConfig(ComponentConfig):
     """Configuration for citation store components"""
 
     type: Literal["citation_store"] = "citation_store"
-    
+
     # Unified backend configuration
     backend: "StorageBackend"  # Forward reference, imported from backends module
-    
+
     # CitationStore specific configuration
     auto_cleanup: bool = Field(default=False, description="Enable automatic cleanup")
     cleanup_after_days: int = Field(default=30, ge=1, description="Cleanup after N days")
@@ -255,18 +256,15 @@ class AgentConfig(ComponentConfig):
 
     # Permission configuration
     enable_permission: bool = Field(
-        default=False,
-        description="Enable permission checking for tool execution"
+        default=False, description="Enable permission checking for tool execution"
     )
 
     # Termination summary configuration
     enable_termination_summary: bool = Field(
-        default=False,
-        description="Generate summary when execution reaches max_steps limit"
+        default=False, description="Generate summary when execution reaches max_steps limit"
     )
     termination_summary_prompt: str | None = Field(
-        default=None,
-        description="Custom prompt for termination summary"
+        default=None, description="Custom prompt for termination summary"
     )
 
 
@@ -324,7 +322,7 @@ __all__ = [
 def _resolve_forward_refs():
     """Resolve forward references in Store configs after backends module is available."""
     from agio.config.backends import StorageBackend
-    
+
     SessionStoreConfig.model_rebuild()
     TraceStoreConfig.model_rebuild()
     CitationStoreConfig.model_rebuild()

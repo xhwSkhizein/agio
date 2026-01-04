@@ -4,21 +4,8 @@ Domain module - Pure domain models with no external dependencies.
 This module contains all core data models, events, and adapters.
 """
 
-# Models
-from .models import (
-    AgentMemoriedContent,
-    AgentRunSummary,
-    AgentSession,
-    GenerationReference,
-    MemoryCategory,
-    MessageRole,
-    Run,
-    RunMetrics,
-    RunStatus,
-    Step,
-    StepMetrics,
-    normalize_usage_metrics,
-)
+# Adapters
+from .adapters import StepAdapter
 
 # Events
 from .events import (
@@ -34,8 +21,21 @@ from .events import (
     create_step_delta_event,
 )
 
-# Adapters
-from .adapters import StepAdapter
+# Models
+from .models import (
+    AgentMemoriedContent,
+    AgentRunSummary,
+    AgentSession,
+    GenerationReference,
+    MemoryCategory,
+    MessageRole,
+    Run,
+    RunMetrics,
+    RunStatus,
+    Step,
+    StepMetrics,
+    normalize_usage_metrics,
+)
 
 __all__ = [
     # Models

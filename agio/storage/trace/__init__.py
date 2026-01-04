@@ -2,7 +2,7 @@
 Trace storage module.
 """
 
-from .store import TraceStore, TraceQuery
+from .sqlite_store import SQLiteTraceStore
+from .store import TraceQuery, TraceStore
 
-__all__ = ["TraceStore", "TraceQuery"]
-
+__all__ = ["TraceStore", "TraceQuery", "SQLiteTraceStore"]

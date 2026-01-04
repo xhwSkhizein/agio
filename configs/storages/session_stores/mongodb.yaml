@@ -9,8 +9,8 @@ tags:
 
 backend:
   type: mongodb
-  uri: "${AGIO_MONGO_URI:mongodb://localhost:27017}"
-  db_name: "${AGIO_MONGO_DB:agio}"
+  uri: "{{ env.AGIO_MONGO_URI | default('mongodb://localhost:27017') }}"
+  db_name: "{{ env.AGIO_MONGO_DB | default('agio') }}"
 
 enable_indexing: true
 batch_size: 100

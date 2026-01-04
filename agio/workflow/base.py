@@ -14,11 +14,10 @@ Wire-based Architecture:
 from abc import ABC, abstractmethod
 from uuid import uuid4
 
-from agio.runtime.protocol import ExecutionContext
 from agio.runtime import Runnable, RunOutput
-from agio.workflow.node import WorkflowNode
-
+from agio.runtime.protocol import ExecutionContext, RunnableType
 from agio.storage.session.base import SessionStore
+from agio.workflow.node import WorkflowNode
 
 
 class BaseWorkflow(ABC):
@@ -47,17 +46,16 @@ class BaseWorkflow(ABC):
         return self._id
 
     @property
-    def runnable_type(self) -> str:
+    def runnable_type(self) -> RunnableType:
         """Return runnable type identifier."""
-        return "workflow"
+        return RunnableType.WORKFLOW
 
     @property
     def nodes(self) -> list[WorkflowNode]:
         """Get the list of nodes."""
         return self._nodes
 
-
-    def set_registry(self, registry: dict[str, Runnable]):
+    def set_registry(self, registry: dict[str, Runnable]) -> None:
         """Set the runnable registry for resolving references."""
         self._registry = registry
 
@@ -69,14 +67,14 @@ class BaseWorkflow(ABC):
     ) -> RunOutput:
         """
         Execute the workflow, writing events to context.wire.
-        
+
         Note: Run lifecycle events (RUN_STARTED/COMPLETED/FAILED) are handled
         by RunnableExecutor, not here.
-        
+
         Args:
             input: Input string
             context: Execution context with wire (required)
-            
+
         Returns:
             RunOutput with response and metrics
         """
@@ -111,7 +109,12 @@ class BaseWorkflow(ABC):
         new_run_id = str(uuid4())
 
         node_id = node.id
-        runnable_id = node.runnable if isinstance(node.runnable, str) else node.runnable.id
+        if isinstance(node.runnable, str):
+            runnable_id = node.runnable
+            runnable_type = RunnableType.AGENT  # Default for string references
+        else:
+            runnable_id = node.runnable.id
+            runnable_type = node.runnable.runnable_type
 
         # Unified Session: use parent's session_id (no new session)
         # This allows all Steps to be stored in the same session
@@ -122,6 +125,8 @@ class BaseWorkflow(ABC):
             workflow_id=self._id,  # Pass current workflow ID
             node_id=node_id,  # node_id for WorkflowNode tracking
             nesting_type="workflow_node",  # Mark as workflow internal node
+            runnable_type=runnable_type,
+            runnable_id=runnable_id,
         )
 
     def _resolve_runnable(self, ref: Runnable | str) -> Runnable:

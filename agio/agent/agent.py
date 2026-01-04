@@ -10,17 +10,20 @@ Wire-based Architecture:
 - All nested executions share the same wire
 """
 
-from agio.domain import AgentSession
-from agio.runtime.step_factory import StepFactory
-from agio.runtime.control import AbortSignal
-from agio.runtime.protocol import ExecutionContext
-from agio.runtime.protocol import RunOutput
-from agio.config import ExecutionConfig
+import datetime
+import os
+
 from agio.agent.context import build_context_from_steps
 from agio.agent.executor import AgentExecutor
-from agio.providers.llm import Model
+from agio.config import ExecutionConfig
+from agio.config.template import renderer
+from agio.domain import AgentSession
+from agio.llm import Model
+from agio.runtime.control import AbortSignal
+from agio.runtime.protocol import ExecutionContext, RunnableType, RunOutput
+from agio.runtime.step_factory import StepFactory
 from agio.storage.session.base import SessionStore
-from agio.providers.tools import BaseTool
+from agio.tools import BaseTool
 
 
 class Agent:
@@ -69,9 +72,9 @@ class Agent:
         return self._id
 
     @property
-    def runnable_type(self) -> str:
+    def runnable_type(self) -> RunnableType:
         """Return runnable type identifier."""
-        return "agent"
+        return RunnableType.AGENT
 
     def _get_sequence_manager(self):
         """Get or create sequence manager (internal resource)."""
@@ -134,25 +137,33 @@ class Agent:
             sequence=seq,
             content=input,
             runnable_id=self.id,
-            runnable_type="agent",
+            runnable_type=RunnableType.AGENT,
         )
 
         if self.session_store:
             await self.session_store.save_step(user_step)
 
-        # 2) Build LLM messages
+        # 2) Render system_prompt at runtime (if it contains Jinja2 syntax)
+        rendered_prompt = self.system_prompt
+        prompt_context = {
+            "work_dir": os.getcwd(),
+            "date": datetime.datetime.now().strftime("%Y-%m-%d"),
+        }
+        rendered_prompt = renderer.render(self.system_prompt or "", **prompt_context)
+
+        # 3) Build LLM messages
         if self.session_store:
             messages = await build_context_from_steps(
                 session.session_id,
                 self.session_store,
-                system_prompt=self.system_prompt,
-                # 移除 run_id=context.run_id，这样才能获取整个 session 的历史
-                runnable_id=self.id,  # 保留 runnable_id 用于隔离不同 agent
+                system_prompt=rendered_prompt,
+                # Remove run_id=context.run_id to get full session history
+                runnable_id=self.id,  # Keep runnable_id to isolate different agents
             )
         else:
             messages = []
-            if self.system_prompt:
-                messages.append({"role": "system", "content": self.system_prompt})
+            if rendered_prompt:
+                messages.append({"role": "system", "content": rendered_prompt})
 
         # 3) Execute with AgentExecutor (returns RunOutput)
         executor = AgentExecutor(

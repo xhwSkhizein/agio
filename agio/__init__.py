@@ -7,28 +7,32 @@ Top-level exports for easy access to core functionality.
 # Top-level Agent class
 from agio.agent.agent import Agent
 
+# Config
+from agio.config import ConfigSystem, ExecutionConfig, get_config_system, settings
+
 # Domain models
 from agio.domain import (
-    Step,
-    StepMetrics,
-    Run,
-    RunMetrics,
     AgentSession,
     MessageRole,
+    Run,
+    RunMetrics,
     RunStatus,
+    Step,
+    StepDelta,
     StepEvent,
     StepEventType,
-    StepDelta,
+    StepMetrics,
     ToolResult,
 )
 
-# Providers
-from agio.providers.llm import Model, OpenAIModel, AnthropicModel, DeepseekModel
-from agio.storage.session import SessionStore, InMemorySessionStore, MongoSessionStore
-from agio.providers.tools import BaseTool, get_tool_registry
+# LLM
+from agio.llm import AnthropicModel, DeepseekModel, Model, OpenAIModel
 
-# Config
-from agio.config import settings, ExecutionConfig, ConfigSystem, get_config_system
+# Storage
+from agio.storage.session import InMemorySessionStore, MongoSessionStore, SessionStore
+
+# Tools
+from agio.tools import BaseTool, get_tool_registry
 
 __version__ = "0.1.0"
 
@@ -47,16 +51,16 @@ __all__ = [
     "StepEventType",
     "StepDelta",
     "ToolResult",
-    # Providers - LLM
+    # LLM
     "Model",
     "OpenAIModel",
     "AnthropicModel",
     "DeepseekModel",
-    # Providers - Storage
+    # Storage
     "SessionStore",
     "InMemorySessionStore",
     "MongoSessionStore",
-    # Providers - Tools
+    # Tools
     "BaseTool",
     "get_tool_registry",
     # Config

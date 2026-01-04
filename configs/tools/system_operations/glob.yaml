@@ -5,6 +5,9 @@ tool_name: glob
 params:
   # timeout_seconds: 30
   # max_results: 1000
+  # max_search_depth: 10
+  # max_path_length: 500
+  # max_pattern_length: 200
 enabled: true
 tags:
   - search

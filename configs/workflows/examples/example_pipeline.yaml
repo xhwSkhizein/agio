@@ -12,7 +12,7 @@ stages:
     input: |
       Analyze the following request and break it down into actionable steps:
       
-      {input}
+      {{ input }}
       
       Provide a structured analysis with:
       - Main objective
@@ -24,8 +24,8 @@ stages:
     input: |
       Research the following topic based on the analysis:
       
-      Analysis: {analyze.output}
-      Topic: {input}
+      Analysis: {{ nodes.analyze.output }}
+      Topic: {{ input }}
       
       Gather relevant information using available tools.
 
@@ -34,9 +34,9 @@ stages:
     input: |
       Generate a comprehensive response based on the analysis and research:
       
-      Analysis: {analyze.output}
-      Research Results: {research.output}
-      Original Request: {input}
+      Analysis: {{ nodes.analyze.output }}
+      Research Results: {{ nodes.research.output }}
+      Original Request: {{ input }}
       
       Create a well-structured response that addresses all requirements.
 
@@ -45,7 +45,7 @@ stages:
     input: |
       Format the generated content for final presentation:
       
-      Content: {generate.output}
+      Content: {{ nodes.generate.output }}
       
       Ensure proper formatting, clear structure, and readability.
 

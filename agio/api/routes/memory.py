@@ -6,8 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from agio.api.deps import get_config_sys
-from agio.config import ConfigSystem
-from agio.config import ComponentType
+from agio.config import ComponentType, ConfigSystem
 
 router = APIRouter(prefix="/memory")
 
@@ -106,7 +105,9 @@ async def search_memory(
         raise HTTPException(status_code=404, detail=f"Memory '{name}' not found: {e}")
 
     if not hasattr(memory, "semantic") or memory.semantic is None:
-        raise HTTPException(status_code=400, detail=f"Memory '{name}' does not support semantic search")
+        raise HTTPException(
+            status_code=400, detail=f"Memory '{name}' does not support semantic search"
+        )
 
     user_id = request.user_id or "default"
 

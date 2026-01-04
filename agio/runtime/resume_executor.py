@@ -13,15 +13,13 @@ Wire-based Architecture:
 
 from uuid import uuid4
 
-from agio.domain import MessageRole
-from agio.runtime.protocol import ExecutionContext
-from agio.runtime.wire import Wire
-from agio.runtime.runnable_executor import RunnableExecutor
-from agio.runtime.protocol import RunOutput
-from agio.utils.logging import get_logger
-from agio.storage.session import SessionStore
 from agio.config import ConfigSystem
-
+from agio.domain import MessageRole
+from agio.runtime.protocol import ExecutionContext, RunOutput
+from agio.runtime.runnable_executor import RunnableExecutor
+from agio.runtime.wire import Wire
+from agio.storage.session import SessionStore
+from agio.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -127,8 +125,8 @@ class ResumeExecutor:
         # 4. Check if already completed
         if state.is_completed and not state.has_pending_tools:
             logger.info("resume_already_completed", session_id=session_id)
-            from agio.runtime import RunOutput
             from agio.domain.models import RunMetrics
+            from agio.runtime import RunOutput
 
             return RunOutput(
                 response=state.final_output or "",

@@ -3,7 +3,7 @@ name: deepseek-reasoner
 description: "DeepSeek model for cost-effective AI tasks"
 provider: openai  # DeepSeek uses OpenAI-compatible API
 model_name: deepseek-reasoner
-api_key: ${DEEPSEEK_API_KEY}
+api_key: "{{ env.DEEPSEEK_API_KEY }}"
 base_url: https://api.deepseek.com
 temperature: 0.7
 max_tokens: 8192

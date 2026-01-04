@@ -114,7 +114,6 @@ class ExecutionContext:
     
     # Session 级资源
     wire: Wire  # 事件通道（必需）
-    sequence_manager: SequenceManager | None  # 序列号管理器
     
     # 用户和工作流上下文
     user_id: str | None

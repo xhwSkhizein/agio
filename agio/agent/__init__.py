@@ -8,16 +8,16 @@ This module contains:
 """
 
 from .agent import Agent
-from .executor import AgentExecutor, ToolCallAccumulator, MetricsTracker
 from .context import (
-    build_context_from_steps,
     build_context_from_sequence_range,
+    build_context_from_steps,
     validate_context,
 )
+from .executor import AgentExecutor, MetricsTracker, ToolCallAccumulator
 from .summarizer import (
-    build_termination_messages,
     DEFAULT_TERMINATION_USER_PROMPT,
     _format_termination_reason,
+    build_termination_messages,
 )
 
 __all__ = [

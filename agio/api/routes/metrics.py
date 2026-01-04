@@ -3,7 +3,6 @@ Metrics API endpoints for querying agent and system metrics.
 """
 
 from datetime import datetime
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -36,9 +35,9 @@ class SystemMetrics(BaseModel):
 @router.get("/agents/{agent_id}", response_model=AgentMetrics)
 async def get_agent_metrics(
     agent_id: str,
-    start_time: Optional[datetime] = Query(None, description="Start time for metrics"),
-    end_time: Optional[datetime] = Query(None, description="End time for metrics"),
-):
+    start_time: datetime | None = Query(None, description="Start time for metrics"),
+    end_time: datetime | None = Query(None, description="End time for metrics"),
+) -> AgentMetrics:
     """
     Get metrics for a specific agent.
 
@@ -72,7 +71,7 @@ async def get_agent_metrics(
 
 
 @router.get("/system", response_model=SystemMetrics)
-async def get_system_metrics():
+async def get_system_metrics() -> SystemMetrics:
     """
     Get system-wide metrics.
 

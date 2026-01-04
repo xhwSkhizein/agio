@@ -225,35 +225,6 @@ export const sessionService = {
   },
 }
 
-export interface AgentMetrics {
-  agent_id: string
-  total_runs: number
-  success_rate: number
-  avg_duration: number
-  total_tokens: number
-  avg_tokens_per_run: number
-}
-
-export interface SystemMetrics {
-  total_agents: number
-  total_runs: number
-  active_runs: number
-  total_tokens_today: number
-  avg_response_time: number
-}
-
-export const metricsService = {
-  async getAgentMetrics(agentId: string): Promise<AgentMetrics> {
-    const response = await api.get(`/metrics/agents/${agentId}`)
-    return response.data
-  },
-
-  async getSystemMetrics(): Promise<SystemMetrics> {
-    const response = await api.get('/metrics/system')
-    return response.data
-  },
-}
-
 // Memory Service
 export interface MemoryInfo {
   name: string

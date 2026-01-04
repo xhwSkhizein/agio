@@ -6,7 +6,7 @@ Coordinates waiting for user consent decisions using asyncio.Event.
 
 import asyncio
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -20,20 +20,20 @@ class ConsentDecision(BaseModel):
 
     decision: Literal["allow", "deny"]
     patterns: list[str] = []  # User-selected patterns
-    expires_at: Optional[datetime] = None
+    expires_at: datetime | None = None
 
 
 class ConsentWaiter:
     """
     Coordinator for waiting user consent decisions.
-    
+
     Uses asyncio.Event to suspend execution until user makes a decision.
     """
 
-    def __init__(self, default_timeout: float = 300.0):
+    def __init__(self, default_timeout: float = 300.0) -> None:
         """
         Initialize consent waiter.
-        
+
         Args:
             default_timeout: Default timeout in seconds (default: 5 minutes)
         """
@@ -46,18 +46,18 @@ class ConsentWaiter:
     async def wait_for_consent(
         self,
         tool_call_id: str,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
     ) -> ConsentDecision:
         """
         Wait for user consent decision.
-        
+
         Args:
             tool_call_id: Tool call unique identifier
             timeout: Timeout in seconds (None uses default)
-        
+
         Returns:
             ConsentDecision: User's decision
-        
+
         Raises:
             asyncio.TimeoutError: If timeout occurs
         """
@@ -114,11 +114,11 @@ class ConsentWaiter:
     ) -> None:
         """
         Resolve consent decision and wake up waiting tasks.
-        
+
         Args:
             tool_call_id: Tool call unique identifier
             decision: User's consent decision
-        
+
         Note: Repeated resolves are idempotent (uses last decision)
         """
         async with self._lock:
@@ -139,7 +139,7 @@ class ConsentWaiter:
     async def cancel(self, tool_call_id: str) -> None:
         """
         Cancel waiting (for execution interruption).
-        
+
         Args:
             tool_call_id: Tool call unique identifier
         """
@@ -148,12 +148,9 @@ class ConsentWaiter:
                 self._events.pop(tool_call_id, None)
                 self._timeouts.pop(tool_call_id, None)
                 # Create deny decision
-                self._decisions[tool_call_id] = ConsentDecision(
-                    decision="deny", patterns=[]
-                )
+                self._decisions[tool_call_id] = ConsentDecision(decision="deny", patterns=[])
 
         logger.info("consent_cancelled", tool_call_id=tool_call_id)
 
 
 __all__ = ["ConsentWaiter", "ConsentDecision"]
-

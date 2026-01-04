@@ -52,7 +52,7 @@ class Agent:
 - `model`: LLM 模型实例
 - `tools`: 工具列表
 - `session_store`: 会话存储（用于持久化 Steps）
-- `system_prompt`: 系统提示词
+- `system_prompt`: 系统提示词（运行时用 Jinja2 渲染，自动注入 agent/model/tools/session/env）
 - `max_steps`: 最大执行步数
 - `enable_termination_summary`: 是否启用终止摘要
 
@@ -145,7 +145,7 @@ async def build_context_from_steps(
    - 格式：OpenAI 消息格式（role: user/assistant/tool）
 
 3. **添加系统提示**：
-   - 如果有 system_prompt，插入到消息列表开头
+   - 如果有 system_prompt，先使用 Jinja2 渲染（上下文：`agent/model/tools/session/env`），再插入到消息列表开头
 
 **过滤选项**：
 - `run_id`: 仅包含特定 Run 的 Steps（用于隔离 Agent 上下文）
@@ -267,7 +267,14 @@ if enable_termination_summary:
         messages=messages,
         pending_tool_calls=pending_tool_calls,
         termination_reason="max_steps",
-        custom_prompt=termination_summary_prompt,
+        custom_prompt=renderer.render(
+            termination_summary_prompt,
+            agent=agent_context,
+            session=context,
+            env=os.environ,
+        )
+        if termination_summary_prompt
+        else None,
     )
     
     # 调用 LLM 生成摘要
@@ -325,8 +332,8 @@ class MetricsTracker:
 
 ```python
 from agio import Agent
-from agio.providers.llm import Model
-from agio.providers.tools import BaseTool
+from agio.llm import Model
+from agio.tools import BaseTool
 
 # 创建 Agent
 agent = Agent(
@@ -388,8 +395,8 @@ name: research_agent
 description: "Research assistant with web search"
 model: deepseek
 system_prompt: |
-  You are a research assistant.
-  Use web_search to find information, then synthesize the results.
+  You are {{ agent.name }}, a research assistant.
+  Use tools: {% for t in tools %}{{ t.name }} {% endfor %}
 tools:
   - web_search
   - web_fetch

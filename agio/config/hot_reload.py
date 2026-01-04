@@ -1,8 +1,8 @@
 from typing import Any, Callable
 
+from agio.config.builder_registry import BuilderRegistry
 from agio.config.container import ComponentContainer
 from agio.config.dependency import DependencyResolver
-from agio.config.builder_registry import BuilderRegistry
 from agio.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -11,7 +11,7 @@ logger = get_logger(__name__)
 class HotReloadManager:
     """
     热重载管理器
-    
+
     职责：
     - 配置变更检测
     - 级联重建受影响的组件
@@ -32,7 +32,7 @@ class HotReloadManager:
     def register_callback(self, callback: Callable[[str, str], None]) -> None:
         """
         注册变更回调
-        
+
         Args:
             callback: 回调函数 (name, change_type) -> None
         """
@@ -41,7 +41,7 @@ class HotReloadManager:
     def unregister_callback(self, callback: Callable[[str, str], None]) -> None:
         """
         注销变更回调
-        
+
         Args:
             callback: 回调函数
         """
@@ -56,7 +56,7 @@ class HotReloadManager:
     ) -> None:
         """
         处理配置变更
-        
+
         Args:
             name: 变更的组件名称
             change_type: 变更类型（create/update/delete）
@@ -77,13 +77,13 @@ class HotReloadManager:
     async def _destroy_affected(self, affected: list[str]) -> None:
         """
         销毁受影响的组件（逆序）
-        
+
         Args:
             affected: 受影响的组件名称列表
         """
         for comp_name in reversed(affected):
             instance, metadata = self._container.remove(comp_name)
-            
+
             if instance is not None and metadata is not None:
                 builder = self._builder_registry.get(metadata.component_type)
                 if builder:
@@ -97,7 +97,7 @@ class HotReloadManager:
     ) -> None:
         """
         重建受影响的组件（正序）
-        
+
         Args:
             affected: 受影响的组件名称列表
             rebuild_func: 重建函数
@@ -111,10 +111,10 @@ class HotReloadManager:
     def _get_affected_components(self, name: str) -> list[str]:
         """
         获取受影响的组件列表（BFS 遍历依赖图）
-        
+
         Args:
             name: 组件名称
-            
+
         Returns:
             受影响的组件名称列表（拓扑顺序）
         """
@@ -124,7 +124,7 @@ class HotReloadManager:
     def _notify_callbacks(self, name: str, change_type: str) -> None:
         """
         通知变更回调
-        
+
         Args:
             name: 组件名称
             change_type: 变更类型

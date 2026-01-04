@@ -3,9 +3,9 @@ import time
 import pytest
 
 from agio.domain import ToolResult
-from agio.tools import ToolExecutor
+from agio.tools.executor import ToolExecutor
 from agio.runtime import Wire
-from agio.providers.tools import BaseTool
+from agio.tools import BaseTool
 from agio.runtime.protocol import ExecutionContext
 
 

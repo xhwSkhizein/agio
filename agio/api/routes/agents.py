@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from agio.api.deps import get_config_sys
-from agio.config import ConfigSystem, ComponentType, parse_tool_references
+from agio.config import ComponentType, ConfigSystem, parse_tool_references
 
 router = APIRouter(prefix="/agents")
 
@@ -14,6 +14,7 @@ router = APIRouter(prefix="/agents")
 # Response Models
 class ToolInfo(BaseModel):
     """Tool information in response."""
+
     type: str
     name: str | None = None
     agent: str | None = None
@@ -69,7 +70,7 @@ async def list_agents(
             )
             for t in parsed_tools
         ]
-        
+
         items.append(
             AgentResponse(
                 name=config.get("name"),
@@ -112,7 +113,7 @@ async def get_agent(
         )
         for t in parsed_tools
     ]
-    
+
     return AgentResponse(
         name=config.get("name"),
         model=config.get("model"),

@@ -1,3 +1,9 @@
+"""
+Component Container - Component instance storage and lifecycle management.
+
+Manages built component instances, stores component metadata, and handles component lifecycle.
+"""
+
 from datetime import datetime
 from typing import Any
 
@@ -9,7 +15,7 @@ logger = get_logger(__name__)
 
 
 class ComponentMetadata:
-    """组件元数据"""
+    """Component metadata."""
 
     def __init__(
         self,
@@ -25,28 +31,26 @@ class ComponentMetadata:
 
 class ComponentContainer:
     """
-    组件容器 - 负责实例的存储和生命周期管理
-    
-    职责：
-    - 缓存已构建的组件实例
-    - 存储组件元数据
-    - 管理组件生命周期
+    Component container - Manages instance storage and lifecycle.
+
+    Responsibilities:
+    - Cache built component instances
+    - Store component metadata
+    - Manage component lifecycle
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._instances: dict[str, Any] = {}
         self._metadata: dict[str, ComponentMetadata] = {}
 
-    def register(
-        self, name: str, instance: Any, metadata: ComponentMetadata
-    ) -> None:
+    def register(self, name: str, instance: Any, metadata: ComponentMetadata) -> None:
         """
-        注册组件实例
-        
+        Register component instance.
+
         Args:
-            name: 组件名称
-            instance: 组件实例
-            metadata: 组件元数据
+            name: Component name
+            instance: Component instance
+            metadata: Component metadata
         """
         self._instances[name] = instance
         self._metadata[name] = metadata
@@ -57,16 +61,16 @@ class ComponentContainer:
 
     def get(self, name: str) -> Any:
         """
-        获取组件实例
-        
+        Get component instance.
+
         Args:
-            name: 组件名称
-            
+            name: Component name
+
         Returns:
-            组件实例
-            
+            Component instance
+
         Raises:
-            ComponentNotFoundError: 组件不存在
+            ComponentNotFoundError: Component not found
         """
         if name not in self._instances:
             raise ComponentNotFoundError(f"Component '{name}' not found")
@@ -74,104 +78,104 @@ class ComponentContainer:
 
     def get_or_none(self, name: str) -> Any | None:
         """
-        获取组件实例（不存在返回 None）
-        
+        Get component instance (returns None if not found).
+
         Args:
-            name: 组件名称
-            
+            name: Component name
+
         Returns:
-            组件实例，不存在返回 None
+            Component instance, or None if not found
         """
         return self._instances.get(name)
 
     def has(self, name: str) -> bool:
         """
-        检查组件是否存在
-        
+        Check if component exists.
+
         Args:
-            name: 组件名称
-            
+            name: Component name
+
         Returns:
-            是否存在
+            Whether component exists
         """
         return name in self._instances
 
     def get_metadata(self, name: str) -> ComponentMetadata | None:
         """
-        获取组件元数据
-        
+        Get component metadata.
+
         Args:
-            name: 组件名称
-            
+            name: Component name
+
         Returns:
-            组件元数据，不存在返回 None
+            Component metadata, or None if not found
         """
         return self._metadata.get(name)
 
     def get_all_instances(self) -> dict[str, Any]:
         """
-        获取所有组件实例
-        
+        Get all component instances.
+
         Returns:
-            组件名称到实例的映射
+            Mapping from component name to instance
         """
         return dict(self._instances)
 
     def get_all_metadata(self) -> dict[str, ComponentMetadata]:
         """
-        获取所有组件元数据
-        
+        Get all component metadata.
+
         Returns:
-            组件名称到元数据的映射
+            Mapping from component name to metadata
         """
         return dict(self._metadata)
 
     def list_names(self) -> list[str]:
         """
-        列出所有组件名称
-        
+        List all component names.
+
         Returns:
-            组件名称列表
+            List of component names
         """
         return list(self._instances.keys())
 
     def remove(self, name: str) -> tuple[Any | None, ComponentMetadata | None]:
         """
-        移除组件（不清理资源）
-        
+        Remove component (without cleanup).
+
         Args:
-            name: 组件名称
-            
+            name: Component name
+
         Returns:
-            (实例, 元数据) 元组，不存在返回 (None, None)
+            Tuple of (instance, metadata), or (None, None) if not found
         """
         instance = self._instances.pop(name, None)
         metadata = self._metadata.pop(name, None)
-        
+
         if instance is not None:
             logger.debug(f"Removed component: {name}")
-        
+
         return instance, metadata
 
     def clear(self) -> None:
-        """清空所有组件"""
+        """Clear all components."""
         self._instances.clear()
         self._metadata.clear()
         logger.debug("Cleared all components")
 
     def count(self) -> int:
-        """获取组件总数"""
+        """Get total component count."""
         return len(self._instances)
 
     def get_dependents(self, name: str) -> list[str]:
         """
-        获取依赖指定组件的其他组件名称
-        
+        Get components that depend on the specified component.
+
         Args:
-            name: 组件名称
-            
+            name: Component name
+
         Returns:
-            依赖此组件的组件名称列表
+            List of component names that depend on this component
         """
         dependents = []
         for comp_name, metadata in self._metadata.items():

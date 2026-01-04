@@ -3,10 +3,9 @@
 ## issues
 
 - [ ] 文档 & 代码 一致性
-
-- [ ] config yaml 支持 Jinja2 模版，可以支持条件表达式/loop 等， 各种 Prompt 支持参数 Jinja2 模版和参数替换等
+- [ ] config yaml 支持 Jinja2 模版，可以支持条件表达式/loop 等， agent的各种 Prompt 支持参数 Jinja2 模版和参数替换等
 - [ ] system prompt 中强调所有 path 相关参数使用绝对路径
-- [ ] 各种 Store 没有一个统一的 Specs，应该像 K8s 中的 spec 一样，为各种 Store 设计Specs，然后同步不同类型的父类进行封装/抽象管理，方便后续拓展，也方便 yaml 配置时格式统一，同样的系统中所有支持配置的组件应该都是这种模式
+
 
 
 
@@ -16,11 +15,7 @@
   
 
 - [ ] 基础工具问题
-  - [ ] playwright 爬虫依赖的 ToolSettings 疑似遗留代码问题，需要进行重构优化
-  ```
-  2025-12-24T03:13:07.887675Z [info     ] 启动 Playwright 爬虫               [agio.providers.tools.builtin.common.web_fetch.playwright_crawler]
-2025-12-24T03:13:08.101525Z [error    ] 启动失败: 'ToolSettings' object has no attribute 'web_fetch_headless' [agio.providers.tools.builtin.common.web_fetch.playwright_crawler]
-```
+  
 
 
 ## 🤔 疑问
@@ -29,6 +24,12 @@
 
 ## archived
 
+- [x] 各种 Store 没有一个统一的 Specs，应该像 K8s 中的 spec 一样，为各种 Store 设计Specs，然后同步不同类型的父类进行封装/抽象管理，方便后续拓展，也方便 yaml 配置时格式统一，同样的系统中所有支持配置的组件应该都是这种模式
+- [x] playwright 爬虫依赖的 ToolSettings 疑似遗留代码问题，需要进行重构优化
+  ```
+  2025-12-24T03:13:07.887675Z [info     ] 启动 Playwright 爬虫               [agio.tools.builtin.common.web_fetch.playwright_crawler]
+2025-12-24T03:13:08.101525Z [error    ] 启动失败: 'ToolSettings' object has no attribute 'web_fetch_headless' [agio.tools.builtin.common.web_fetch.playwright_crawler]
+```
 - [x] /config 页面现在无法正常展示所有已加载的的配置组件
 - [x] 多轮对话时，为携带历史消息，应该携带历史消息才对
 - [x] 没有 HITL(Human-in-the-loop) ， 而且工具执行没有用户授权鉴权的逻辑，Agent 执行过程中也不能主动询问用户或阻塞等待用户相应， 期望 HITL 是可以持久化的状态，即是否授权 or 用户 feedback 之前状态是暂停的，用户操作后状态恢复继续执行，不会因页面刷新或网络中断等问题重置或丢失
@@ -40,7 +41,7 @@
 - [x] BUG: Glob tool 无法处理 **/\*.json 这样的模式 (已修复：使用 rglob() 方法处理 **/ 开头的模式)
 
 ```
-2025-12-09T10:53:15.791819Z [error    ] Glob search failed             [agio.providers.tools.builtin.glob_tool.glob_tool] extra={'pattern': '**/*.json', 'path': '/Users/hongv/workspace/agio'}
+2025-12-09T10:53:15.791819Z [error    ] Glob search failed             [agio.tools.builtin.glob_tool.glob_tool] extra={'pattern': '**/*.json', 'path': '/Users/hongv/workspace/agio'}
 Traceback (most recent call last):
   File "/Users/hongv/workspace/agio/agio/providers/tools/builtin/glob_tool/glob_tool.py", line 181, in _glob_search
     for file_path in search_dir.glob(glob_pattern):

@@ -1,6 +1,7 @@
-"""内存存储实现
+"""
+In-memory citation store implementation.
 
-用于测试和不需要持久化的场景。
+Used for testing and scenarios that don't require persistence.
 """
 
 from typing import Any
@@ -12,9 +13,9 @@ from agio.storage.citation.models import (
 
 
 class InMemoryCitationStore:
-    """内存中的 Citation 存储实现"""
+    """In-memory citation store implementation."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         # session_id -> citation_id -> CitationSourceRaw
         self._sources: dict[str, dict[str, CitationSourceRaw]] = {}
         # session_id -> index -> citation_id
@@ -25,21 +26,21 @@ class InMemoryCitationStore:
         session_id: str,
         sources: list[CitationSourceRaw],
     ) -> list[str]:
-        """存储信息源并返回 citation_id 列表"""
+        """Store citation sources and return list of citation_ids."""
         if session_id not in self._sources:
             self._sources[session_id] = {}
             self._index_map[session_id] = {}
 
         citation_ids = []
         for source in sources:
-            # 确保 session_id 一致
+            # Ensure session_id consistency
             source.session_id = session_id
 
-            # 存储
+            # Store source
             self._sources[session_id][source.citation_id] = source
             citation_ids.append(source.citation_id)
 
-            # 如果有 index，建立索引映射
+            # Build index mapping if index is provided
             if source.index is not None:
                 self._index_map[session_id][source.index] = source.citation_id
 
@@ -50,7 +51,7 @@ class InMemoryCitationStore:
         citation_id: str,
         session_id: str,
     ) -> CitationSourceRaw | None:
-        """通过 citation_id 获取原始信息源"""
+        """Get citation source by citation_id."""
         if session_id not in self._sources:
             return None
         return self._sources[session_id].get(citation_id)
@@ -60,7 +61,7 @@ class InMemoryCitationStore:
         session_id: str,
         citation_ids: list[str],
     ) -> list[CitationSourceSimplified]:
-        """获取简化版信息源"""
+        """Get simplified citation sources."""
         if session_id not in self._sources:
             return []
 
@@ -87,7 +88,7 @@ class InMemoryCitationStore:
         self,
         session_id: str,
     ) -> list[CitationSourceSimplified]:
-        """获取 session 的所有 citations"""
+        """Get all citations for a session."""
         if session_id not in self._sources:
             return []
 
@@ -113,7 +114,7 @@ class InMemoryCitationStore:
         session_id: str,
         updates: dict[str, Any],
     ) -> bool:
-        """更新信息源"""
+        """Update citation source fields."""
         if session_id not in self._sources:
             return False
 
@@ -121,7 +122,7 @@ class InMemoryCitationStore:
         if not source:
             return False
 
-        # 更新字段
+        # Update fields
         for key, value in updates.items():
             if hasattr(source, key):
                 setattr(source, key, value)
@@ -133,7 +134,7 @@ class InMemoryCitationStore:
         session_id: str,
         index: int,
     ) -> CitationSourceRaw | None:
-        """通过索引获取信息源"""
+        """Get citation source by index."""
         if session_id not in self._index_map:
             return None
 
@@ -144,20 +145,16 @@ class InMemoryCitationStore:
         return self._sources[session_id].get(citation_id)
 
     async def cleanup_session(self, session_id: str) -> None:
-        """清理特定 session 的信息源"""
+        """Clean up citation sources for a specific session."""
         if session_id in self._sources:
             del self._sources[session_id]
         if session_id in self._index_map:
             del self._index_map[session_id]
 
     def get_stats(self) -> dict[str, Any]:
-        """获取存储统计信息"""
+        """Get storage statistics."""
         return {
             "total_sessions": len(self._sources),
             "total_sources": sum(len(sources) for sources in self._sources.values()),
-            "sessions": {
-                session_id: len(sources)
-                for session_id, sources in self._sources.items()
-            },
+            "sessions": {session_id: len(sources) for session_id, sources in self._sources.items()},
         }
-

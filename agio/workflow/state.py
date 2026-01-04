@@ -10,7 +10,6 @@ Key features:
 - Idempotency support: check if node already executed
 """
 
-from typing import Dict, Optional
 from agio.storage.session.base import SessionStore
 
 
@@ -46,7 +45,7 @@ class WorkflowState:
         self.workflow_id = workflow_id
         self._store = store
         # Memory cache: node_id -> output_content
-        self._outputs: Dict[str, str] = {}
+        self._outputs: dict[str, str] = {}
         self._loaded = False
 
     async def load_from_history(self) -> None:
@@ -81,15 +80,13 @@ class WorkflowState:
 
         self._loaded = True
 
-    def _make_key(self, node_id: str, iteration: Optional[int] = None) -> str:
+    def _make_key(self, node_id: str, iteration: int | None = None) -> str:
         """Create cache key, optionally including iteration for LoopWorkflow."""
         if iteration is not None:
             return f"{node_id}:iter_{iteration}"
         return node_id
 
-    def get_output(
-        self, node_id: str, iteration: Optional[int] = None
-    ) -> Optional[str]:
+    def get_output(self, node_id: str, iteration: int | None = None) -> str | None:
         """
         Get cached output for a node.
 
@@ -103,9 +100,7 @@ class WorkflowState:
         key = self._make_key(node_id, iteration)
         return self._outputs.get(key)
 
-    def set_output(
-        self, node_id: str, content: str, iteration: Optional[int] = None
-    ) -> None:
+    def set_output(self, node_id: str, content: str, iteration: int | None = None) -> None:
         """
         Update cached output for a node.
 
@@ -117,7 +112,7 @@ class WorkflowState:
         key = self._make_key(node_id, iteration)
         self._outputs[key] = content
 
-    def has_output(self, node_id: str, iteration: Optional[int] = None) -> bool:
+    def has_output(self, node_id: str, iteration: int | None = None) -> bool:
         """
         Check if a node has cached output (idempotency check).
 
@@ -140,7 +135,7 @@ class WorkflowState:
         self._outputs.clear()
         self._loaded = False
 
-    def to_dict(self) -> Dict[str, str]:
+    def to_dict(self) -> dict[str, str]:
         """
         Convert state to dictionary (for debugging/logging).
 

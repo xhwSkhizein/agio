@@ -39,7 +39,7 @@ system_prompt: |
 
   ## WORKFLOW
   1. **Analyze**: Deconstruct the User's request.
-  2. **Plan**: Decide if you need Local Code, Web Info, or both.
+  2. **Plan**: .
   3. **Dispatch**: Call `Collector` with a clear `mission` and `scope`.
     - You MAY call multiple Collectors in parallel if the tasks are unrelated (e.g., one checks Web, one checks Local DB).
   4. **Route**: Receive the Collector's summary and refs. Pass these IDs to specialized Processors (e.g., CodeAnalyzer, Summarizer) if deep analysis is needed.
@@ -80,8 +80,8 @@ system_prompt: |
   """
 
   ## Context Hints
-  - Current Working Directory: `/Users/hongv/workspace/agio`
-  - Current Date: `2025-12-19`
+  - Current Working Directory: {{ work_dir }}
+  - Current Date: {{ date }}
 
 tools:
   # ============================================
@@ -90,15 +90,10 @@ tools:
   - type: agent_tool
     agent: collector
     description: |
-      Information Collector (one-shot instance).
-      Use for ANY information gathering task:
+      Information Collector, use for ANY information gathering task:
       - Reading files, searching code
       - Web search, page fetching
       - Directory listing
-      
-      Returns: Summary + tool_call_ids for detailed content.
-      
-      Example: "Find all Python files related to authentication"
 
 session_store: mongodb_session_store
 

@@ -8,8 +8,8 @@ import time
 
 import pytest
 
-from agio.providers.llm import Model, StreamChunk
-from agio.providers.tools import BaseTool
+from agio.llm import Model, StreamChunk
+from agio.tools import BaseTool
 from agio.domain import ToolResult
 
 

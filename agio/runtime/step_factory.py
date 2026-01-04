@@ -17,21 +17,22 @@ Usage:
 from typing import Any
 from uuid import uuid4
 
-from agio.domain import Step, MessageRole, StepMetrics
-from agio.runtime.protocol import ExecutionContext
+from agio.domain import MessageRole, Step, StepMetrics
+from agio.runtime.protocol import ExecutionContext, RunnableType
+
 
 class StepFactory:
     """
     Context-bound step factory.
-    
+
     Binds to an ExecutionContext and provides methods to create Steps
     without repetitive parameter passing of session_id, run_id, depth, etc.
     """
 
-    def __init__(self, ctx: "ExecutionContext"):
+    def __init__(self, ctx: "ExecutionContext") -> None:
         """
         Initialize factory with execution context.
-        
+
         Args:
             ctx: ExecutionContext to bind to
         """
@@ -41,6 +42,16 @@ class StepFactory:
     def ctx(self) -> "ExecutionContext":
         """Get the bound execution context."""
         return self._ctx
+
+    def _convert_runnable_type(
+        self, runnable_type: RunnableType | str | None
+    ) -> str | None:
+        """Convert RunnableType enum to string value for Step model."""
+        if runnable_type is None:
+            return None
+        if isinstance(runnable_type, RunnableType):
+            return runnable_type.value
+        return runnable_type
 
     def user_step(
         self,
@@ -58,13 +69,17 @@ class StepFactory:
             content=content,
             # Runnable binding
             runnable_id=overrides.get("runnable_id", self._ctx.runnable_id),
-            runnable_type=overrides.get("runnable_type", self._ctx.runnable_type),
+            runnable_type=self._convert_runnable_type(
+                overrides.get("runnable_type", self._ctx.runnable_type)
+            ),
             # Extract metadata from ExecutionContext
             workflow_id=overrides.get("workflow_id", self._ctx.workflow_id),
             node_id=overrides.get("node_id", self._ctx.node_id),
             parent_run_id=overrides.get("parent_run_id", self._ctx.parent_run_id),
-            branch_key=overrides.get("branch_key", self._ctx.metadata.get("branch_key")),
-            iteration=overrides.get("iteration", self._ctx.iteration),
+            branch_key=overrides.get(
+                "branch_key", self._ctx.metadata.get("branch_key")
+            ),
+            iteration=overrides.get("iteration", self._ctx.metadata.get("iteration")),
             # Observability
             trace_id=overrides.get("trace_id", self._ctx.trace_id),
             span_id=overrides.get("span_id"),
@@ -96,13 +111,17 @@ class StepFactory:
             tool_calls=tool_calls,
             # Runnable binding
             runnable_id=overrides.get("runnable_id", self._ctx.runnable_id),
-            runnable_type=overrides.get("runnable_type", self._ctx.runnable_type),
+            runnable_type=self._convert_runnable_type(
+                overrides.get("runnable_type", self._ctx.runnable_type)
+            ),
             # Extract metadata from ExecutionContext
             workflow_id=overrides.get("workflow_id", self._ctx.workflow_id),
             node_id=overrides.get("node_id", self._ctx.node_id),
             parent_run_id=overrides.get("parent_run_id", self._ctx.parent_run_id),
-            branch_key=overrides.get("branch_key", self._ctx.metadata.get("branch_key")),
-            iteration=overrides.get("iteration", self._ctx.iteration),
+            branch_key=overrides.get(
+                "branch_key", self._ctx.metadata.get("branch_key")
+            ),
+            iteration=overrides.get("iteration", self._ctx.metadata.get("iteration")),
             # LLM call context
             llm_messages=llm_messages,
             llm_tools=llm_tools,
@@ -137,12 +156,16 @@ class StepFactory:
             name=name,
             # Runnable binding
             runnable_id=overrides.get("runnable_id", self._ctx.runnable_id),
-            runnable_type=overrides.get("runnable_type", self._ctx.runnable_type),
+            runnable_type=self._convert_runnable_type(
+                overrides.get("runnable_type", self._ctx.runnable_type)
+            ),
             # Extract metadata from ExecutionContext
             workflow_id=overrides.get("workflow_id", self._ctx.workflow_id),
             node_id=overrides.get("node_id", self._ctx.node_id),
             parent_run_id=overrides.get("parent_run_id", self._ctx.parent_run_id),
-            branch_key=overrides.get("branch_key", self._ctx.metadata.get("branch_key")),
+            branch_key=overrides.get(
+                "branch_key", self._ctx.metadata.get("branch_key")
+            ),
             # Metadata
             metrics=metrics,
             # Observability
@@ -154,4 +177,3 @@ class StepFactory:
 
 
 __all__ = ["StepFactory"]
-

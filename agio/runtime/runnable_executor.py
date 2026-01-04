@@ -10,15 +10,17 @@ The executor wraps any Runnable.run() call with Run management,
 without modifying the Runnable.run() signature.
 """
 
+import asyncio
 import time
+from typing import AsyncIterator
+from uuid import uuid4
 
-from agio.domain import RunStatus, Run
-from agio.runtime.protocol import Runnable, RunOutput
+from agio.domain import Run, RunStatus, StepEvent
 from agio.runtime.event_factory import EventFactory
-from agio.runtime.protocol import ExecutionContext
-from agio.utils.logging import get_logger
+from agio.runtime.protocol import ExecutionContext, Runnable, RunOutput, RunnableType
+from agio.runtime.wire import Wire
 from agio.storage.session.base import SessionStore
-
+from agio.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -38,7 +40,7 @@ class RunnableExecutor:
     - Modify Runnable internal logic
     """
 
-    def __init__(self, store: "SessionStore | None" = None):
+    def __init__(self, store: "SessionStore | None" = None) -> None:
         """
         Initialize RunnableExecutor.
 
@@ -73,11 +75,18 @@ class RunnableExecutor:
             RunOutput from the Runnable
         """
 
-        # 1. Create Run record
+        # Get runnable_type as string (handle both enum and string)
+        runnable_type_value = runnable.runnable_type
+        if isinstance(runnable_type_value, RunnableType):
+            runnable_type_value = runnable_type_value.value
+        elif not isinstance(runnable_type_value, str):
+            runnable_type_value = str(runnable_type_value)
+
+        # Create Run record
         run = Run(
             id=context.run_id,
             runnable_id=runnable.id,
-            runnable_type=runnable.runnable_type,
+            runnable_type=runnable_type_value,
             session_id=context.session_id,
             input_query=input,
             status=RunStatus.RUNNING,
@@ -158,6 +167,124 @@ class RunnableExecutor:
                 await self.store.save_run(run)
 
             raise
+
+    async def execute_with_wire(
+        self,
+        runnable: Runnable,
+        input: str,
+        wire: Wire,
+        *,
+        session_id: str | None = None,
+        user_id: str | None = None,
+        metadata: dict | None = None,
+        _parent_context: ExecutionContext | None = None,
+    ) -> RunOutput:
+        """
+        Execute a Runnable with Wire, automatically constructing ExecutionContext.
+
+        This is a simplified version of execute() that accepts Wire and business parameters,
+        and constructs ExecutionContext internally.
+
+        Args:
+            runnable: The Runnable to execute
+            input: Input string
+            wire: Wire instance (must be created by caller for stream consumption)
+            session_id: Session ID (auto-generated if not provided)
+            user_id: User ID (optional)
+            metadata: Additional metadata (optional)
+            _parent_context: Parent context for nested execution (internal use)
+
+        Returns:
+            RunOutput from the Runnable
+
+        Note:
+            - Wire must be created by caller (typically at API layer) for stream consumption
+            - For nested execution (Workflow), use execute() with pre-constructed context
+        """
+        # Generate run_id internally
+        run_id = str(uuid4())
+
+        # Construct ExecutionContext
+        if _parent_context:
+            # Nested execution: use child context
+            context = _parent_context.child(
+                run_id=run_id,
+                nested_runnable_id=runnable.id,
+                runnable_type=runnable.runnable_type,
+                runnable_id=runnable.id,
+            )
+        else:
+            # Top-level execution: create new context
+            context = ExecutionContext(
+                run_id=run_id,
+                session_id=session_id or str(uuid4()),
+                wire=wire,
+                user_id=user_id,
+                runnable_type=runnable.runnable_type,
+                runnable_id=runnable.id,
+                metadata=metadata or {},
+            )
+
+        # Delegate to execute()
+        return await self.execute(runnable, input, context)
+
+    async def execute_stream(
+        self,
+        runnable: Runnable,
+        input: str,
+        *,
+        session_id: str | None = None,
+        user_id: str | None = None,
+        metadata: dict | None = None,
+    ) -> AsyncIterator[StepEvent]:
+        """
+        Execute a Runnable in streaming mode, automatically managing Wire and Task lifecycle.
+
+        This method creates Wire internally, starts execution in a background task,
+        and yields events from the wire. Wire cleanup is handled automatically.
+
+        Args:
+            runnable: The Runnable to execute
+            input: Input string
+            session_id: Session ID (auto-generated if not provided)
+            user_id: User ID (optional)
+            metadata: Additional metadata (optional)
+
+        Yields:
+            StepEvent: Events from the execution
+
+        Example:
+            async for event in executor.execute_stream(agent, query, session_id="sess_123"):
+                print(event.type, event.data)
+        """
+        wire = Wire()
+
+        async def _run():
+            try:
+                await self.execute_with_wire(
+                    runnable,
+                    input,
+                    wire,
+                    session_id=session_id,
+                    user_id=user_id,
+                    metadata=metadata,
+                )
+            finally:
+                await wire.close()
+
+        task = asyncio.create_task(_run())
+
+        try:
+            async for event in wire.read():
+                yield event
+        finally:
+            # Ensure task is cleaned up
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
 
 
 __all__ = ["RunnableExecutor"]

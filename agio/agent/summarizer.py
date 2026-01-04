@@ -8,6 +8,7 @@ Design Philosophy:
 - Never truncates or discards existing context
 """
 
+from agio.config.template import renderer
 from agio.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -15,7 +16,7 @@ logger = get_logger(__name__)
 # Default user prompt for requesting termination summary
 DEFAULT_TERMINATION_USER_PROMPT = """**IMPORTANT: Execution Limit Reached**
 
-The execution has been interrupted due to {termination_reason}. This is NOT a normal completion.
+The execution has been interrupted due to {{ termination_reason }}. This is NOT a normal completion.
 
 Please provide a summary report that includes:
 1. **Original Request**: What was the user asking for
@@ -69,9 +70,10 @@ def build_termination_messages(
                 }
             )
 
-    # Build the user prompt requesting summary
+    # Build the user prompt requesting summary using Jinja2
     prompt_template = custom_prompt or DEFAULT_TERMINATION_USER_PROMPT
-    user_prompt = prompt_template.format(
+    user_prompt = renderer.render(
+        prompt_template,
         termination_reason=_format_termination_reason(termination_reason),
     )
 

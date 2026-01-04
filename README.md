@@ -10,7 +10,8 @@ Agio 是一个专注**可组合、多代理编排**的现代 Agent 框架，提�
 完整的架构和使用文档请参考：
 
 - [架构设计](./docs/ARCHITECTURE.md) - 整体架构概述和设计理念
-- [配置系统](./docs/CONFIG_SYSTEM.md) - 配置驱动架构和使用指南
+- [配置系统](./docs/CONFIG_SYSTEM_V2.md) - 配置驱动架构和使用指南
+- [工具配置](./docs/TOOL_CONFIGURATION.md) - 工具配置方式和环境变量支持
 - [Agent 系统](./docs/AGENT_SYSTEM.md) - Agent 执行引擎和 LLM 调用循环
 - [Workflow 编排](./docs/WORKFLOW_ORCHESTRATION.md) - Pipeline/Loop/Parallel 工作流
 - [Runnable 协议](./docs/RUNNABLE_PROTOCOL.md) - 统一执行接口和嵌套能力

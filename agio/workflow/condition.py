@@ -1,148 +1,100 @@
 """
-ConditionEvaluator for evaluating conditional expressions.
+ConditionEvaluator for evaluating conditional expressions using Jinja2.
 
-Supports:
-- Boolean constants: true, false
-- Variable references: {stage_id}
-- Negation: not {stage_id}
-- Comparison: >, <, >=, <=, ==, !=
-- Contains: {text} contains 'keyword'
-- Logical: and, or
+Simplified implementation that leverages Jinja2's expression evaluation.
 """
 
-import operator
-import re
 from typing import Any
+
+from agio.config.template import renderer
 
 
 class ConditionEvaluator:
     """
-    Condition expression evaluator.
+    Condition expression evaluator using Jinja2.
 
-    Supported syntax:
+    Supported syntax (Jinja2 expressions):
     1. Boolean constants: true, false
-    2. Variable reference: {stage_id} (truthy if non-empty)
-    3. Negation: not {stage_id}
-    4. Comparison: {score} > 0.8, {score} >= 0.8, {score} < 0.5
-    5. Equality: {result} == 'success', {count} == 5
-    6. Inequality: {result} != 'error'
-    7. Contains: {text} contains 'keyword'
-    8. Logical AND: {a} and {b}
-    9. Logical OR: {a} or {b}
+    2. Variable reference: {{ nodes.stage_id.output }} (truthy if non-empty)
+    3. Comparison: {{ nodes.score.output > 0.8 }}
+    4. Equality: {{ nodes.result.output == 'success' }}
+    5. Logical: {{ a and b }}, {{ a or b }}
+    6. Filters: {{ nodes.text.output | length > 10 }}
+
+    Examples:
+        "{{ nodes.analyze.output }}" - truthy if non-empty
+        "{{ nodes.score.output | float > 0.8 }}"
+        "{{ nodes.category.output == 'tech' }}"
+        "{{ nodes.a.output and nodes.b.output }}"
     """
-
-    # Variable replacement pattern
-    VAR_PATTERN = re.compile(r"\{([^}]+)\}")
-
-    # Operator mapping (order matters - longer operators first)
-    OPERATORS = {
-        ">=": operator.ge,
-        "<=": operator.le,
-        "!=": operator.ne,
-        "==": operator.eq,
-        ">": operator.gt,
-        "<": operator.lt,
-    }
 
     @classmethod
     def evaluate(cls, condition: str, outputs: dict[str, Any]) -> bool:
         """
-        Evaluate a condition expression.
+        Evaluate a condition expression using Jinja2.
+
+        Args:
+            condition: Condition string (Jinja2 expression)
+            outputs: Outputs dictionary with structure:
+                     {"input": "...", "node_id": "output_content", ...}
+
+        Returns:
+            Boolean result of condition evaluation
 
         Examples:
-            evaluate("true", {})  # True
-            evaluate("{intent}", {"intent": "tech"})  # True
-            evaluate("not {error}", {"error": ""})  # True
-            evaluate("{score} > 0.8", {"score": "0.9"})  # True
-            evaluate("{category} == 'tech'", {"category": "tech"})  # True
-            evaluate("{text} contains 'error'", {"text": "no error here"})  # True
-            evaluate("{a} and {b}", {"a": "yes", "b": "yes"})  # True
+            evaluate("{{ nodes.intent.output }}", {"intent": "tech"})  # True
+            evaluate("{{ input }}", {"input": "hello"})  # True
+            evaluate("{{ nodes.score.output | float > 0.8 }}", {"score": "0.9"})  # True
         """
-        # 1. Handle boolean constants
-        condition_lower = condition.strip().lower()
-        if condition_lower == "true":
+        # Handle simple boolean constants (backward compat)
+        condition_stripped = condition.strip().lower()
+        if condition_stripped == "true":
             return True
-        if condition_lower == "false":
+        if condition_stripped == "false":
             return False
 
-        # 2. Resolve variables first
-        resolved = cls._resolve_variables(condition, outputs)
+        # Build context from outputs - convert flat dict to nested structure
+        # Expected: {"node_id": "value", "input": "value"}
+        # Convert to: {"nodes": {"node_id": {"output": "value"}}, "input": "value"}
+        context = cls._build_context(outputs)
 
-        # 3. Handle logical operators (OR has lower precedence than AND)
-        if " or " in resolved.lower():
-            parts = re.split(r"\s+or\s+", resolved, flags=re.IGNORECASE)
-            return any(cls._evaluate_simple(p.strip(), outputs) for p in parts)
+        # Wrap condition in {% if %} to evaluate as boolean
+        # If condition doesn't have {{ }}, wrap it
+        if "{{" not in condition and "{%" not in condition:
+            condition = f"{{{{ {condition} }}}}"
 
-        if " and " in resolved.lower():
-            parts = re.split(r"\s+and\s+", resolved, flags=re.IGNORECASE)
-            return all(cls._evaluate_simple(p.strip(), outputs) for p in parts)
+        # Use Jinja2 if-statement to evaluate
+        template = (
+            f"{{% if {condition.strip('{{').strip('}}')} %}}TRUE{{% else %}}FALSE{{% endif %}}"
+        )
 
-        # 4. Handle single condition
-        return cls._evaluate_simple(resolved, outputs)
-
-    @classmethod
-    def _resolve_variables(cls, condition: str, outputs: dict[str, Any]) -> str:
-        """Replace variables with their actual values."""
-
-        def replace_var(match: re.Match) -> str:
-            var_name = match.group(1)
-
-            # Handle nested access
-            if "." in var_name:
-                parts = var_name.split(".")
-                current: Any = outputs
-                for part in parts:
-                    if isinstance(current, dict):
-                        current = current.get(part)
-                    else:
-                        return ""
-                return str(current) if current is not None else ""
-
-            value = outputs.get(var_name, "")
-            return str(value) if value is not None else ""
-
-        return cls.VAR_PATTERN.sub(replace_var, condition)
-
-    @classmethod
-    def _evaluate_simple(cls, condition: str, outputs: dict[str, Any]) -> bool:
-        """Evaluate a simple condition (no and/or)."""
-        condition = condition.strip()
-
-        if not condition:
+        try:
+            result = renderer.render(template, **context)
+            return result.strip() == "TRUE"
+        except Exception:
+            # If evaluation fails, return False
             return False
 
-        # Handle 'not' prefix
-        if condition.lower().startswith("not "):
-            inner = condition[4:].strip()
-            return not cls._evaluate_simple(inner, outputs)
+    @classmethod
+    def _build_context(cls, outputs: dict[str, Any]) -> dict[str, Any]:
+        """
+        Build Jinja2 context from flat outputs dict.
 
-        # Handle 'contains'
-        if " contains " in condition.lower():
-            parts = re.split(r"\s+contains\s+", condition, flags=re.IGNORECASE)
-            if len(parts) == 2:
-                left = parts[0].strip().strip("'\"")
-                right = parts[1].strip().strip("'\"")
-                return right in left
+        Convert: {"node_id": "value", "input": "value"}
+        To: {"nodes": {"node_id": {"output": "value"}}, "input": "value"}
+        """
+        context = {}
+        nodes = {}
 
-        # Handle comparison operators
-        for op_str, op_func in cls.OPERATORS.items():
-            if op_str in condition:
-                parts = condition.split(op_str, 1)
-                if len(parts) == 2:
-                    left = parts[0].strip().strip("'\"")
-                    right = parts[1].strip().strip("'\"")
+        for key, value in outputs.items():
+            if key == "input":
+                context["input"] = value
+            else:
+                # Assume it's a node output
+                nodes[key] = {"output": value}
 
-                    # Try numeric comparison
-                    try:
-                        left_num = float(left)
-                        right_num = float(right)
-                        return op_func(left_num, right_num)
-                    except ValueError:
-                        # String comparison
-                        return op_func(left, right)
-
-        # Default: non-empty string is truthy
-        return bool(condition.strip())
+        context["nodes"] = nodes
+        return context
 
     @classmethod
     def validate(cls, condition: str) -> tuple[bool, str | None]:
@@ -153,23 +105,11 @@ class ConditionEvaluator:
             (is_valid, error_message)
         """
         try:
-            # Basic validation - check for balanced braces
-            open_braces = condition.count("{")
-            close_braces = condition.count("}")
-            if open_braces != close_braces:
-                return False, "Unbalanced braces in condition"
+            # Try to parse with Jinja2
+            from jinja2 import Environment
 
-            # Check for valid operators
-            condition_lower = condition.lower()
-            has_operator = any(
-                op in condition_lower
-                for op in ["==", "!=", ">", "<", ">=", "<=", "contains", "and", "or", "not"]
-            )
-            has_variable = "{" in condition
-
-            if not has_operator and not has_variable and condition_lower not in ("true", "false"):
-                return False, "Condition must contain operators, variables, or boolean constants"
-
+            env = Environment()
+            env.parse(condition)
             return True, None
         except Exception as e:
             return False, str(e)

@@ -14,14 +14,15 @@ import time
 from datetime import datetime
 from typing import Any
 
+from pydantic import BaseModel
+
 from agio.config import ConfigSystem, get_config_system
 from agio.domain import StepEvent, StepEventType
-from agio.runtime.protocol import ExecutionContext
 from agio.runtime.permission.consent_store import ConsentStore
 from agio.runtime.permission.consent_waiter import ConsentWaiter
 from agio.runtime.permission.service import PermissionDecision, PermissionService
+from agio.runtime.protocol import ExecutionContext
 from agio.utils.logging import get_logger
-from pydantic import BaseModel
 
 logger = get_logger(__name__)
 
@@ -37,7 +38,7 @@ class ConsentResult(BaseModel):
 class PermissionManager:
     """
     Unified permission manager.
-    
+
     Responsibilities:
     1. Permission checking (cache + DB)
     2. Authorization wait coordination
@@ -55,7 +56,7 @@ class PermissionManager:
     ):
         """
         Initialize permission manager.
-        
+
         Args:
             consent_store: ConsentStore instance
             consent_waiter: ConsentWaiter instance
@@ -84,17 +85,17 @@ class PermissionManager:
     ) -> ConsentResult:
         """
         Check and wait for authorization, returns explicit authorization result.
-        
+
         Args:
             tool_call_id: Tool call unique identifier
             tool_name: Tool name
             tool_args: Tool arguments
             context: Execution context
             timeout: Timeout in seconds
-        
+
         Returns:
             ConsentResult: Authorization result (allowed=True/False)
-        
+
         Process:
         1. Check cache (hit and not expired → return directly)
         2. Check tool config requires_consent (False → allowed)
@@ -123,14 +124,10 @@ class PermissionManager:
 
         # 2. Check tool configuration
         tool_config = self._get_tool_config(tool_name)
-        requires_consent = (
-            tool_config.get("requires_consent", False) if tool_config else False
-        )
+        requires_consent = tool_config.get("requires_consent", False) if tool_config else False
 
         if not requires_consent:
-            result = ConsentResult(
-                allowed=True, reason="Tool does not require consent"
-            )
+            result = ConsentResult(allowed=True, reason="Tool does not require consent")
             await self._set_cache(cache_key, result)
             return result
 
@@ -160,16 +157,12 @@ class PermissionManager:
         )
 
         if permission_decision.decision == "allowed":
-            result = ConsentResult(
-                allowed=True, reason=permission_decision.reason
-            )
+            result = ConsentResult(allowed=True, reason=permission_decision.reason)
             await self._set_cache(cache_key, result)
             return result
 
         if permission_decision.decision == "denied":
-            result = ConsentResult(
-                allowed=False, reason=permission_decision.reason
-            )
+            result = ConsentResult(allowed=False, reason=permission_decision.reason)
             await self._set_cache(cache_key, result)
             return result
 
@@ -210,9 +203,7 @@ class PermissionManager:
             )
         except asyncio.TimeoutError:
             # Timeout treated as deny
-            result = ConsentResult(
-                allowed=False, reason="User consent request timed out"
-            )
+            result = ConsentResult(allowed=False, reason="User consent request timed out")
             await self._send_auth_denied_event(
                 tool_call_id=tool_call_id,
                 tool_name=tool_name,
@@ -236,9 +227,7 @@ class PermissionManager:
 
         # 4. Return result
         if decision.decision == "deny":
-            result = ConsentResult(
-                allowed=False, reason="User denied consent"
-            )
+            result = ConsentResult(allowed=False, reason="User denied consent")
             await self._send_auth_denied_event(
                 tool_call_id=tool_call_id,
                 tool_name=tool_name,
@@ -251,15 +240,11 @@ class PermissionManager:
         result = ConsentResult(allowed=True, reason="User granted consent")
         # Cache result
         if context.user_id:
-            cache_key = self._make_cache_key(
-                context.user_id, tool_name, tool_args
-            )
+            cache_key = self._make_cache_key(context.user_id, tool_name, tool_args)
             await self._set_cache(cache_key, result)
         return result
 
-    def _make_cache_key(
-        self, user_id: str, tool_name: str, tool_args: dict[str, Any]
-    ) -> str:
+    def _make_cache_key(self, user_id: str, tool_name: str, tool_args: dict[str, Any]) -> str:
         """Generate cache key"""
         # Serialize arguments (exclude tool_call_id)
         args_copy = {k: v for k, v in tool_args.items() if k != "tool_call_id"}
@@ -299,15 +284,11 @@ class PermissionManager:
 
             self._cache[cache_key] = (result, time.time())
 
-    async def _invalidate_cache(
-        self, user_id: str, tool_name: str | None = None
-    ) -> None:
+    async def _invalidate_cache(self, user_id: str, tool_name: str | None = None) -> None:
         """Invalidate cache (called after consent record update)"""
         async with self._cache_lock:
             keys_to_delete = []
-            prefix = (
-                f"{user_id}:{tool_name}:" if tool_name else f"{user_id}:"
-            )
+            prefix = f"{user_id}:{tool_name}:" if tool_name else f"{user_id}:"
             for key in self._cache.keys():
                 if key.startswith(prefix):
                     keys_to_delete.append(key)
@@ -322,20 +303,14 @@ class PermissionManager:
 
             configs = self.config_system.list_configs(ComponentType.TOOL)
             for config in configs:
-                if config.get("name") == tool_name or config.get(
-                    "tool_name"
-                ) == tool_name:
+                if config.get("name") == tool_name or config.get("tool_name") == tool_name:
                     return config
             return None
         except Exception as e:
-            logger.warning(
-                "get_tool_config_failed", tool_name=tool_name, error=str(e)
-            )
+            logger.warning("get_tool_config_failed", tool_name=tool_name, error=str(e))
             return None
 
-    def _summarize_args(
-        self, tool_name: str, tool_args: dict[str, Any]
-    ) -> str:
+    def _summarize_args(self, tool_name: str, tool_args: dict[str, Any]) -> str:
         """Summarize tool arguments for display"""
         if tool_name == "bash":
             return tool_args.get("command", "")
@@ -343,11 +318,7 @@ class PermissionManager:
             return tool_args.get("path") or tool_args.get("file_path", "")
         else:
             # Generic summary
-            items = [
-                f"{k}={v}"
-                for k, v in tool_args.items()
-                if k != "tool_call_id"
-            ]
+            items = [f"{k}={v}" for k, v in tool_args.items() if k != "tool_call_id"]
             return ", ".join(items[:3])  # Limit to 3 items
 
     async def _send_auth_required_event(
@@ -370,9 +341,7 @@ class PermissionManager:
                 "tool_name": tool_name,
                 "args_preview": args_preview,
                 "suggested_patterns": (
-                    permission_decision.suggested_patterns
-                    if permission_decision
-                    else None
+                    permission_decision.suggested_patterns if permission_decision else None
                 ),
                 "reason": (
                     permission_decision.reason
@@ -381,8 +350,7 @@ class PermissionManager:
                 ),
                 "expires_at_hint": (
                     permission_decision.expires_at_hint.isoformat()
-                    if permission_decision
-                    and permission_decision.expires_at_hint
+                    if permission_decision and permission_decision.expires_at_hint
                     else None
                 ),
             },
@@ -425,4 +393,3 @@ class PermissionManager:
 
 
 __all__ = ["PermissionManager", "ConsentResult"]
-

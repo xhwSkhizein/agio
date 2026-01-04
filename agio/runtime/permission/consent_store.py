@@ -8,7 +8,7 @@ import asyncio
 import fnmatch
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pydantic import BaseModel
@@ -22,10 +22,10 @@ class ConsentRecord(BaseModel):
     """User consent record"""
 
     user_id: str
-    tool_name: Optional[str] = None  # None means global pattern
+    tool_name: str | None = None  # None means global pattern
     patterns: list[str]  # allow patterns
     deny_patterns: list[str] = []  # deny patterns
-    expires_at: Optional[datetime] = None
+    expires_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -42,7 +42,7 @@ class ConsentStore(ABC):
     ) -> Literal["allowed", "denied", None]:
         """
         Check consent for a tool call.
-        
+
         Returns:
             "allowed" if matched allow pattern
             "denied" if matched deny pattern
@@ -54,10 +54,10 @@ class ConsentStore(ABC):
     async def save_consent(
         self,
         user_id: str,
-        tool_name: Optional[str],
+        tool_name: str | None,
         patterns: list[str],
         deny_patterns: list[str] = [],
-        expires_at: Optional[datetime] = None,
+        expires_at: datetime | None = None,
     ) -> None:
         """Save consent record"""
         pass
@@ -70,10 +70,10 @@ class ConsentStore(ABC):
     ) -> bool:
         """
         Match a pattern against tool name and arguments.
-        
+
         Pattern format: "{tool_name}({arg_pattern})"
         Example: "bash(npm run lint)", "file_read(~/.zshrc)"
-        
+
         Supports glob patterns: *, ?, **
         """
         if not pattern.endswith(")"):
@@ -99,16 +99,14 @@ class ConsentStore(ABC):
     def _serialize_args(self, args: dict[str, Any]) -> str:
         """Serialize arguments to string for pattern matching"""
         # Exclude tool_call_id
-        items = sorted(
-            [(k, v) for k, v in args.items() if k != "tool_call_id"]
-        )
+        items = sorted([(k, v) for k, v in args.items() if k != "tool_call_id"])
         return " ".join(f"{k}={v}" for k, v in items)
 
 
 class MongoConsentStore(ConsentStore):
     """
     MongoDB implementation of ConsentStore.
-    
+
     Reuses MongoSessionStore's MongoDB connection.
     """
 
@@ -119,14 +117,14 @@ class MongoConsentStore(ConsentStore):
     ):
         """
         Initialize MongoDB consent store.
-        
+
         Args:
             client: MongoDB client (reused from MongoSessionStore, can be None)
             db_name: Database name
         """
         self.client = client
         self.db_name = db_name
-        self.db: Optional[AsyncIOMotorDatabase] = None
+        self.db: AsyncIOMotorDatabase | None = None
         self.consents_collection = None
         self._initialized = False
         self._init_lock = asyncio.Lock()
@@ -147,9 +145,7 @@ class MongoConsentStore(ConsentStore):
             self.consents_collection = self.db["consents"]
 
             # Create indexes
-            await self.consents_collection.create_index(
-                [("user_id", 1), ("tool_name", 1)]
-            )
+            await self.consents_collection.create_index([("user_id", 1), ("tool_name", 1)])
             await self.consents_collection.create_index(
                 "expires_at", expireAfterSeconds=0
             )  # TTL index
@@ -222,10 +218,10 @@ class MongoConsentStore(ConsentStore):
     async def save_consent(
         self,
         user_id: str,
-        tool_name: Optional[str],
+        tool_name: str | None,
         patterns: list[str],
         deny_patterns: list[str] = [],
-        expires_at: Optional[datetime] = None,
+        expires_at: datetime | None = None,
     ) -> None:
         """Save consent record"""
         await self._ensure_initialized()
@@ -261,7 +257,9 @@ class MongoConsentStore(ConsentStore):
                     created_at=now,
                     updated_at=now,
                 )
-                await self.consents_collection.insert_one(record.model_dump(mode="json", exclude_none=True))
+                await self.consents_collection.insert_one(
+                    record.model_dump(mode="json", exclude_none=True)
+                )
 
             logger.info(
                 "consent_saved",
@@ -284,10 +282,10 @@ class MongoConsentStore(ConsentStore):
 class InMemoryConsentStore(ConsentStore):
     """In-memory implementation for testing"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._records: dict[str, ConsentRecord] = {}  # key = f"{user_id}:{tool_name}"
 
-    def _make_key(self, user_id: str, tool_name: Optional[str]) -> str:
+    def _make_key(self, user_id: str, tool_name: str | None) -> str:
         """Generate storage key"""
         return f"{user_id}:{tool_name or 'global'}"
 
@@ -328,10 +326,10 @@ class InMemoryConsentStore(ConsentStore):
     async def save_consent(
         self,
         user_id: str,
-        tool_name: Optional[str],
+        tool_name: str | None,
         patterns: list[str],
         deny_patterns: list[str] = [],
-        expires_at: Optional[datetime] = None,
+        expires_at: datetime | None = None,
     ) -> None:
         """Save consent record"""
         key = self._make_key(user_id, tool_name)
@@ -356,4 +354,3 @@ __all__ = [
     "InMemoryConsentStore",
     "ConsentRecord",
 ]
-

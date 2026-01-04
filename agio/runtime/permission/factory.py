@@ -16,17 +16,17 @@ _permission_manager: PermissionManager | None = None
 def get_permission_manager() -> PermissionManager:
     """
     Get global PermissionManager singleton.
-    
+
     This is called by ConfigSystem when building Agents with enable_permission=True.
     The PermissionManager is shared across all Agents in the system.
-    
+
     Dependencies are lazily resolved from agio.api.deps to avoid circular imports.
-    
+
     Returns:
         PermissionManager: Global singleton instance
     """
     global _permission_manager
-    
+
     if _permission_manager is None:
         from agio.api.deps import (
             get_config_sys,
@@ -34,9 +34,9 @@ def get_permission_manager() -> PermissionManager:
             get_consent_waiter,
             get_permission_service,
         )
-        
+
         logger.info("initializing_global_permission_manager")
-        
+
         _permission_manager = PermissionManager(
             consent_store=get_consent_store(),
             consent_waiter=get_consent_waiter(),
@@ -45,14 +45,14 @@ def get_permission_manager() -> PermissionManager:
             cache_ttl=300,
             cache_size=1000,
         )
-    
+
     return _permission_manager
 
 
 def reset_permission_manager() -> None:
     """
     Reset global PermissionManager singleton.
-    
+
     This is primarily used for testing to ensure a clean state.
     """
     global _permission_manager

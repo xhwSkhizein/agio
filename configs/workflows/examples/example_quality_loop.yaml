@@ -13,9 +13,9 @@ stages:
     input: |
       Act as a quality reviewer. Review the following content:
       
-      {query}
+      {{ input }}
       
-      Previous feedback (if any): {loop.last.improve}
+      Previous feedback (if any): {{ loop.last.improve }}
       
       Provide:
       - Quality score (1-10)
@@ -28,16 +28,16 @@ stages:
       Improve the following content based on review feedback:
       
       Original Content:
-      {query}
+      {{ input }}
       
       Review Feedback:
-      {review}
+      {{ nodes.review.output }}
       
       Make specific improvements to address the issues.
-    condition: "{review} contains 'NEEDS_REVISION'"
+    condition: "{{ 'NEEDS_REVISION' in nodes.review.output }}"
 
 # Continue looping while verdict is NEEDS_REVISION
-condition: "{review} contains 'NEEDS_REVISION'"
+condition: "{{ 'NEEDS_REVISION' in nodes.review.output }}"
 max_iterations: 3
 
 # Storage

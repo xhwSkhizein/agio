@@ -11,8 +11,8 @@ from sse_starlette.sse import EventSourceResponse
 
 from agio.api.deps import get_trace_store
 from agio.config import ConfigSystem, get_config_system
-from agio.observability.trace import Trace, Span, SpanKind, SpanStatus
-from agio.storage.trace.store import TraceStore, TraceQuery
+from agio.observability.trace import Span, SpanKind, SpanStatus, Trace
+from agio.storage.trace.store import TraceQuery, TraceStore
 
 router = APIRouter(prefix="/traces", tags=["Observability"])
 
@@ -247,12 +247,12 @@ async def list_llm_calls(
 ):
     """
     Query LLM calls from all traces.
-    
+
     Returns:
         List of LLM call summaries extracted from Trace spans
     """
     store = get_trace_store(config_sys=config_system)
-    
+
     # Query traces with filters
     query = TraceQuery(
         agent_id=agent_id,
@@ -263,7 +263,7 @@ async def list_llm_calls(
         offset=0,
     )
     traces = await store.query_traces(query)
-    
+
     # Extract LLM_CALL spans
     llm_calls = []
     for trace in traces:
@@ -276,9 +276,9 @@ async def list_llm_calls(
                     continue
                 if provider and span.metrics.get("provider") != provider:
                     continue
-                
+
                 llm_calls.append(_span_to_llm_call(span, trace))
-    
+
     # Apply pagination
     start = offset
     end = start + limit
@@ -350,12 +350,12 @@ def _span_to_summary(span: Span) -> SpanSummary:
 def _build_waterfall(trace: Trace) -> WaterfallData:
     """Build waterfall chart data"""
     from datetime import timezone
-    
+
     trace_start = trace.start_time
     # Ensure trace_start is timezone-aware
     if trace_start.tzinfo is None:
         trace_start = trace_start.replace(tzinfo=timezone.utc)
-    
+
     spans = []
 
     for span in trace.spans:
@@ -363,7 +363,7 @@ def _build_waterfall(trace: Trace) -> WaterfallData:
         span_start = span.start_time
         if span_start.tzinfo is None:
             span_start = span_start.replace(tzinfo=timezone.utc)
-        
+
         # Calculate relative offset
         offset = (span_start - trace_start).total_seconds() * 1000
 

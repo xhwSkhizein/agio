@@ -4,6 +4,7 @@ requires_consent: true
 description: "Write content to files with safety checks"
 tool_name: file_write
 params:
+  # timeout_seconds: 30
   # max_file_size_mb: 10.0
 enabled: true
 tags:

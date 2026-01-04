@@ -5,6 +5,7 @@ This module defines the event types used for real-time streaming
 of agent execution to clients via SSE.
 """
 
+import json
 from datetime import datetime
 from enum import Enum
 from typing import Any
@@ -90,11 +91,11 @@ class StepEvent(BaseModel):
 
     # Workflow hierarchy info (for frontend to build tree structure)
     workflow_type: str | None = None  # "pipeline" | "parallel" | "loop"
-    workflow_id: str | None = None    # ID of the workflow
+    workflow_id: str | None = None  # ID of the workflow
     parent_run_id: str | None = None  # Parent run ID for nesting
-    node_name: str | None = None      # Human-readable node name
-    node_index: int | None = None     # 0-based index in sequence
-    total_nodes: int | None = None    # Total number of nodes
+    node_name: str | None = None  # Human-readable node name
+    node_index: int | None = None  # 0-based index in sequence
+    total_nodes: int | None = None  # Total number of nodes
 
     # Observability reserved
     trace_id: str | None = None
@@ -106,9 +107,9 @@ class StepEvent(BaseModel):
     nested_runnable_id: str | None = None  # ID of nested Agent/Workflow
 
     # Runnable identity (for unified display)
-    runnable_type: str | None = None   # "agent" | "workflow"
-    runnable_id: str | None = None     # Agent/Workflow config ID
-    nesting_type: str | None = None    # "tool_call" | "workflow_node" | None
+    runnable_type: str | None = None  # "agent" | "workflow"
+    runnable_id: str | None = None  # Agent/Workflow config ID
+    nesting_type: str | None = None  # "tool_call" | "workflow_node" | None
 
     def to_sse(self) -> str:
         """
@@ -117,8 +118,6 @@ class StepEvent(BaseModel):
         Returns:
             str: SSE-formatted string ready to send to client
         """
-        import json
-
         data = self.model_dump(mode="json", exclude_none=True)
         return f"data: {json.dumps(data)}\n\n"
 
@@ -144,8 +143,8 @@ class ToolResult(BaseModel):
 
 
 def create_run_started_event(
-    run_id: str, 
-    query: str, 
+    run_id: str,
+    query: str,
     session_id: str,
     *,
     depth: int = 0,
@@ -170,8 +169,8 @@ def create_run_started_event(
 
 
 def create_run_completed_event(
-    run_id: str, 
-    response: str, 
+    run_id: str,
+    response: str,
     metrics: dict,
     termination_reason: str | None = None,
     max_steps: int | None = None,
@@ -203,7 +202,7 @@ def create_run_completed_event(
 
 
 def create_run_failed_event(
-    run_id: str, 
+    run_id: str,
     error: str,
     *,
     depth: int = 0,
@@ -215,8 +214,8 @@ def create_run_failed_event(
 ) -> StepEvent:
     """Create a RUN_FAILED event with optional nested context"""
     return StepEvent(
-        type=StepEventType.RUN_FAILED, 
-        run_id=run_id, 
+        type=StepEventType.RUN_FAILED,
+        run_id=run_id,
         data={"error": error},
         depth=depth,
         parent_run_id=parent_run_id,
@@ -228,8 +227,8 @@ def create_run_failed_event(
 
 
 def create_step_delta_event(
-    step_id: str, 
-    run_id: str, 
+    step_id: str,
+    run_id: str,
     delta: StepDelta,
     *,
     depth: int = 0,
@@ -241,9 +240,9 @@ def create_step_delta_event(
 ) -> StepEvent:
     """Create a STEP_DELTA event with optional nested context"""
     return StepEvent(
-        type=StepEventType.STEP_DELTA, 
-        step_id=step_id, 
-        run_id=run_id, 
+        type=StepEventType.STEP_DELTA,
+        step_id=step_id,
+        run_id=run_id,
         delta=delta,
         depth=depth,
         parent_run_id=parent_run_id,
@@ -255,8 +254,8 @@ def create_step_delta_event(
 
 
 def create_step_completed_event(
-    step_id: str, 
-    run_id: str, 
+    step_id: str,
+    run_id: str,
     snapshot: Step,
     *,
     depth: int = 0,
@@ -268,9 +267,9 @@ def create_step_completed_event(
 ) -> StepEvent:
     """Create a STEP_COMPLETED event with optional nested context"""
     return StepEvent(
-        type=StepEventType.STEP_COMPLETED, 
-        step_id=step_id, 
-        run_id=run_id, 
+        type=StepEventType.STEP_COMPLETED,
+        step_id=step_id,
+        run_id=run_id,
         snapshot=snapshot,
         depth=depth,
         parent_run_id=parent_run_id,

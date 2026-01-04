@@ -9,7 +9,7 @@ from agio.domain import MessageRole, Step
 from agio.runtime import RunOutput
 from agio.domain.models import RunMetrics
 from agio.storage.session import InMemorySessionStore
-from agio.runtime.protocol import ExecutionContext
+from agio.runtime.protocol import ExecutionContext, RunnableType
 from agio.runtime.wire import Wire
 from agio.workflow.pipeline import PipelineWorkflow
 from agio.workflow.node import WorkflowNode
@@ -25,7 +25,7 @@ def mock_runnable():
     """Create a mock Runnable"""
     runnable = MagicMock()
     runnable.id = "agent_1"
-    runnable.runnable_type = "agent"  # Required for RunnableExecutor
+    runnable.runnable_type = RunnableType.AGENT
     
     async def mock_run(input, *, context, emit_run_events=True):
         return RunOutput(
@@ -69,12 +69,12 @@ async def test_workflow_resume_skips_completed_nodes(mock_runnable, session_stor
         WorkflowNode(
             id="node_1",
             runnable=mock_runnable,
-            input_template="{input}",
+            input_template="{{ input }}",
         ),
         WorkflowNode(
             id="node_2",
             runnable=mock_runnable,
-            input_template="Previous: {node_1.output}",
+            input_template="Previous: {{ nodes.node_1.output }}",
         ),
     ]
 

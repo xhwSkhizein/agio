@@ -4,29 +4,32 @@ ContextResolver - Resolve template variables from SessionStore.
 This module provides template variable resolution for workflow execution,
 allowing nodes to reference outputs from previous nodes and other context.
 
-Supported variables:
-- {node_id.output} - Output from a specific node
-- {input} - Original workflow input
-- {loop.iteration} - Current loop iteration (for LoopWorkflow)
-- {loop.last.node_id} - Last iteration output for a node
+Supported variables (Jinja2 syntax):
+- {{ nodes.node_id.output }} - Output from a specific node
+- {{ input }} - Original workflow input
+- {{ loop.iteration }} - Current loop iteration (for LoopWorkflow)
+- {{ loop.last.node_id }} - Last iteration output for a node
+- {{ env.VAR_NAME }} - Environment variable
 """
 
-import re
-from typing import Dict, Optional, Any
+import os
+from typing import Any
 
+from agio.config.template import renderer
 from agio.storage.session.base import SessionStore
 from agio.workflow.state import WorkflowState
 
 
 class ContextResolver:
     """
-    Resolve template variables from workflow context.
+    Resolve template variables from workflow context using Jinja2.
 
-    Supports variable references like:
-    - {node_a.output} - Get output from node_a
-    - {input} - Original workflow input
-    - {loop.iteration} - Current loop iteration
-    - {loop.last.node_id} - Last iteration output
+    Supports variable references (Jinja2 syntax):
+    - {{ nodes.node_a.output }} - Get output from node_a
+    - {{ input }} - Original workflow input
+    - {{ loop.iteration }} - Current loop iteration
+    - {{ loop.last.node_id }} - Last iteration output
+    - {{ env.VAR_NAME }} - Environment variable
     """
 
     def __init__(
@@ -34,7 +37,7 @@ class ContextResolver:
         session_id: str,
         workflow_id: str,
         store: "SessionStore",
-        state: Optional["WorkflowState"] = None,
+        state: WorkflowState | None = None,
     ):
         """
         Initialize ContextResolver.
@@ -49,14 +52,14 @@ class ContextResolver:
         self.workflow_id = workflow_id
         self.store = store
         self.state = state
-        self._input: Optional[str] = None
-        self._loop_context: Dict[str, Any] = {}
+        self._input: str | None = None
+        self._loop_context: dict[str, Any] = {}
 
     def set_input(self, input: str) -> None:
         """Set the original workflow input."""
         self._input = input
 
-    def set_loop_context(self, iteration: int, last_outputs: Dict[str, str]) -> None:
+    def set_loop_context(self, iteration: int, last_outputs: dict[str, str]) -> None:
         """
         Set loop context for LoopWorkflow.
 
@@ -69,7 +72,7 @@ class ContextResolver:
             "last": last_outputs,
         }
 
-    async def get_node_output(self, node_id: str) -> Optional[str]:
+    async def get_node_output(self, node_id: str) -> str | None:
         """
         Get output for a specific node.
 
@@ -97,83 +100,57 @@ class ContextResolver:
     async def resolve_template(
         self,
         template: str,
-        additional_vars: Optional[Dict[str, Any]] = None,
+        additional_vars: dict[str, Any] | None = None,
     ) -> str:
         """
-        Resolve template string with variable substitution.
+        Resolve template string using Jinja2.
 
-        Supported variable patterns:
-        - {node_id.output} - Node output
-        - {input} - Workflow input
-        - {loop.iteration} - Loop iteration
-        - {loop.last.node_id} - Last iteration output
+        Supported variable patterns (Jinja2 syntax):
+        - {{ nodes.node_id.output }} - Node output
+        - {{ input }} - Workflow input
+        - {{ loop.iteration }} - Loop iteration
+        - {{ loop.last.node_id }} - Last iteration output
+        - {{ env.VAR_NAME }} - Environment variable
 
         Args:
-            template: Template string with {variable} placeholders
+            template: Template string with Jinja2 syntax
             additional_vars: Additional variables to inject
 
         Returns:
-            Resolved template string
+            Rendered template string
         """
-        vars_dict: Dict[str, Any] = {}
-        if additional_vars:
-            vars_dict.update(additional_vars)
+        # Build nodes dictionary (lazy-loaded as needed)
+        nodes = await self._build_nodes_dict()
 
-        # Add input variable
-        if self._input is not None:
-            vars_dict["input"] = self._input
+        # Build context with all available variables
+        context = {
+            "input": self._input or "",
+            "nodes": nodes,
+            "env": os.environ,
+        }
 
-        # Add loop context
         if self._loop_context:
-            vars_dict["loop"] = self._loop_context
+            context["loop"] = self._loop_context
 
-        # Find all variable references: {variable} or {node_id.output}
-        pattern = r"\{([^}]+)\}"
-        matches = re.findall(pattern, template)
+        if additional_vars:
+            context.update(additional_vars)
 
-        resolved_vars: Dict[str, str] = {}
+        # Render using Jinja2
+        return renderer.render(template, **context)
 
-        for var_expr in matches:
-            if var_expr in resolved_vars:
-                continue
+    async def _build_nodes_dict(self) -> dict[str, dict[str, str]]:
+        """Build nodes dictionary from state cache.
 
-            # Handle node output references: {node_id.output}
-            if var_expr.endswith(".output"):
-                node_id = var_expr[:-7]  # Remove ".output"
-                output = await self.get_node_output(node_id)
-                resolved_vars[var_expr] = output or ""
-            # Handle loop.last.node_id
-            elif var_expr.startswith("loop.last."):
-                node_id = var_expr[10:]  # Remove "loop.last."
-                if self._loop_context and "last" in self._loop_context:
-                    last_outputs = self._loop_context["last"]
-                    resolved_vars[var_expr] = last_outputs.get(node_id, "")
-                else:
-                    resolved_vars[var_expr] = ""
-            # Handle nested variables: {loop.iteration}
-            elif "." in var_expr:
-                parts = var_expr.split(".")
-                current = vars_dict
-                for part in parts:
-                    if isinstance(current, dict):
-                        current = current.get(part)
-                        if current is None:
-                            break
-                    else:
-                        current = None
-                        break
-                resolved_vars[var_expr] = str(current) if current is not None else ""
-            # Handle simple variables: {input}
-            elif var_expr in vars_dict:
-                value = vars_dict[var_expr]
-                resolved_vars[var_expr] = str(value) if value is not None else ""
-            else:
-                # Unknown variable, leave as-is or empty
-                resolved_vars[var_expr] = ""
+        Returns:
+            Dictionary mapping node_id to {output: content}
+        """
+        nodes = {}
 
-        # Replace all variables in template
-        result = template
-        for var_expr, value in resolved_vars.items():
-            result = result.replace(f"{{{var_expr}}}", value)
+        # If we have state, use it to get available nodes
+        if self.state:
+            for node_id in self.state._outputs.keys():
+                output = self.state.get_output(node_id)
+                if output is not None:
+                    nodes[node_id] = {"output": output}
 
-        return result
+        return nodes

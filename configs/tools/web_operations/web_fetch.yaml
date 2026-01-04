@@ -8,6 +8,13 @@ dependencies:
 params:
   # timeout_seconds: 30
   # max_content_length: 4096
+  # max_retries: 1
+  # wait_strategy: "domcontentloaded"
+  # max_size_mb: 10.0
+  # headless: true
+  # save_login_state: false
+  # user_data_dir: "chrome_user_data"
+  # browser_launch_timeout: 30
 enabled: true
 tags:
   - web

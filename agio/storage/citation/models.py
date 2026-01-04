@@ -1,6 +1,8 @@
-"""Citation 系统数据模型
+"""
+Citation system data models.
 
-用于 web_search 和 web_fetch 工具的引用管理，减少 Token 使用。
+Used for citation management in web_search and web_fetch tools,
+reducing token usage.
 """
 
 from datetime import datetime
@@ -11,66 +13,63 @@ from pydantic import BaseModel, Field
 
 
 class CitationSourceType(str, Enum):
-    """信息源类型"""
+    """Citation source type."""
 
-    SEARCH = "search"  # 来自 web_search 工具
-    DIRECT_URL = "direct_url"  # 直接通过 URL fetch
+    SEARCH = "search"  # From web_search tool
+    DIRECT_URL = "direct_url"  # Direct URL fetch
 
 
 class CitationSourceRaw(BaseModel):
-    """完整的信息源模型（用于内部存储）"""
+    """Complete citation source model (for internal storage)."""
 
-    citation_id: str = Field(description="唯一引用 ID")
-    session_id: str = Field(description="会话 ID")
-    source_type: CitationSourceType = Field(description="来源类型")
+    citation_id: str = Field(description="Unique citation ID")
+    session_id: str = Field(description="Session ID")
+    source_type: CitationSourceType = Field(description="Source type")
 
-    # 基本信息
-    url: str = Field(description="网页 URL")
-    title: str | None = Field(default=None, description="标题")
-    snippet: str | None = Field(default=None, description="摘要（search 结果）")
-    date_published: str | None = Field(default=None, description="发布日期")
-    source: str | None = Field(default=None, description="来源")
+    # Basic information
+    url: str = Field(description="Web page URL")
+    title: str | None = Field(default=None, description="Title")
+    snippet: str | None = Field(default=None, description="Snippet (search result)")
+    date_published: str | None = Field(default=None, description="Publication date")
+    source: str | None = Field(default=None, description="Source")
 
-    # 内容信息
-    full_content: str | None = Field(default=None, description="完整内容（fetch 结果）")
-    processed_content: str | None = Field(
-        default=None, description="处理后给 LLM 的内容"
-    )
+    # Content information
+    full_content: str | None = Field(default=None, description="Full content (fetch result)")
+    processed_content: str | None = Field(default=None, description="Processed content for LLM")
     original_content: dict[str, Any] | None = Field(
-        default=None, description="原始内容元数据"
+        default=None, description="Original content metadata"
     )
 
-    # 关联关系
+    # Relationships
     related_citation_id: str | None = Field(
-        default=None, description="关联的 citation_id（fetch 关联到 search）"
+        default=None, description="Related citation_id (fetch linked to search)"
     )
     related_index: int | None = Field(
-        default=None, description="关联的索引（fetch 关联到 search 的 index）"
+        default=None, description="Related index (fetch linked to search index)"
     )
 
-    # 元数据
-    query: str | None = Field(default=None, description="搜索查询（search 类型）")
+    # Metadata
+    query: str | None = Field(default=None, description="Search query (search type)")
     parameters: dict[str, Any] = Field(
-        default_factory=dict, description="处理参数（search_query, summarize 等）"
+        default_factory=dict, description="Processing parameters (search_query, summarize, etc.)"
     )
     index: int | None = Field(
-        default=None, description="数字索引（search 结果使用，用于 web_fetch(index=N)）"
+        default=None, description="Numeric index (for search results, used in web_fetch(index=N))"
     )
-    created_at: datetime = Field(default_factory=datetime.now, description="创建时间")
+    created_at: datetime = Field(default_factory=datetime.now, description="Creation timestamp")
 
 
 class CitationSourceSimplified(BaseModel):
-    """简化的信息源模型（给 LLM，隐藏详细信息）"""
+    """Simplified citation source model (for LLM, hides detailed information)."""
 
-    citation_id: str = Field(description="引用 ID")
-    source_type: CitationSourceType = Field(description="来源类型")
-    url: str = Field(description="网页 URL")
+    citation_id: str = Field(description="Citation ID")
+    source_type: CitationSourceType = Field(description="Source type")
+    url: str = Field(description="Web page URL")
     index: int | None = Field(
-        default=None, description="数字索引（search 结果，用于 web_fetch(index=N)）"
+        default=None, description="Numeric index (for search results, used in web_fetch(index=N))"
     )
-    title: str | None = Field(default=None, description="标题")
-    snippet: str | None = Field(default=None, description="摘要")
-    date_published: str | None = Field(default=None, description="发布日期")
-    source: str | None = Field(default=None, description="来源")
-    created_at: datetime | None = Field(default=None, description="创建时间")
-
+    title: str | None = Field(default=None, description="Title")
+    snippet: str | None = Field(default=None, description="Snippet")
+    date_published: str | None = Field(default=None, description="Publication date")
+    source: str | None = Field(default=None, description="Source")
+    created_at: datetime | None = Field(default=None, description="Creation timestamp")

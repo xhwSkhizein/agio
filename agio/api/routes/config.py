@@ -9,8 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from agio.api.deps import get_config_sys
-from agio.config import ConfigSystem
-from agio.config import ComponentType
+from agio.config import ComponentType, ConfigSystem
 
 router = APIRouter(prefix="/config")
 
@@ -18,6 +17,7 @@ router = APIRouter(prefix="/config")
 # Request/Response Models
 class ConfigData(BaseModel):
     """Configuration data for create/update."""
+
     config: dict[str, Any]
 
 

@@ -1,3 +1,9 @@
+"""
+Builder Registry - Component builder registration and management.
+
+Manages component builders and provides query interfaces for building components.
+"""
+
 from typing import Any, Protocol
 
 from agio.config.schema import ComponentConfig, ComponentType
@@ -7,48 +13,46 @@ logger = get_logger(__name__)
 
 
 class ComponentBuilder(Protocol):
-    """构建器协议"""
+    """Builder protocol."""
 
-    async def build(
-        self, config: ComponentConfig, dependencies: dict[str, Any]
-    ) -> Any:
+    async def build(self, config: ComponentConfig, dependencies: dict[str, Any]) -> Any:
         """
-        构建组件实例
-        
+        Build component instance.
+
         Args:
-            config: 组件配置
-            dependencies: 已解析的依赖
-            
+            config: Component configuration
+            dependencies: Resolved dependencies
+
         Returns:
-            组件实例
+            Component instance
         """
         ...
 
     async def cleanup(self, instance: Any) -> None:
         """
-        清理组件资源
-        
+        Cleanup component resources.
+
         Args:
-            instance: 组件实例
+            instance: Component instance
         """
         ...
 
 
 class BuilderRegistry:
     """
-    构建器注册表 - 管理组件构建器
-    
-    职责：
-    - 注册和查询构建器
-    - 支持动态注册（扩展性）
+    Builder registry - manages component builders.
+
+    Responsibilities:
+    - Register and query builders
+    - Support dynamic registration (extensibility)
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._builders: dict[ComponentType, ComponentBuilder] = {}
         self._register_defaults()
 
     def _register_defaults(self) -> None:
-        """注册默认构建器"""
+        """Register default builders."""
         from agio.config.builders import (
             AgentBuilder,
             CitationStoreBuilder,
@@ -73,58 +77,56 @@ class BuilderRegistry:
 
         logger.debug("Registered default builders")
 
-    def register(
-        self, component_type: ComponentType, builder: ComponentBuilder
-    ) -> None:
+    def register(self, component_type: ComponentType, builder: ComponentBuilder) -> None:
         """
-        注册构建器
-        
+        Register builder.
+
         Args:
-            component_type: 组件类型
-            builder: 构建器实例
+            component_type: Component type
+            builder: Builder instance
         """
         self._builders[component_type] = builder
         logger.debug(f"Registered builder for type: {component_type.value}")
 
     def get(self, component_type: ComponentType) -> ComponentBuilder | None:
         """
-        获取构建器
-        
+        Get builder for component type.
+
         Args:
-            component_type: 组件类型
-            
+            component_type: Component type
+
         Returns:
-            构建器实例，不存在返回 None
+            Builder instance, or None if not found
         """
         return self._builders.get(component_type)
 
     def has(self, component_type: ComponentType) -> bool:
         """
-        检查构建器是否存在
-        
+        Check if builder exists for component type.
+
         Args:
-            component_type: 组件类型
-            
+            component_type: Component type
+
         Returns:
-            是否存在
+            Whether builder exists
         """
         return component_type in self._builders
 
     def list_types(self) -> list[ComponentType]:
         """
-        列出所有已注册的组件类型
-        
+        List all registered component types.
+
         Returns:
-            组件类型列表
+            List of component types
         """
         return list(self._builders.keys())
 
     def unregister(self, component_type: ComponentType) -> None:
         """
-        注销构建器
-        
+        Unregister builder for component type.
+
         Args:
-            component_type: 组件类型
+            component_type: Component type
         """
         if component_type in self._builders:
             del self._builders[component_type]

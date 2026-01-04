@@ -1,0 +1,18 @@
+type: trace_store
+name: trace_store
+description: "Trace storage for observability and debugging"
+enabled: true
+tags:
+  - observability
+  - tracing
+  - mongodb
+
+backend:
+  type: mongodb
+  uri: "{{ env.AGIO_MONGO_URI | default('mongodb://localhost:27017') }}"
+  db_name: "{{ env.AGIO_MONGO_DB | default('agio') }}"
+  collection_name: traces
+
+buffer_size: 1000
+flush_interval: 60
+enable_persistence: true

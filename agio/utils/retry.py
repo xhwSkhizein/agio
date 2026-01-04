@@ -1,4 +1,11 @@
+"""
+Retry utilities - Async retry decorator with exponential backoff.
+
+Provides retry logic for async functions, commonly used for LLM API calls.
+"""
+
 import logging
+from typing import Callable, TypeVar
 
 from tenacity import (
     before_sleep_log,
@@ -9,6 +16,8 @@ from tenacity import (
 )
 
 from agio.utils.logging import get_logger
+
+T = TypeVar("T")
 
 logger = get_logger(__name__)
 
@@ -22,10 +31,19 @@ def retry_async(
     max_attempts: int = 3,
     min_wait: float = 1.0,
     max_wait: float = 10.0,
-    exceptions: tuple = RETRYABLE_EXCEPTIONS,
-):
+    exceptions: tuple[type[Exception], ...] = RETRYABLE_EXCEPTIONS,
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """
     Decorator for async functions to add retry logic with exponential backoff.
+
+    Args:
+        max_attempts: Maximum number of retry attempts
+        min_wait: Minimum wait time between retries (seconds)
+        max_wait: Maximum wait time between retries (seconds)
+        exceptions: Tuple of exception types to retry on
+
+    Returns:
+        Decorator function
     """
     return retry(
         reraise=True,

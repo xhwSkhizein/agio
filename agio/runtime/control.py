@@ -7,13 +7,11 @@ This module consolidates:
 """
 
 import asyncio
-from typing import List, Optional
 from uuid import uuid4
 
-from agio.domain import Step, MessageRole
-from agio.utils.logging import get_logger
-
+from agio.domain import MessageRole, Step
 from agio.storage.session import SessionStore
+from agio.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -46,11 +44,11 @@ class AbortSignal:
         >>> await signal.wait()
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._event = asyncio.Event()
         self._reason: str | None = None
 
-    def abort(self, reason: str = "Operation cancelled"):
+    def abort(self, reason: str = "Operation cancelled") -> None:
         """Trigger abort signal."""
         self._reason = reason
         self._event.set()
@@ -59,7 +57,7 @@ class AbortSignal:
         """Check if abort has been triggered."""
         return self._event.is_set()
 
-    async def wait(self):
+    async def wait(self) -> None:
         """Async wait for abort signal."""
         await self._event.wait()
 
@@ -68,7 +66,7 @@ class AbortSignal:
         """Get abort reason."""
         return self._reason
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset abort signal for reuse."""
         self._event.clear()
         self._reason = None
@@ -83,10 +81,10 @@ async def fork_session(
     original_session_id: str,
     sequence: int,
     session_store: "SessionStore",
-    modified_content: Optional[str] = None,
-    modified_tool_calls: Optional[List[dict]] = None,
+    modified_content: str | None = None,
+    modified_tool_calls: list[dict] | None = None,
     exclude_last: bool = False,
-) -> tuple[str, int, Optional[str]]:
+) -> tuple[str, int, str | None]:
     """
     Fork a session at a specific sequence.
 
@@ -108,14 +106,12 @@ async def fork_session(
         exclude_last: If True, exclude the target step (for user step fork)
 
     Returns:
-        tuple[str, int, Optional[str]]: (new_session_id, last_step_sequence, pending_user_message)
+        tuple[str, int, str | None]: (new_session_id, last_step_sequence, pending_user_message)
             - str: 新创建的 session_id
             - int: 最后一个 step 的 sequence 号
-            - Optional[str]: 如果是 user step fork，返回待处理的 user message；否则为 None
+            - str | None: 如果是 user step fork，返回待处理的 user message；否则为 None
     """
-    logger.info(
-        "fork_started", original_session_id=original_session_id, sequence=sequence
-    )
+    logger.info("fork_started", original_session_id=original_session_id, sequence=sequence)
 
     # 1. Get steps up to sequence
     steps = await session_store.get_steps(original_session_id, end_seq=sequence)
@@ -126,7 +122,7 @@ async def fork_session(
         )
 
     target_step = steps[-1]
-    pending_user_message: Optional[str] = None
+    pending_user_message: str | None = None
 
     # 2. Handle user step fork - exclude the user step and return its content
     if target_step.role == MessageRole.USER:
@@ -152,7 +148,7 @@ async def fork_session(
     )
 
     # 4. Copy steps to new session with new IDs
-    new_steps: List[Step] = []
+    new_steps: list[Step] = []
     for i, step in enumerate(steps):
         is_last = i == len(steps) - 1
 
@@ -166,9 +162,7 @@ async def fork_session(
             if modified_content is not None:
                 update_fields["content"] = modified_content
             if modified_tool_calls is not None:
-                update_fields["tool_calls"] = (
-                    modified_tool_calls if modified_tool_calls else None
-                )
+                update_fields["tool_calls"] = modified_tool_calls if modified_tool_calls else None
 
         new_step = step.model_copy(update=update_fields)
         new_steps.append(new_step)
@@ -191,4 +185,3 @@ async def fork_session(
 
 
 __all__ = ["AbortSignal", "fork_session"]
-

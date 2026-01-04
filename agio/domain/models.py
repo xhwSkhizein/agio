@@ -15,7 +15,6 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 # ============================================================================
 # Enums
 # ============================================================================
@@ -68,9 +67,7 @@ def normalize_usage_metrics(usage_data: dict[str, Any] | None) -> dict[str, int 
 
     # Handle both OpenAI-style and unified-style keys
     input_tokens = usage_data.get("input_tokens") or usage_data.get("prompt_tokens")
-    output_tokens = usage_data.get("output_tokens") or usage_data.get(
-        "completion_tokens"
-    )
+    output_tokens = usage_data.get("output_tokens") or usage_data.get("completion_tokens")
     total_tokens = usage_data.get("total_tokens")
 
     # Calculate total_tokens if not provided but both input/output are available
@@ -122,7 +119,7 @@ class StepMetrics(BaseModel):
 class RunMetrics(BaseModel):
     """
     Metrics for a single Run (Agent or Workflow).
-    
+
     Supports merge for aggregating metrics from child runs.
     """
 
@@ -156,7 +153,7 @@ class RunMetrics(BaseModel):
     ) -> None:
         """
         Merge another RunMetrics into this one.
-        
+
         Args:
             other: RunMetrics to merge
             mode: "sequential" or "parallel"
@@ -253,9 +250,7 @@ class Step(BaseModel):
     depth: int = 0  # Nesting depth in workflow
 
     # --- LLM Call Context (for assistant steps) ---
-    llm_messages: list[dict[str, Any]] | None = (
-        None  # Complete message list sent to LLM
-    )
+    llm_messages: list[dict[str, Any]] | None = None  # Complete message list sent to LLM
     llm_tools: list[dict[str, Any]] | None = None  # Tool definitions sent to LLM
     llm_request_params: dict[str, Any] | None = (
         None  # Request parameters (temperature, max_tokens, etc.)
@@ -303,26 +298,26 @@ class AgentRunSummary(BaseModel):
 class Run(BaseModel):
     """
     Unified Run metadata for Agent and Workflow.
-    
+
     Run 是轻量级的元数据记录，主要用于：
     1. 快速查询历史记录
     2. 聚合展示运行状态和指标
     3. 引用关联的 Steps（通过 session_id）
-    
+
     核心数据存储在 Steps 中。
     """
 
     id: str = Field(default_factory=lambda: str(uuid4()))
     runnable_id: str  # Agent or Workflow ID
     runnable_type: str = "agent"  # "agent" or "workflow"
-    session_id: str  # 关联 Steps 的 session_id
+    session_id: str  # Associated Steps' session_id
     user_id: str | None = None
 
     input_query: str
     status: RunStatus = RunStatus.STARTING
 
-    # 聚合的元数据
-    response_content: str | None = None  # 最终响应内容（从 Steps 提取）
+    # Aggregated metadata
+    response_content: str | None = None  # Final response content (extracted from Steps)
     metrics: RunMetrics = Field(default_factory=RunMetrics)
 
     created_at: datetime = Field(default_factory=datetime.now)

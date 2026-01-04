@@ -5,6 +5,7 @@ tool_name: bash
 requires_consent: true
 params:
   # timeout_seconds: 300
+  # max_output_size_kb: 1024
   # max_output_length: 30000
 enabled: true
 tags:

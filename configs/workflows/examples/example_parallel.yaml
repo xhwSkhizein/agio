@@ -12,7 +12,7 @@ stages:
     input: |
       Research locally using file system tools:
       
-      Task: {input}
+      Task: {{ input }}
       
       Focus on:
       - Finding relevant files
@@ -24,7 +24,7 @@ stages:
     input: |
       Research on the web:
       
-      Task: {input}
+      Task: {{ input }}
       
       Focus on:
       - Web search for external information
@@ -36,7 +36,7 @@ stages:
     input: |
       Analyze the request from a theoretical perspective:
       
-      Task: {input}
+      Task: {{ input }}
       
       Provide:
       - Theoretical framework
@@ -44,12 +44,14 @@ stages:
       - Conceptual insights
 
 # Merge template combines all branch outputs
-# Note: Current implementation uses {{results}} placeholder
 merge_template: |
   # Research Summary
+  {% for b in branches %}
+  ## {{ b.id }}
+  {{ b.output }}
   
-  {{results}}
-  
+  {% endfor %}
+  ---  
   ## Combined Insights
   Based on the above research, here are the key findings and recommendations.
 

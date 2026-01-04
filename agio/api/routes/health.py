@@ -26,7 +26,7 @@ class ReadyResponse(BaseModel):
 
 
 @router.get("", response_model=HealthResponse)
-async def health_check():
+async def health_check() -> HealthResponse:
     """Basic health check."""
     return HealthResponse(
         status="healthy",
@@ -36,7 +36,7 @@ async def health_check():
 
 
 @router.get("/ready", response_model=ReadyResponse)
-async def ready_check(config_sys: ConfigSystem = Depends(get_config_sys)):
+async def ready_check(config_sys: ConfigSystem = Depends(get_config_sys)) -> ReadyResponse:
     """Readiness check - verifies system is fully initialized."""
     components = config_sys.list_components()
     configs = config_sys.list_configs()

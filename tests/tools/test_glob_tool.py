@@ -3,7 +3,7 @@
 import pytest
 from pathlib import Path
 
-from agio.providers.tools.builtin.glob_tool import GlobTool
+from agio.tools.builtin.glob_tool import GlobTool
 from agio.runtime.protocol import ExecutionContext
 from agio.runtime import Wire
 from agio.runtime.control import AbortSignal

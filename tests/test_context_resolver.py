@@ -33,7 +33,7 @@ async def test_resolve_simple_variables(session_store):
     resolver.set_input("User query")
 
     # Resolve simple variable
-    result = await resolver.resolve_template("User said: {input}")
+    result = await resolver.resolve_template("User said: {{ input }}")
     assert result == "User said: User query"
 
 
@@ -80,7 +80,7 @@ async def test_resolve_node_output(session_store):
 
     # Resolve node output
     result = await resolver.resolve_template(
-        "Input: {input}, Node A: {node_a.output}, Node B: {node_b.output}"
+        "Input: {{ input }}, Node A: {{ nodes.node_a.output }}, Node B: {{ nodes.node_b.output }}"
     )
     assert result == "Input: Original input, Node A: Node A output, Node B: Node B output"
 
@@ -108,7 +108,7 @@ async def test_resolve_loop_variables(session_store):
 
     # Resolve loop variables
     result = await resolver.resolve_template(
-        "Iteration {loop.iteration}, Last: {loop.last.node_a}"
+        "Iteration {{ loop.iteration }}, Last: {{ loop.last.node_a }}"
     )
     assert result == "Iteration 3, Last: Last iteration output"
 
@@ -131,7 +131,7 @@ async def test_resolve_missing_node_output(session_store):
     resolver.set_input("Input")
 
     # Resolve non-existent node
-    result = await resolver.resolve_template("Node output: {node_x.output}")
+    result = await resolver.resolve_template("Node output: {{ nodes.node_x.output }}")
     assert result == "Node output: "
 
 

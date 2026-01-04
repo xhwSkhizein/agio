@@ -9,11 +9,10 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from agio.observability.trace import Trace, SpanStatus
+from agio.observability.trace import SpanStatus, Trace
 from agio.utils.logging import get_logger
 
 logger = get_logger(__name__)
-
 
 
 class TraceQuery(BaseModel):
@@ -40,7 +39,7 @@ class TraceStore:
     - Async MongoDB operations
     - In-memory ring buffer for real-time access
     - SSE subscriber support
-    
+
     Note: TraceStore is managed by ConfigSystem. Use ConfigSystem to get instance.
     """
 
@@ -50,7 +49,7 @@ class TraceStore:
         db_name: str = "agio",
         collection_name: str = "traces",
         buffer_size: int = 200,
-    ):
+    ) -> None:
         self.mongo_uri = mongo_uri
         self.db_name = db_name
         self.collection_name = collection_name
@@ -242,4 +241,3 @@ class TraceStore:
 
 
 __all__ = ["TraceStore", "TraceQuery"]
-

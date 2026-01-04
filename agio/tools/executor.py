@@ -8,29 +8,28 @@ import time
 from typing import Any
 
 from agio.domain import ToolResult
-from agio.tools.cache import get_tool_cache
-from agio.utils.logging import get_logger
-
-from agio.providers.tools import BaseTool
 from agio.runtime.control import AbortSignal
+from agio.runtime.permission.manager import PermissionManager
 from agio.runtime.protocol import ExecutionContext
-from agio.tools.cache import ToolResultCache
+from agio.tools import BaseTool
+from agio.tools.cache import ToolResultCache, get_tool_cache
+from agio.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
 
 class ToolExecutor:
     """Unified tool executor that returns ToolResult directly."""
-    
+
     def __init__(
         self,
         tools: list["BaseTool"],
         cache: "ToolResultCache | None" = None,
-        permission_manager=None,
-    ):
+        permission_manager: "PermissionManager | None" = None,
+    ) -> None:
         """
         Initialize tool executor.
-        
+
         Args:
             tools: List of tools (BaseTool only)
             cache: Optional cache for expensive tool results
@@ -39,7 +38,7 @@ class ToolExecutor:
         self.tools_map = {t.name: t for t in tools}
         self._cache = cache or get_tool_cache()
         self._permission_manager = permission_manager
-    
+
     async def execute(
         self,
         tool_call: dict[str, Any],
@@ -151,7 +150,9 @@ class ToolExecutor:
 
         try:
             logger.debug("executing_tool", tool_name=fn_name, tool_call_id=call_id)
-            result: ToolResult = await tool.execute(args, context=context, abort_signal=abort_signal)
+            result: ToolResult = await tool.execute(
+                args, context=context, abort_signal=abort_signal
+            )
             logger.debug(
                 "tool_execution_completed",
                 tool_name=fn_name,
@@ -210,7 +211,7 @@ class ToolExecutor:
             for tc in tool_calls
         ]
         return await asyncio.gather(*tasks)
-    
+
     def _create_error_result(
         self,
         call_id: str,
@@ -242,7 +243,7 @@ class ToolExecutor:
     ) -> ToolResult:
         """
         Create authorization denied ToolResult.
-        
+
         Critical: Must return explicit ToolResult with error information,
         so LLM can understand why tool call failed.
         """
@@ -251,7 +252,10 @@ class ToolExecutor:
             tool_name=tool_name,
             tool_call_id=call_id,
             input_args={},
-            content=f"Tool execution denied: {reason}. Please ask the user for permission or use a different approach.",
+            content=(
+                f"Tool execution denied: {reason}. "
+                "Please ask the user for permission or use a different approach."
+            ),
             output=None,
             error=f"Permission denied: {reason}",
             start_time=start_time,
@@ -262,4 +266,3 @@ class ToolExecutor:
 
 
 __all__ = ["ToolExecutor"]
-

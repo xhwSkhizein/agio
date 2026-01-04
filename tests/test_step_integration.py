@@ -20,7 +20,7 @@ from agio.agent import Agent, AgentExecutor
 from agio.runtime import Wire
 from agio.runtime.control import fork_session
 from agio.runtime.protocol import ExecutionContext
-from agio.providers.llm import StreamChunk
+from agio.llm import StreamChunk
 
 
 async def run_with_wire(agent, session, query, session_store=None):

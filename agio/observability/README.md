@@ -305,6 +305,6 @@ python examples/trace_example.py
 
 ## 参考文档
 
-- [observability_design.md](../../docs/observability_design.md) - 完整设计方案
+- [OBSERVABILITY.md](../../docs/OBSERVABILITY.md) - 完整设计方案
 - [OTLP_SETUP.md](../../docs/OTLP_SETUP.md) - OTLP 配置指南
 - [OpenTelemetry Specification](https://opentelemetry.io/docs/specs/otel/)

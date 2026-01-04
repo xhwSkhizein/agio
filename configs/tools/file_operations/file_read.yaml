@@ -8,6 +8,9 @@ params:
   # These override default settings
   # max_output_size_mb: 10.0
   # max_image_size_mb: 5.0
+  # max_image_width: 1920
+  # max_image_height: 1080
+  # timeout_seconds: 30
 enabled: true
 tags:
   - file

@@ -8,8 +8,10 @@ WorkflowNode is used at configuration time to define workflow structure,
 while execution happens at Step level.
 """
 
-from typing import Union, Any
+from typing import Any
+
 from pydantic import BaseModel
+
 from agio.workflow.mapping import InputMapping
 
 
@@ -26,9 +28,9 @@ class WorkflowNode(BaseModel):
     """
 
     id: str  # Node unique identifier (replaces stage_id)
-    runnable: Union[Any, str]  # Agent or SubWorkflow (instance or reference ID)
+    runnable: Any | str  # Agent or SubWorkflow (instance or reference ID)
     input_template: (
-        str  # Input template string, e.g., "用户说: {input}, 上一步结果: {node_a.output}"
+        str  # Input template string, e.g., "User said: {input}, previous result: {node_a.output}"
     )
     condition: str | None = None  # Optional execution condition
 

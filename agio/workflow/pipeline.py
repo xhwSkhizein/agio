@@ -12,16 +12,15 @@ Wire-based Architecture:
 
 import time
 
-from agio.runtime.protocol import ExecutionContext, RunOutput
 from agio.domain.models import RunMetrics
 from agio.runtime import RunnableExecutor
 from agio.runtime.event_factory import EventFactory
-from agio.workflow.state import WorkflowState
-from agio.workflow.resolver import ContextResolver
+from agio.runtime.protocol import ExecutionContext, RunOutput
+from agio.storage.session.base import SessionStore
 from agio.workflow.base import BaseWorkflow
 from agio.workflow.node import WorkflowNode
-
-from agio.storage.session.base import SessionStore
+from agio.workflow.resolver import ContextResolver
+from agio.workflow.state import WorkflowState
 
 
 class PipelineWorkflow(BaseWorkflow):

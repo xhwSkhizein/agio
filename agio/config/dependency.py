@@ -1,3 +1,10 @@
+"""
+Dependency Resolver - Dependency extraction and topological sorting.
+
+Extracts configuration dependencies, performs topological sorting,
+and detects circular dependencies.
+"""
+
 from collections import deque
 from dataclasses import dataclass
 
@@ -16,7 +23,7 @@ logger = get_logger(__name__)
 
 @dataclass
 class DependencyNode:
-    """依赖节点"""
+    """Dependency node."""
 
     name: str
     component_type: ComponentType
@@ -25,26 +32,26 @@ class DependencyNode:
 
 class DependencyResolver:
     """
-    依赖解析器 - 统一处理依赖关系
-    
-    职责：
-    - 提取配置的依赖关系
-    - 拓扑排序
-    - 循环依赖检测（fail fast）
+    Dependency resolver - unified dependency handling.
+
+    Responsibilities:
+    - Extract configuration dependencies
+    - Topological sorting
+    - Circular dependency detection (fail fast)
     """
 
     def extract_dependencies(
         self, config: ComponentConfig, available_names: set[str] | None = None
     ) -> set[str]:
         """
-        提取配置的依赖（统一入口）
-        
+        Extract configuration dependencies (unified entry point).
+
         Args:
-            config: 组件配置
-            available_names: 可用的组件名称集合（用于过滤 built-in 依赖）
-            
+            config: Component configuration
+            available_names: Set of available component names (for filtering built-in dependencies)
+
         Returns:
-            依赖名称集合
+            Set of dependency names
         """
         deps = set()
 
@@ -61,7 +68,7 @@ class DependencyResolver:
         return deps
 
     def _extract_agent_deps(self, config: AgentConfig) -> set[str]:
-        """提取 Agent 依赖"""
+        """Extract Agent dependencies."""
         deps = {config.model}
 
         for tool_ref in config.tools:
@@ -86,11 +93,11 @@ class DependencyResolver:
         return deps
 
     def _extract_tool_deps(self, config: ToolConfig) -> set[str]:
-        """提取 Tool 依赖"""
+        """Extract Tool dependencies."""
         return set(config.effective_dependencies.values())
 
     def _extract_workflow_deps(self, config: WorkflowConfig) -> set[str]:
-        """提取 Workflow 依赖（递归处理嵌套）"""
+        """Extract Workflow dependencies (recursively handle nesting)."""
         deps = set()
 
         if config.session_store:
@@ -120,17 +127,17 @@ class DependencyResolver:
         self, configs: list[ComponentConfig], available_names: set[str] | None = None
     ) -> list[ComponentConfig]:
         """
-        拓扑排序（Kahn's algorithm）
-        
+        Topological sort (Kahn's algorithm).
+
         Args:
-            configs: 待排序的配置列表
-            available_names: 可用的组件名称集合（用于过滤 built-in 依赖）
-            
+            configs: List of configurations to sort
+            available_names: Set of available component names (for filtering built-in dependencies)
+
         Returns:
-            排序后的配置列表
-            
+            Sorted list of configurations
+
         Raises:
-            ConfigError: 检测到循环依赖
+            ConfigError: Circular dependency detected
         """
         nodes = {}
         for config in configs:
@@ -158,13 +165,13 @@ class DependencyResolver:
 
         if len(sorted_names) < len(nodes):
             unresolved = set(nodes.keys()) - set(sorted_names)
-            
+
             cycle_info = []
             for name in unresolved:
                 deps = nodes[name].dependencies & unresolved
                 if deps:
                     cycle_info.append(f"{name} -> {deps}")
-            
+
             raise ConfigError(
                 f"Circular dependency detected among: {unresolved}. "
                 f"Dependency chains: {'; '.join(cycle_info)}. "
@@ -178,14 +185,14 @@ class DependencyResolver:
         self, target_name: str, all_metadata: dict[str, "ComponentMetadata"]
     ) -> list[str]:
         """
-        获取受影响的组件列表（包括依赖者）- BFS 遍历
-        
+        Get list of affected components (including dependents) - BFS traversal.
+
         Args:
-            target_name: 目标组件名称
-            all_metadata: 所有组件的元数据
-            
+            target_name: Target component name
+            all_metadata: Metadata of all components
+
         Returns:
-            受影响的组件名称列表（拓扑顺序，target_name 在最前）
+            List of affected component names (in topological order, target_name first)
         """
         affected = [target_name]
         queue = [target_name]

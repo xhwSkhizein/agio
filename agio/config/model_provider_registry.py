@@ -1,13 +1,20 @@
+"""
+Model Provider Registry - Model provider registration and management.
+
+Manages model provider factories and creates model instances from configuration.
+"""
+
 from typing import Any, Callable, Protocol
 
 from agio.config.schema import ModelConfig
+from agio.llm import AnthropicModel, DeepseekModel, OpenAIModel
 from agio.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
 
 class ModelProvider(Protocol):
-    """模型 Provider 协议"""
+    """Model Provider protocol."""
 
     def __init__(
         self,
@@ -18,8 +25,7 @@ class ModelProvider(Protocol):
         base_url: str | None,
         temperature: float,
         max_tokens: int | None,
-    ):
-        ...
+    ): ...
 
 
 ModelProviderFactory = Callable[..., Any]
@@ -27,22 +33,20 @@ ModelProviderFactory = Callable[..., Any]
 
 class ModelProviderRegistry:
     """
-    模型 Provider 注册表
-    
-    职责：
-    - 注册和查询 Provider 工厂函数
-    - 支持动态扩展
-    - 遵循开闭原则（OCP）
+    Model Provider registry.
+
+    Responsibilities:
+    - Register and query Provider factory functions
+    - Support dynamic extension
+    - Follow Open-Closed Principle (OCP)
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._providers: dict[str, ModelProviderFactory] = {}
         self._register_defaults()
 
     def _register_defaults(self) -> None:
-        """注册默认 Provider"""
-        from agio.providers.llm import AnthropicModel, DeepseekModel, OpenAIModel
-
+        """Register default Providers."""
         self.register("openai", OpenAIModel)
         self.register("anthropic", AnthropicModel)
         self.register("deepseek", DeepseekModel)
@@ -51,67 +55,66 @@ class ModelProviderRegistry:
 
     def register(self, provider: str, factory: ModelProviderFactory) -> None:
         """
-        注册 Provider
-        
+        Register Provider.
+
         Args:
-            provider: Provider 名称
-            factory: Provider 工厂函数
+            provider: Provider name
+            factory: Provider factory function
         """
         self._providers[provider] = factory
         logger.debug(f"Registered model provider: {provider}")
 
     def get(self, provider: str) -> ModelProviderFactory | None:
         """
-        获取 Provider 工厂函数
-        
+        Get Provider factory function.
+
         Args:
-            provider: Provider 名称
-            
+            provider: Provider name
+
         Returns:
-            工厂函数，不存在返回 None
+            Factory function, or None if not found
         """
         return self._providers.get(provider)
 
     def has(self, provider: str) -> bool:
         """
-        检查 Provider 是否存在
-        
+        Check if Provider exists.
+
         Args:
-            provider: Provider 名称
-            
+            provider: Provider name
+
         Returns:
-            是否存在
+            True if provider exists, False otherwise
         """
         return provider in self._providers
 
     def list_providers(self) -> list[str]:
         """
-        列出所有已注册的 Provider
-        
+        List all registered Providers.
+
         Returns:
-            Provider 名称列表
+            List of provider names
         """
         return list(self._providers.keys())
 
     def create_model(self, config: ModelConfig) -> Any:
         """
-        根据配置创建模型实例
-        
+        Create model instance from configuration.
+
         Args:
-            config: 模型配置
-            
+            config: Model configuration
+
         Returns:
-            模型实例
-            
+            Model instance
+
         Raises:
-            ValueError: Provider 不存在
+            ValueError: Provider does not exist
         """
         factory = self.get(config.provider)
         if not factory:
             available = ", ".join(self.list_providers())
             raise ValueError(
-                f"Unknown model provider: {config.provider}. "
-                f"Available providers: {available}"
+                f"Unknown model provider: {config.provider}. " f"Available providers: {available}"
             )
 
         return factory(
@@ -129,7 +132,7 @@ _model_provider_registry: ModelProviderRegistry | None = None
 
 
 def get_model_provider_registry() -> ModelProviderRegistry:
-    """获取全局 ModelProviderRegistry 实例"""
+    """Get global ModelProviderRegistry instance."""
     global _model_provider_registry
 
     if _model_provider_registry is None:

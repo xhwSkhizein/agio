@@ -3,7 +3,7 @@
 import pytest
 
 from agio.domain import StepEvent, StepEventType
-from agio.runtime.protocol import ExecutionContext, RunOutput
+from agio.runtime.protocol import ExecutionContext, RunOutput, RunnableType
 from agio.domain.models import RunMetrics
 from agio.workflow.runnable_tool import (
     RunnableTool,
@@ -38,8 +38,8 @@ class MockRunnable:
         return self._id
 
     @property
-    def runnable_type(self) -> str:
-        return "agent"
+    def runnable_type(self) -> RunnableType:
+        return RunnableType.AGENT
 
     async def run(self, input: str, *, context) -> RunOutput:
         """Execute and write events to context.wire, return RunOutput."""

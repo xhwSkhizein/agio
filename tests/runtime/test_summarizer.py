@@ -121,8 +121,8 @@ class TestDefaultPrompt:
     """Tests for default prompt template."""
     
     def test_default_prompt_contains_placeholders(self):
-        """Test default prompt has required placeholders."""
-        assert "{termination_reason}" in DEFAULT_TERMINATION_USER_PROMPT
+        """Test default prompt has required placeholders (Jinja2 syntax)."""
+        assert "{{ termination_reason }}" in DEFAULT_TERMINATION_USER_PROMPT
     
     def test_default_prompt_requirements(self):
         """Test default prompt includes key requirements."""

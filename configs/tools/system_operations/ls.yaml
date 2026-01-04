@@ -5,6 +5,7 @@ tool_name: ls
 params:
   # timeout_seconds: 30
   # max_files: 1000
+  # max_lines: 100
 enabled: true
 tags:
   - file

@@ -6,6 +6,7 @@ dependencies:
   citation_source_store: citation_store_mongodb  # Reference to citation store for storing search results
 params:
   # Requires SERPER_API_KEY environment variable
+  # timeout_seconds: 30
   # max_results: 10
 enabled: true
 tags:

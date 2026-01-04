@@ -2,7 +2,7 @@
 Backend configuration definitions for unified storage/cache/vector abstractions.
 
 This module provides unified backend configurations for all store types:
-- Storage backends: MongoDB, PostgreSQL, InMemory
+- Storage backends: MongoDB, SQLite, InMemory
 - Cache backends: Redis, InMemory
 - Vector backends: Chroma, Pinecone
 
@@ -16,9 +16,9 @@ from pydantic import BaseModel, Field
 
 class BackendConfig(BaseModel):
     """Base class for all backend configurations."""
-    
+
     type: str = Field(..., description="Backend type identifier")
-    
+
     model_config = {"extra": "forbid"}
 
 
@@ -27,28 +27,26 @@ class BackendConfig(BaseModel):
 
 class MongoDBBackend(BackendConfig):
     """MongoDB backend configuration."""
-    
+
     type: Literal["mongodb"] = "mongodb"
     uri: str = Field(..., description="MongoDB connection URI")
     db_name: str = Field(default="agio", description="Database name")
     collection_name: str | None = Field(
         default=None,
-        description="Collection name (optional, each store may use different defaults)"
+        description="Collection name (optional, each store may use different defaults)",
     )
 
 
-class PostgresBackend(BackendConfig):
-    """PostgreSQL backend configuration."""
-    
-    type: Literal["postgres"] = "postgres"
-    url: str = Field(..., description="PostgreSQL connection URL")
-    pool_size: int = Field(default=10, ge=1, description="Connection pool size")
-    max_overflow: int = Field(default=20, ge=0, description="Max overflow connections")
+class SQLiteBackend(BackendConfig):
+    """SQLite backend configuration."""
+
+    type: Literal["sqlite"] = "sqlite"
+    db_path: str = Field(..., description="SQLite database file path")
 
 
 class InMemoryBackend(BackendConfig):
     """In-memory backend configuration (no persistence)."""
-    
+
     type: Literal["inmemory"] = "inmemory"
 
 
@@ -57,7 +55,7 @@ class InMemoryBackend(BackendConfig):
 
 class RedisBackend(BackendConfig):
     """Redis backend configuration."""
-    
+
     type: Literal["redis"] = "redis"
     host: str = Field(default="localhost", description="Redis host")
     port: int = Field(default=6379, ge=1, le=65535, description="Redis port")
@@ -70,7 +68,7 @@ class RedisBackend(BackendConfig):
 
 class ChromaBackend(BackendConfig):
     """Chroma vector database backend configuration."""
-    
+
     type: Literal["chroma"] = "chroma"
     host: str = Field(default="localhost", description="Chroma host")
     port: int = Field(default=8000, description="Chroma port")
@@ -79,7 +77,7 @@ class ChromaBackend(BackendConfig):
 
 class PineconeBackend(BackendConfig):
     """Pinecone vector database backend configuration."""
-    
+
     type: Literal["pinecone"] = "pinecone"
     api_key: str = Field(..., description="Pinecone API key")
     environment: str = Field(..., description="Pinecone environment")
@@ -89,7 +87,7 @@ class PineconeBackend(BackendConfig):
 # ========== Union Types for Type Hints ==========
 
 
-StorageBackend = MongoDBBackend | PostgresBackend | InMemoryBackend
+StorageBackend = MongoDBBackend | SQLiteBackend | InMemoryBackend
 """Union type for storage backends (used by Session/Trace/Citation stores)."""
 
 CacheBackend = RedisBackend | InMemoryBackend
@@ -102,7 +100,7 @@ VectorBackend = ChromaBackend | PineconeBackend
 __all__ = [
     "BackendConfig",
     "MongoDBBackend",
-    "PostgresBackend",
+    "SQLiteBackend",
     "InMemoryBackend",
     "RedisBackend",
     "ChromaBackend",

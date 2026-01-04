@@ -14,17 +14,16 @@ import asyncio
 import time
 from typing import Any
 
+from agio.config.template import renderer
+from agio.domain.models import RunMetrics
+from agio.runtime import RunnableExecutor, RunOutput
 from agio.runtime.event_factory import EventFactory
 from agio.runtime.protocol import ExecutionContext
-from agio.workflow.state import WorkflowState
-from agio.workflow.resolver import ContextResolver
-from agio.runtime import RunnableExecutor
-from agio.workflow.base import BaseWorkflow
-from agio.runtime import RunOutput
-from agio.domain.models import RunMetrics
-from agio.workflow.node import WorkflowNode
-
 from agio.storage.session.base import SessionStore
+from agio.workflow.base import BaseWorkflow
+from agio.workflow.node import WorkflowNode
+from agio.workflow.resolver import ContextResolver
+from agio.workflow.state import WorkflowState
 
 
 class ParallelWorkflow(BaseWorkflow):
@@ -174,7 +173,7 @@ class ParallelWorkflow(BaseWorkflow):
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             # Aggregate results (handle exceptions)
-            merged_output = []
+            branches: list[dict[str, Any]] = []
             total_tokens = 0
             input_tokens = 0
             output_tokens = 0
@@ -182,16 +181,38 @@ class ParallelWorkflow(BaseWorkflow):
                 if isinstance(res, Exception):
                     # Handle exception - could log or include error message
                     continue
-                merged_output.append(f"{res['branch_id']}: {res['output']}")
+                branches.append(
+                    {
+                        "id": res["branch_id"],
+                        "output": res["output"],
+                        "metrics": res.get("metrics"),
+                    }
+                )
                 if res.get("metrics"):
                     metrics = res["metrics"]
                     total_tokens += metrics.total_tokens
                     input_tokens += metrics.input_tokens
                     output_tokens += metrics.output_tokens
 
-            final_response = "\n\n".join(merged_output)
+            # Default merged output (fallback if no template provided)
+            merged_output = "\n\n".join(f"{b['id']}: {b['output']}" for b in branches)
+
+            # Build context for merge template
+            merge_context = {
+                "input": input,
+                "branches": branches,
+                "nodes": await resolver._build_nodes_dict(),
+                "tokens": {
+                    "total": total_tokens,
+                    "input": input_tokens,
+                    "output": output_tokens,
+                },
+                "results": merged_output,
+            }
+
+            final_response = merged_output
             if self.merge_template:
-                final_response = self.merge_template.replace("{{results}}", final_response)
+                final_response = renderer.render(self.merge_template, **merge_context)
 
             duration = time.time() - start_time
 

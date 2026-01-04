@@ -2,14 +2,11 @@
 MongoDB implementation of SessionStore.
 """
 
-from typing import List, Optional
-
+from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import ValidationError
 
-from motor.motor_asyncio import AsyncIOMotorClient
-
-from agio.storage.session.base import SessionStore
 from agio.domain import Run, Step
+from agio.storage.session.base import SessionStore
 from agio.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -53,7 +50,7 @@ class MongoSessionStore(SessionStore):
     ):
         self.uri = uri
         self.db_name = db_name
-        self.client: Optional[AsyncIOMotorClient] = None
+        self.client: AsyncIOMotorClient | None = None
         self.db = None
         self.runs_collection = None
         self.steps_collection = None
@@ -108,7 +105,7 @@ class MongoSessionStore(SessionStore):
             logger.error("save_run_failed", error=str(e), run_id=run.id)
             raise
 
-    async def get_run(self, run_id: str) -> Optional[Run]:
+    async def get_run(self, run_id: str) -> Run | None:
         """Get a run by ID."""
         await self._ensure_connection()
 
@@ -123,11 +120,11 @@ class MongoSessionStore(SessionStore):
 
     async def list_runs(
         self,
-        user_id: Optional[str] = None,
-        session_id: Optional[str] = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
         limit: int = 20,
         offset: int = 0,
-    ) -> List[Run]:
+    ) -> list[Run]:
         """List runs with filtering and pagination."""
         await self._ensure_connection()
 
@@ -196,7 +193,7 @@ class MongoSessionStore(SessionStore):
             )
             raise
 
-    async def save_steps_batch(self, steps: List[Step]) -> None:
+    async def save_steps_batch(self, steps: list[Step]) -> None:
         """Batch save steps."""
         if not steps:
             return
@@ -222,15 +219,15 @@ class MongoSessionStore(SessionStore):
     async def get_steps(
         self,
         session_id: str,
-        start_seq: Optional[int] = None,
-        end_seq: Optional[int] = None,
-        run_id: Optional[str] = None,
-        workflow_id: Optional[str] = None,
-        node_id: Optional[str] = None,
-        branch_key: Optional[str] = None,
-        runnable_id: Optional[str] = None,
+        start_seq: int | None = None,
+        end_seq: int | None = None,
+        run_id: str | None = None,
+        workflow_id: str | None = None,
+        node_id: str | None = None,
+        branch_key: str | None = None,
+        runnable_id: str | None = None,
         limit: int = 1000,
-    ) -> List[Step]:
+    ) -> list[Step]:
         """Get steps for a session with optional filtering."""
         await self._ensure_connection()
 
@@ -265,7 +262,7 @@ class MongoSessionStore(SessionStore):
             logger.error("get_steps_failed", error=str(e), session_id=session_id)
             raise
 
-    async def get_last_step(self, session_id: str) -> Optional[Step]:
+    async def get_last_step(self, session_id: str) -> Step | None:
         """Get the last step of a session."""
         await self._ensure_connection()
 
@@ -345,20 +342,22 @@ class MongoSessionStore(SessionStore):
                 {"$inc": {"sequence": 1}},
                 return_document=True,
             )
-            
+
             if result:
                 return result["sequence"]
-            
+
             # Counter doesn't exist, initialize from steps collection
             max_seq = await self.get_max_sequence(session_id)
-            
+
             # Try to insert initial counter value
             # Use insert to avoid race condition (will fail if another thread inserted first)
             try:
-                await self.counters_collection.insert_one({
-                    "session_id": session_id,
-                    "sequence": max_seq + 1,
-                })
+                await self.counters_collection.insert_one(
+                    {
+                        "session_id": session_id,
+                        "sequence": max_seq + 1,
+                    }
+                )
                 return max_seq + 1
             except Exception:
                 # Another thread already initialized, retry increment
@@ -371,25 +370,26 @@ class MongoSessionStore(SessionStore):
                     return result["sequence"]
                 # Should never reach here
                 raise RuntimeError(f"Failed to allocate sequence for session {session_id}")
-                
+
         except Exception as e:
             logger.error("allocate_sequence_failed", error=str(e), session_id=session_id)
             raise
-
 
     async def get_step_by_tool_call_id(
         self,
         session_id: str,
         tool_call_id: str,
-    ) -> Optional[Step]:
+    ) -> Step | None:
         """Get a Tool Step by tool_call_id."""
         await self._ensure_connection()
 
         try:
-            doc = await self.steps_collection.find_one({
-                "session_id": session_id,
-                "tool_call_id": tool_call_id,
-            })
+            doc = await self.steps_collection.find_one(
+                {
+                    "session_id": session_id,
+                    "tool_call_id": tool_call_id,
+                }
+            )
             if doc:
                 return Step.model_validate(doc)
             return None
@@ -399,4 +399,3 @@ class MongoSessionStore(SessionStore):
 
 
 __all__ = ["MongoSessionStore"]
-

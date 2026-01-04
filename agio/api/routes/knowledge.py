@@ -6,8 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from agio.api.deps import get_config_sys
-from agio.config import ConfigSystem
-from agio.config import ComponentType
+from agio.config import ComponentType, ConfigSystem
 
 router = APIRouter(prefix="/knowledge")
 

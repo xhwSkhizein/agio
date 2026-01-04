@@ -8,10 +8,18 @@ This module defines the core abstractions for executable units:
 """
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Protocol, runtime_checkable
 
 from agio.domain.models import RunMetrics
 from agio.runtime.wire import Wire
+
+
+class RunnableType(str, Enum):
+    """Runnable type enumeration."""
+
+    AGENT = "agent"
+    WORKFLOW = "workflow"
 
 
 @dataclass
@@ -55,12 +63,12 @@ class Runnable(Protocol):
         ...
 
     @property
-    def runnable_type(self) -> str:
+    def runnable_type(self) -> "RunnableType":
         """
         Return the type of this Runnable.
 
-        - Agent returns "agent"
-        - Workflow returns "workflow"
+        - Agent returns RunnableType.AGENT
+        - Workflow returns RunnableType.WORKFLOW
 
         Used by RunnableExecutor to determine run type without
         instanceof checks on concrete classes.
@@ -127,14 +135,13 @@ class ExecutionContext:
     depth: int = 0
     parent_run_id: str | None = None
     nested_runnable_id: str | None = None
-    
+
     # Runnable identity (for unified display)
-    runnable_type: str = "agent"           # "agent" | "workflow"
-    runnable_id: str | None = None         # Runnable config ID
-    nesting_type: str | None = None        # "tool_call" | "workflow_node" | None
-    
+    runnable_type: RunnableType = RunnableType.AGENT
+    runnable_id: str | None = None  # Runnable config ID
+    nesting_type: str | None = None  # "tool_call" | "workflow_node" | None
+
     node_id: str | None = None  # Current WorkflowNode.id being executed
-    iteration: int | None = None  # Current loop iteration (for LoopWorkflow)
 
     # Observability
     trace_id: str | None = None
@@ -183,11 +190,10 @@ class ExecutionContext:
             depth=self.depth + 1,
             parent_run_id=self.run_id,
             nested_runnable_id=nested_runnable_id,
-            runnable_type=overrides.get("runnable_type", "agent"),
+            runnable_type=overrides.get("runnable_type", RunnableType.AGENT),
             runnable_id=overrides.get("runnable_id"),
             nesting_type=overrides.get("nesting_type"),
             node_id=overrides.get("node_id", None),
-            iteration=overrides.get("iteration", None),
             trace_id=self.trace_id,
             span_id=None,  # New span for child
             parent_span_id=self.span_id,
@@ -222,41 +228,10 @@ class ExecutionContext:
             runnable_id=self.runnable_id,
             nesting_type=self.nesting_type,
             node_id=self.node_id,
-            iteration=self.iteration,
             trace_id=self.trace_id,
             span_id=self.span_id,
             parent_span_id=self.parent_span_id,
             metadata=new_metadata,
-        )
-
-    def with_iteration(self, iteration: int) -> "ExecutionContext":
-        """
-        Create a copy with updated iteration number.
-
-        Args:
-            iteration: Loop iteration number (1-indexed)
-
-        Returns:
-            New ExecutionContext with updated iteration
-        """
-        return ExecutionContext(
-            run_id=self.run_id,
-            session_id=self.session_id,
-            wire=self.wire,
-            user_id=self.user_id,
-            workflow_id=self.workflow_id,
-            depth=self.depth,
-            parent_run_id=self.parent_run_id,
-            nested_runnable_id=self.nested_runnable_id,
-            runnable_type=self.runnable_type,
-            runnable_id=self.runnable_id,
-            nesting_type=self.nesting_type,
-            node_id=self.node_id,
-            iteration=iteration,
-            trace_id=self.trace_id,
-            span_id=self.span_id,
-            parent_span_id=self.parent_span_id,
-            metadata=dict(self.metadata),
         )
 
     @property
@@ -273,4 +248,4 @@ class ExecutionContext:
         )
 
 
-__all__ = ["Runnable", "RunOutput", "ExecutionContext"]
+__all__ = ["RunnableType", "Runnable", "RunOutput", "ExecutionContext"]

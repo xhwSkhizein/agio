@@ -12,19 +12,17 @@ Wire-based Architecture:
 
 import time
 
+from agio.domain.models import RunMetrics
+from agio.llm import Model
+from agio.runtime import RunnableExecutor, RunOutput
 from agio.runtime.event_factory import EventFactory
 from agio.runtime.protocol import ExecutionContext
-from agio.workflow.state import WorkflowState
-from agio.workflow.resolver import ContextResolver
-from agio.runtime import RunnableExecutor
+from agio.storage.session.base import SessionStore
 from agio.workflow.base import BaseWorkflow
 from agio.workflow.condition import ConditionEvaluator
-from agio.runtime import RunOutput
-from agio.domain.models import RunMetrics
 from agio.workflow.node import WorkflowNode
-
-from agio.providers.llm import Model
-from agio.storage.session.base import SessionStore
+from agio.workflow.resolver import ContextResolver
+from agio.workflow.state import WorkflowState
 
 
 class LoopWorkflow(BaseWorkflow):
@@ -163,8 +161,8 @@ class LoopWorkflow(BaseWorkflow):
 
                     runnable = self._resolve_runnable(node.runnable)
                     child_context = self._create_child_context(context, node)
-                    # Set iteration in context for Step tracking
-                    child_context = child_context.with_iteration(iteration)
+                    # Set iteration in metadata for Step tracking
+                    child_context = child_context.with_metadata(iteration=iteration)
 
                     # Execute via RunnableExecutor - handles Run lifecycle
                     executor = RunnableExecutor(store=session_store)
@@ -260,10 +258,15 @@ class LoopWorkflow(BaseWorkflow):
 
         # Use the model directly to generate summary
         # Note: For workflows, we use a simpler approach without step tracking
-        from agio.agent.summarizer import DEFAULT_TERMINATION_USER_PROMPT, _format_termination_reason
+        from agio.agent.summarizer import (
+            DEFAULT_TERMINATION_USER_PROMPT,
+            _format_termination_reason,
+        )
+        from agio.config.template import renderer
 
         prompt_template = self.termination_summary_prompt or DEFAULT_TERMINATION_USER_PROMPT
-        user_prompt = prompt_template.format(
+        user_prompt = renderer.render(
+            prompt_template,
             termination_reason=_format_termination_reason(termination_reason),
         )
 

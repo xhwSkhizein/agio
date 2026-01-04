@@ -18,11 +18,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from agio.config import ConfigSystem, get_config_system
 from agio.api.deps import get_session_store, get_trace_store
+from agio.config import ConfigSystem, get_config_system
 from agio.domain import StepEventType
-from agio.runtime import Wire, RunnableExecutor
-from agio.runtime.protocol import ExecutionContext
+from agio.runtime import Runnable, RunnableExecutor, Wire
+from agio.runtime.protocol import RunnableType
+from agio.workflow.base import BaseWorkflow
+from agio.workflow.loop import LoopWorkflow
+from agio.workflow.parallel import ParallelWorkflow
 
 router = APIRouter(prefix="/runnables")
 
@@ -65,11 +68,12 @@ async def list_runnables(
                 id=instance.id,
                 type=type(instance).__name__,
             )
-            # Categorize
-            if type(instance).__name__ in ("PipelineWorkflow", "LoopWorkflow", "ParallelWorkflow"):
-                workflows.append(info)
-            else:
-                agents.append(info)
+            # Categorize using runnable_type enum
+            if isinstance(instance, Runnable):
+                if instance.runnable_type == RunnableType.WORKFLOW:
+                    workflows.append(info)
+                else:
+                    agents.append(info)
 
     return {"agents": agents, "workflows": workflows}
 
@@ -83,32 +87,40 @@ async def get_runnable_info(
     Get information about a specific Runnable.
     """
     try:
-        instance = config_system.get_instance(runnable_id)
+        instance: Runnable = config_system.get_instance(runnable_id)
     except Exception:
-        raise HTTPException(status_code=404, detail=f"Runnable not found: {runnable_id}")
+        raise HTTPException(
+            status_code=404, detail=f"Runnable not found: {runnable_id}"
+        )
 
     info = {
         "id": instance.id,
         "type": type(instance).__name__,
     }
 
-    # Add workflow-specific info
-    if hasattr(instance, "stages"):
+    # Add workflow-specific info using type checking
+    if isinstance(instance, BaseWorkflow):
         info["stages"] = [
             {
                 "id": stage.id,
-                "runnable": stage.runnable if isinstance(stage.runnable, str) else stage.runnable.id,
-                "input_template": stage.input,
+                "runnable": (
+                    stage.runnable
+                    if isinstance(stage.runnable, str)
+                    else stage.runnable.id
+                ),
+                "input_template": stage.input_template,
                 "condition": stage.condition,
             }
-            for stage in instance.stages
+            for stage in instance.nodes
         ]
 
-    if hasattr(instance, "condition") and hasattr(instance, "max_iterations"):
+    # Add LoopWorkflow-specific info
+    if isinstance(instance, LoopWorkflow):
         info["loop_condition"] = instance.condition
         info["max_iterations"] = instance.max_iterations
 
-    if hasattr(instance, "merge_template"):
+    # Add ParallelWorkflow-specific info
+    if isinstance(instance, ParallelWorkflow):
         info["merge_template"] = instance.merge_template
 
     return info
@@ -132,9 +144,11 @@ async def run_runnable(
     3. Consume wire.read() for SSE response or collect events for JSON response
     """
     try:
-        instance = config_system.get_instance(runnable_id)
+        instance: Runnable = config_system.get_instance(runnable_id)
     except Exception:
-        raise HTTPException(status_code=404, detail=f"Runnable not found: {runnable_id}")
+        raise HTTPException(
+            status_code=404, detail=f"Runnable not found: {runnable_id}"
+        )
 
     # Check if it implements Runnable protocol
     if not hasattr(instance, "run"):
@@ -163,23 +177,8 @@ async def run_runnable(
 
     # Streaming mode
     async def event_generator():
-        # Create Session-level resources at API entry point
-        wire = Wire()
         session_store = get_session_store(config_sys=config_system)
-        run_id = str(uuid4())
-
-        # Use runnable_type property from Runnable protocol
         runnable_type = instance.runnable_type
-
-        # Create context with wire
-        context = ExecutionContext(
-            run_id=run_id,
-            wire=wire,
-            session_id=request.session_id or str(uuid4()),
-            user_id=request.user_id,
-            runnable_type=runnable_type,
-            runnable_id=instance.id,
-        )
 
         # Initialize trace collector
         from agio.observability.collector import create_collector
@@ -190,10 +189,19 @@ async def run_runnable(
         # Create RunnableExecutor
         executor = RunnableExecutor(store=session_store)
 
-        # Start execution in background task using RunnableExecutor
+        # Use execute_with_wire() for simplified execution with Wire control
+        wire = Wire()
+        session_id = request.session_id or str(uuid4())
+
         async def _run():
             try:
-                await executor.execute(instance, query, context)
+                await executor.execute_with_wire(
+                    instance,
+                    query,
+                    wire,
+                    session_id=session_id,
+                    user_id=request.user_id,
+                )
             finally:
                 await wire.close()
 
@@ -204,10 +212,12 @@ async def run_runnable(
             async for event in collector.wrap_stream(
                 wire.read(),
                 trace_id=None,  # Will be generated
-                workflow_id=instance.id if hasattr(instance, "stages") else None,
-                agent_id=instance.id if not hasattr(instance, "stages") else None,
-                session_id=context.session_id,
-                user_id=context.user_id,
+                workflow_id=instance.id
+                if runnable_type == RunnableType.WORKFLOW
+                else None,
+                agent_id=instance.id if runnable_type == RunnableType.AGENT else None,
+                session_id=session_id,
+                user_id=request.user_id,
                 input_query=query,
             ):
                 yield {
@@ -216,6 +226,7 @@ async def run_runnable(
                 }
         except Exception as e:
             import json
+
             yield {
                 "event": "error",
                 "data": json.dumps({"error": str(e)}),
@@ -239,29 +250,16 @@ async def run_runnable(
 
 
 async def _run_non_streaming(
-    instance: Any,
+    instance: Runnable,
     query: str,
     session_id: str | None,
     user_id: str | None,
     config_system: ConfigSystem,
 ) -> dict[str, Any]:
     """Non-streaming execution using Wire."""
-    # Create Session-level resources
-    wire = Wire()
     session_store = get_session_store(config_sys=config_system)
-    run_id = str(uuid4())
-
-    # Use runnable_type property from Runnable protocol
     runnable_type = instance.runnable_type
-    
-    context = ExecutionContext(
-        run_id=run_id,
-        wire=wire,
-        session_id=session_id or str(uuid4()),
-        user_id=user_id,
-        runnable_type=runnable_type,
-        runnable_id=instance.id,
-    )
+    session_id_final = session_id or str(uuid4())
 
     # Initialize trace collector
     from agio.observability.collector import create_collector
@@ -269,38 +267,43 @@ async def _run_non_streaming(
     store = get_trace_store(config_sys=config_system)
     collector = create_collector(store)
 
-    response_content = ""
-    # In ExecutionContext model, run_id is known upfront
-    final_run_id = run_id
-    session_id_final = context.session_id
-    metrics = {}
-
-    # Get session store from ConfigSystem (no reflection)
-    session_store = get_session_store(config_sys=config_system)
+    # Create RunnableExecutor
     executor = RunnableExecutor(store=session_store)
+
+    # Use execute_with_wire() for simplified execution
+    wire = Wire()
 
     async def _run():
         try:
-            return await executor.execute(instance, query, context)
+            return await executor.execute_with_wire(
+                instance,
+                query,
+                wire,
+                session_id=session_id_final,
+                user_id=user_id,
+            )
         finally:
             await wire.close()
 
     task = asyncio.create_task(_run())
+
+    response_content = ""
+    final_run_id: str | None = None
+    metrics = {}
 
     try:
         # Wrap the stream with collector to ensure traces are saved
         async for event in collector.wrap_stream(
             wire.read(),
             trace_id=None,
-            workflow_id=instance.id if hasattr(instance, "stages") else None,
-            agent_id=instance.id if not hasattr(instance, "stages") else None,
-            session_id=context.session_id,
-            user_id=context.user_id,
+            workflow_id=instance.id if runnable_type == RunnableType.WORKFLOW else None,
+            agent_id=instance.id if runnable_type == RunnableType.AGENT else None,
+            session_id=session_id_final,
+            user_id=user_id,
             input_query=query,
         ):
             if event.type == StepEventType.RUN_STARTED:
-                # RUN_STARTED event should match our generated run_id
-                pass
+                final_run_id = event.run_id
 
             elif event.type == StepEventType.STEP_DELTA:
                 if event.delta and event.delta.content:
@@ -314,6 +317,8 @@ async def _run_non_streaming(
         result = await task
         if result.response and not response_content:
             response_content = result.response
+        if not final_run_id and result.run_id:
+            final_run_id = result.run_id
 
     finally:
         if not task.done():
@@ -324,7 +329,7 @@ async def _run_non_streaming(
                 pass
 
     return {
-        "run_id": final_run_id,
+        "run_id": final_run_id or "unknown",
         "session_id": session_id_final,
         "response": response_content,
         "metrics": metrics,

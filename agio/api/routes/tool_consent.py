@@ -55,12 +55,12 @@ async def submit_tool_consent(
 ):
     """
     Submit tool authorization decision.
-    
+
     When user grants consent:
     1. Save consent record to ConsentStore
     2. Clear related cache
     3. Wake up waiting task
-    
+
     When user denies consent:
     1. Wake up waiting task with deny decision
     """
@@ -140,4 +140,3 @@ async def submit_tool_consent(
 
 
 __all__ = ["router"]
-

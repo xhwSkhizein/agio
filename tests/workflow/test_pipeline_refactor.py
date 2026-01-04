@@ -6,7 +6,7 @@ import pytest
 from unittest.mock import MagicMock, AsyncMock
 
 from agio.storage.session import InMemorySessionStore
-from agio.runtime.protocol import ExecutionContext, RunOutput
+from agio.runtime.protocol import ExecutionContext, RunOutput, RunnableType
 from agio.domain.models import RunMetrics
 from agio.runtime.wire import Wire
 from agio.workflow.pipeline import PipelineWorkflow
@@ -23,7 +23,7 @@ def mock_runnable():
     """Create a mock Runnable that returns RunOutput"""
     runnable = MagicMock()
     runnable.id = "agent_1"
-    runnable.runnable_type = "agent"  # Required for RunnableExecutor
+    runnable.runnable_type = RunnableType.AGENT
     
     async def mock_run(input, *, context, emit_run_events=True):
         return RunOutput(

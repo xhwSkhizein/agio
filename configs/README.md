@@ -1,6 +1,6 @@
 # Agio 配置文件
 
-本目录存放通过 `ConfigSystem` 动态装配的 YAML 配置，支持环境变量占位（`${ENV_VAR}`）。
+ 本目录存放通过 `ConfigSystem` 动态装配的 YAML 配置，支持 Jinja2 环境变量占位（`{{ env.VAR_NAME | default("...") }}`）。
 
 ## 目录结构
 

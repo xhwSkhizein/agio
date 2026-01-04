@@ -59,11 +59,11 @@ class WorkflowNode:
     condition: str | None  # 条件表达式（可选）
 ```
 
-**输入模板变量**：
-- `{input}`: 原始工作流输入
-- `{node_id.output}`: 引用其他节点的输出
-- `{loop.iteration}`: 当前循环迭代次数（LoopWorkflow）
-- `{loop.last.node_id}`: 上一轮迭代的节点输出（LoopWorkflow）
+**输入模板变量（Jinja2）**：
+- `{{ input }}`: 原始工作流输入
+- `{{ nodes.<id>.output }}`: 引用其他节点的输出
+- `{{ loop.iteration }}`: 当前循环迭代次数（LoopWorkflow）
+- `{{ loop.last.<id> }}`: 上一轮迭代的节点输出（LoopWorkflow）
 
 ### WorkflowState
 
@@ -108,11 +108,11 @@ class ContextResolver:
         """解析模板变量"""
 ```
 
-**支持的变量**：
-- `{input}`: 原始输入
-- `{node_id.output}`: 节点输出
-- `{loop.iteration}`: 循环迭代次数
-- `{loop.last.node_id}`: 上一轮迭代输出
+**支持的变量（Jinja2）**：
+- `{{ input }}`
+- `{{ nodes.<id>.output }}`
+- `{{ loop.iteration }}`
+- `{{ loop.last.<id> }}`
 
 **解析流程**：
 1. 先检查 `WorkflowState` 缓存
@@ -133,10 +133,10 @@ class ConditionEvaluator:
         """评估条件表达式"""
 ```
 
-**支持的表达式**：
-- 字符串包含：`"{node_id} contains 'keyword'"`
-- 布尔表达式：`"{node_id} == 'value'"`
-- 数值比较：`"{node_id} > 10"`
+**支持的表达式（Jinja2）**：
+- 字符串包含：`"{{ 'keyword' in nodes.analyze.output }}"` 或 `"{{ nodes.node_id.output }}"`（非空即真）
+- 布尔表达式：`"{{ nodes.score.output | float > 0.8 }}"`
+- 数值比较：`"{{ loop.iteration < 5 }}"`
 
 ## 工作流类型
 
@@ -171,14 +171,14 @@ workflow_type: pipeline
 stages:
   - id: research
     runnable: researcher
-    input: "Research: {input}"
+    input: "Research: {{ input }}"
   - id: analyze
     runnable: analyzer
-    input: "Analyze: {research.output}"
-    condition: "{research.output} contains 'data'"
+    input: "Analyze: {{ nodes.research.output }}"
+    condition: "{{ 'data' in nodes.research.output }}"
   - id: format
     runnable: formatter
-    input: "Format: {analyze.output}"
+    input: "Format: {{ nodes.analyze.output }}"
 ```
 
 ### LoopWorkflow（循环执行）
@@ -186,7 +186,7 @@ stages:
 **特点**：
 - 重复执行节点直到条件不满足
 - 支持最大迭代次数限制
-- 支持循环上下文变量（`{loop.iteration}`, `{loop.last.node_id}`）
+- 支持循环上下文变量（`{{ loop.iteration }}`, `{{ loop.last.<id> }}`)
 
 **执行流程**：
 
@@ -195,7 +195,7 @@ stages:
 2. 循环（最多 max_iterations 次）：
    a. 设置循环上下文（iteration, last_outputs）
    b. 遍历节点列表：
-      - 解析输入模板（支持 {loop.*} 变量）
+      - 解析输入模板（支持 `loop.*` 变量）
       - 执行节点 Runnable
       - 缓存节点输出
    c. 评估循环条件
@@ -214,20 +214,20 @@ stages:
     runnable: improver
     input: |
       Improve based on feedback:
-      {input}
-      Feedback: {review.output}
+      {{ input }}
+      Feedback: {{ nodes.review.output }}
   - id: review
     runnable: reviewer
     input: |
-      Review iteration {loop.iteration}:
-      {improve.output}
-condition: "{review.output} contains 'NEEDS_REVISION'"
+      Review iteration {{ loop.iteration }}:
+      {{ nodes.improve.output }}
+condition: "{{ 'NEEDS_REVISION' in nodes.review.output }}"
 max_iterations: 3
 ```
 
 **循环变量**：
-- `{loop.iteration}`: 当前迭代次数（从 1 开始）
-- `{loop.last.node_id}`: 上一轮迭代的节点输出
+- `{{ loop.iteration }}`: 当前迭代次数（从 1 开始）
+- `{{ loop.last.<id> }}`: 上一轮迭代的节点输出
 
 ### ParallelWorkflow（并行执行）
 
@@ -259,21 +259,21 @@ workflow_type: parallel
 stages:
   - id: web_research
     runnable: web_researcher
-    input: "Web research: {input}"
+    input: "Web research: {{ input }}"
   - id: local_research
     runnable: local_researcher
-    input: "Local research: {input}"
+    input: "Local research: {{ input }}"
 merge_template: |
   Web Research:
-  {web_research.output}
+  {{ nodes.web_research.output }}
   
   Local Research:
-  {local_research.output}
+  {{ nodes.local_research.output }}
 ```
 
-**合并模板变量**：
-- `{node_id.output}`: 节点输出
-- `{{results}}`: 所有节点输出的 JSON 格式
+**合并模板变量（Jinja2）**：
+- `{{ nodes.<id>.output }}`: 节点输出
+- `{{ results }}`: 所有节点输出的 JSON 格式
 
 ## 节点执行
 
@@ -333,12 +333,12 @@ nodes = [
     WorkflowNode(
         id="research",
         runnable="researcher",
-        input_template="Research: {input}",
+        input_template="Research: {{ input }}",
     ),
     WorkflowNode(
         id="analyze",
         runnable="analyzer",
-        input_template="Analyze: {research.output}",
+        input_template="Analyze: {{ nodes.research.output }}",
     ),
 ]
 
@@ -375,15 +375,15 @@ workflow = LoopWorkflow(
         WorkflowNode(
             id="improve",
             runnable="improver",
-            input_template="Improve: {input}\nFeedback: {review.output}",
+            input_template="Improve: {{ input }}\nFeedback: {{ nodes.review.output }}",
         ),
         WorkflowNode(
             id="review",
             runnable="reviewer",
-            input_template="Review iteration {loop.iteration}: {improve.output}",
+            input_template="Review iteration {{ loop.iteration }}: {{ nodes.improve.output }}",
         ),
     ],
-    condition="{review.output} contains 'NEEDS_REVISION'",
+    condition="{{ 'NEEDS_REVISION' in nodes.review.output }}",
     max_iterations=3,
     session_store=session_store,
 )
@@ -400,20 +400,20 @@ workflow = ParallelWorkflow(
         WorkflowNode(
             id="web_research",
             runnable="web_researcher",
-            input_template="Web research: {input}",
+            input_template="Web research: {{ input }}",
         ),
         WorkflowNode(
             id="local_research",
             runnable="local_researcher",
-            input_template="Local research: {input}",
+            input_template="Local research: {{ input }}",
         ),
     ],
     merge_template="""
     Web Research:
-    {web_research.output}
+    {{ nodes.web_research.output }}
     
     Local Research:
-    {local_research.output}
+    {{ nodes.local_research.output }}
     """,
     session_store=session_store,
 )
@@ -430,11 +430,11 @@ workflow_type: pipeline
 stages:
   - id: research
     runnable: researcher
-    input: "Research: {input}"
+    input: "Research: {{ input }}"
   - id: analyze
     runnable: analyzer
-    input: "Analyze: {research.output}"
-    condition: "{research.output} contains 'data'"
+    input: "Analyze: {{ nodes.research.output }}"
+    condition: "{{ 'data' in nodes.research.output }}"
 session_store: mongodb_session_store
 enabled: true
 ```
@@ -450,14 +450,14 @@ stages:
     runnable: improver
     input: |
       Improve based on feedback:
-      {input}
-      Feedback: {review.output}
+      {{ input }}
+      Feedback: {{ nodes.review.output }}
   - id: review
     runnable: reviewer
     input: |
-      Review iteration {loop.iteration}:
-      {improve.output}
-condition: "{review.output} contains 'NEEDS_REVISION'"
+      Review iteration {{ loop.iteration }}:
+      {{ nodes.improve.output }}
+condition: "{{ 'NEEDS_REVISION' in nodes.review.output }}"
 max_iterations: 3
 session_store: mongodb_session_store
 enabled: true
@@ -472,16 +472,16 @@ workflow_type: parallel
 stages:
   - id: web_research
     runnable: web_researcher
-    input: "Web research: {input}"
+    input: "Web research: {{ input }}"
   - id: local_research
     runnable: local_researcher
-    input: "Local research: {input}"
+    input: "Local research: {{ input }}"
 merge_template: |
   Web Research:
-  {web_research.output}
+  {{ nodes.web_research.output }}
   
   Local Research:
-  {local_research.output}
+  {{ nodes.local_research.output }}
 session_store: mongodb_session_store
 enabled: true
 ```
@@ -495,7 +495,7 @@ workflow_type: pipeline
 stages:
   - id: plan
     runnable: planner
-    input: "{input}"
+    input: "{{ input }}"
   - id: research
     # 嵌套的并行工作流
     runnable:
@@ -504,12 +504,12 @@ stages:
       stages:
         - id: branch_a
           runnable: agent_a
-          input: "{plan.output}"
+          input: "{{ nodes.plan.output }}"
         - id: branch_b
           runnable: agent_b
-          input: "{plan.output}"
-      merge_template: "A: {branch_a.output}\nB: {branch_b.output}"
-    input: "{plan.output}"
+          input: "{{ nodes.plan.output }}"
+      merge_template: "A: {{ nodes.branch_a.output }}\nB: {{ nodes.branch_b.output }}"
+    input: "{{ nodes.plan.output }}"
 ```
 
 ## 最佳实践

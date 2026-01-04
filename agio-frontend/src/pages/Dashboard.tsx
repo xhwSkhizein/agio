@@ -5,7 +5,6 @@ import {
   MessageSquare,
   Database,
   Brain,
-  BarChart3,
   History,
   ArrowUpRight,
   RefreshCw,
@@ -35,12 +34,6 @@ const exploreCards = [
     description: 'View and manage agents, teams and workflow sessions.',
     icon: History,
     path: '/sessions',
-  },
-  {
-    title: 'Metrics',
-    description: 'Monitor the usage of your agents, teams and workflows.',
-    icon: BarChart3,
-    path: '/metrics',
   },
 ]
 

@@ -20,13 +20,11 @@ from typing import Any
 from uuid import uuid4
 
 from agio.domain import ToolResult
-from agio.runtime.protocol import ExecutionContext, Runnable
-from agio.providers.tools import BaseTool
 from agio.runtime import RunnableExecutor
-
 from agio.runtime.control import AbortSignal
+from agio.runtime.protocol import ExecutionContext, Runnable
 from agio.storage.session.base import SessionStore
-
+from agio.tools import BaseTool
 
 # Default maximum nesting depth for Runnable as Tool
 DEFAULT_MAX_DEPTH = 5

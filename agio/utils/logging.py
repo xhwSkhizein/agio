@@ -21,15 +21,14 @@ import logging
 import os
 import sys
 from contextvars import ContextVar
-from typing import Optional
 
 import structlog
 from structlog.types import FilteringBoundLogger
 
 # Context variables for request tracking
-request_id_var: ContextVar[Optional[str]] = ContextVar("request_id", default=None)
-user_id_var: ContextVar[Optional[str]] = ContextVar("user_id", default=None)
-session_id_var: ContextVar[Optional[str]] = ContextVar("session_id", default=None)
+request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
+user_id_var: ContextVar[str | None] = ContextVar("user_id", default=None)
+session_id_var: ContextVar[str | None] = ContextVar("session_id", default=None)
 
 
 # Sensitive data patterns to filter
@@ -46,7 +45,7 @@ SENSITIVE_KEYS = {
 }
 
 
-def filter_sensitive_data(logger, method_name, event_dict):
+def filter_sensitive_data(logger: FilteringBoundLogger, method_name: str, event_dict: dict) -> dict:
     """Filter out sensitive information from logs."""
     for key in list(event_dict.keys()):
         if any(sensitive in key.lower() for sensitive in SENSITIVE_KEYS):
@@ -54,7 +53,7 @@ def filter_sensitive_data(logger, method_name, event_dict):
     return event_dict
 
 
-def add_context(logger, method_name, event_dict):
+def add_context(logger: FilteringBoundLogger, method_name: str, event_dict: dict) -> dict:
     """Add contextual information to log entries."""
     # Add request tracking context
     if request_id := request_id_var.get():
@@ -68,7 +67,7 @@ def add_context(logger, method_name, event_dict):
 
 
 def configure_logging(
-    log_level: str = "INFO", json_logs: bool = False, log_file: Optional[str] = None
+    log_level: str = "INFO", json_logs: bool = False, log_file: str | None = None
 ) -> None:
     """
     Configure structlog with appropriate processors and renderers.
@@ -148,9 +147,9 @@ def get_logger(name: str = "agio") -> FilteringBoundLogger:
 
 
 def set_request_context(
-    request_id: Optional[str] = None,
-    user_id: Optional[str] = None,
-    session_id: Optional[str] = None,
+    request_id: str | None = None,
+    user_id: str | None = None,
+    session_id: str | None = None,
 ) -> None:
     """
     Set request context for logging.

@@ -19,14 +19,14 @@ from agio.domain import (
     StepDelta,
     StepEvent,
     StepEventType,
+    create_error_event,
     create_run_completed_event,
     create_run_failed_event,
     create_run_started_event,
     create_step_completed_event,
     create_step_delta_event,
 )
-
-from agio.runtime.protocol import ExecutionContext
+from agio.runtime.protocol import ExecutionContext, RunnableType
 
 
 class EventFactory:
@@ -56,7 +56,7 @@ class EventFactory:
         yield ef.step_delta(step.id, delta)
     """
 
-    def __init__(self, ctx: "ExecutionContext"):
+    def __init__(self, ctx: "ExecutionContext") -> None:
         """
         Initialize factory with execution context.
 
@@ -79,7 +79,11 @@ class EventFactory:
             depth=self._ctx.depth,
             parent_run_id=self._ctx.parent_run_id,
             nested_runnable_id=self._ctx.nested_runnable_id,
-            runnable_type=self._ctx.runnable_type,
+            runnable_type=(
+                self._ctx.runnable_type.value
+                if isinstance(self._ctx.runnable_type, RunnableType)
+                else self._ctx.runnable_type
+            ),
             runnable_id=self._ctx.runnable_id,
             nesting_type=self._ctx.nesting_type,
         )
@@ -101,7 +105,11 @@ class EventFactory:
             depth=self._ctx.depth,
             parent_run_id=self._ctx.parent_run_id,
             nested_runnable_id=self._ctx.nested_runnable_id,
-            runnable_type=self._ctx.runnable_type,
+            runnable_type=(
+                self._ctx.runnable_type.value
+                if isinstance(self._ctx.runnable_type, RunnableType)
+                else self._ctx.runnable_type
+            ),
             runnable_id=self._ctx.runnable_id,
             nesting_type=self._ctx.nesting_type,
         )
@@ -114,7 +122,11 @@ class EventFactory:
             depth=self._ctx.depth,
             parent_run_id=self._ctx.parent_run_id,
             nested_runnable_id=self._ctx.nested_runnable_id,
-            runnable_type=self._ctx.runnable_type,
+            runnable_type=(
+                self._ctx.runnable_type.value
+                if isinstance(self._ctx.runnable_type, RunnableType)
+                else self._ctx.runnable_type
+            ),
             runnable_id=self._ctx.runnable_id,
             nesting_type=self._ctx.nesting_type,
         )
@@ -128,7 +140,11 @@ class EventFactory:
             depth=self._ctx.depth,
             parent_run_id=self._ctx.parent_run_id,
             nested_runnable_id=self._ctx.nested_runnable_id,
-            runnable_type=self._ctx.runnable_type,
+            runnable_type=(
+                self._ctx.runnable_type.value
+                if isinstance(self._ctx.runnable_type, RunnableType)
+                else self._ctx.runnable_type
+            ),
             runnable_id=self._ctx.runnable_id,
             nesting_type=self._ctx.nesting_type,
         )
@@ -142,15 +158,17 @@ class EventFactory:
             depth=self._ctx.depth,
             parent_run_id=self._ctx.parent_run_id,
             nested_runnable_id=self._ctx.nested_runnable_id,
-            runnable_type=self._ctx.runnable_type,
+            runnable_type=(
+                self._ctx.runnable_type.value
+                if isinstance(self._ctx.runnable_type, RunnableType)
+                else self._ctx.runnable_type
+            ),
             runnable_id=self._ctx.runnable_id,
             nesting_type=self._ctx.nesting_type,
         )
 
     def error(self, error: str, error_type: str = "unknown") -> StepEvent:
         """Create an ERROR event."""
-        from agio.domain import create_error_event
-
         return create_error_event(
             run_id=self._ctx.run_id,
             error=error,

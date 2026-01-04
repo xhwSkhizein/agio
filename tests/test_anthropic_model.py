@@ -6,12 +6,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agio.providers.llm.anthropic import AnthropicModel
+from agio.llm.anthropic import AnthropicModel
 
 
 @pytest.fixture
 def mock_anthropic():
-    with patch("agio.providers.llm.anthropic.AsyncAnthropic") as mock:
+    with patch("agio.llm.anthropic.AsyncAnthropic") as mock:
         yield mock
 
 

@@ -1,6 +1,7 @@
-"""Citation 系统存储协议
+"""
+Citation storage protocols.
 
-定义信息源存储的抽象接口。
+Defines abstract interfaces for citation source storage.
 """
 
 from typing import Any, Protocol
@@ -12,13 +13,13 @@ from agio.storage.citation.models import (
 
 
 class CitationSourceRepository(Protocol):
-    """信息源仓储抽象接口
+    """Citation source repository abstract interface.
 
-    职责：
-    - 存储信息源并生成 citation_id
-    - 通过 citation_id 检索信息源
-    - 提供简化结果（隐藏详细信息）
-    - 支持更新信息源（用于 fetch 时补充完整内容）
+    Responsibilities:
+    - Store citation sources and generate citation_id
+    - Retrieve citation sources by citation_id
+    - Provide simplified results (hide detailed information)
+    - Support updating citation sources (for supplementing full content during fetch)
     """
 
     async def store_citation_sources(
@@ -26,14 +27,14 @@ class CitationSourceRepository(Protocol):
         session_id: str,
         sources: list[CitationSourceRaw],
     ) -> list[str]:
-        """存储信息源并返回 citation_id 列表
+        """Store citation sources and return citation_id list.
 
         Args:
-            session_id: 会话 ID
-            sources: 信息源列表
+            session_id: Session ID
+            sources: Citation source list
 
         Returns:
-            citation_id 列表
+            List of citation IDs
         """
         ...
 
@@ -42,14 +43,14 @@ class CitationSourceRepository(Protocol):
         citation_id: str,
         session_id: str,
     ) -> CitationSourceRaw | None:
-        """通过 citation_id 获取原始信息源
+        """Get raw citation source by citation_id.
 
         Args:
-            citation_id: 引用 ID
-            session_id: 会话 ID（用于验证）
+            citation_id: Citation ID
+            session_id: Session ID (for verification)
 
         Returns:
-            原始信息源或 None
+            Raw citation source or None
         """
         ...
 
@@ -58,14 +59,14 @@ class CitationSourceRepository(Protocol):
         session_id: str,
         citation_ids: list[str],
     ) -> list[CitationSourceSimplified]:
-        """获取简化版信息源（隐藏详细信息）
+        """Get simplified citation sources (hide detailed information).
 
         Args:
-            session_id: 会话 ID
-            citation_ids: 引用 ID 列表
+            session_id: Session ID
+            citation_ids: Citation ID list
 
         Returns:
-            简化版信息源列表
+            List of simplified citation sources
         """
         ...
 
@@ -73,13 +74,13 @@ class CitationSourceRepository(Protocol):
         self,
         session_id: str,
     ) -> list[CitationSourceSimplified]:
-        """获取 session 的所有 citations
+        """Get all citations for a session.
 
         Args:
-            session_id: 会话 ID
+            session_id: Session ID
 
         Returns:
-            简化版信息源列表
+            List of simplified citation sources
         """
         ...
 
@@ -89,15 +90,15 @@ class CitationSourceRepository(Protocol):
         session_id: str,
         updates: dict[str, Any],
     ) -> bool:
-        """更新信息源（用于 fetch 时补充完整内容）
+        """Update citation source (for supplementing full content during fetch).
 
         Args:
-            citation_id: 引用 ID
-            session_id: 会话 ID（用于验证）
-            updates: 要更新的字段字典
+            citation_id: Citation ID
+            session_id: Session ID (for verification)
+            updates: Dictionary of fields to update
 
         Returns:
-            是否更新成功
+            Whether update was successful
         """
         ...
 
@@ -106,22 +107,22 @@ class CitationSourceRepository(Protocol):
         session_id: str,
         index: int,
     ) -> CitationSourceRaw | None:
-        """通过索引获取信息源（用于 web_fetch(index=N)）
+        """Get citation source by index (for web_fetch(index=N)).
 
         Args:
-            session_id: 会话 ID
-            index: 数字索引
+            session_id: Session ID
+            index: Numeric index
 
         Returns:
-            原始信息源或 None
+            Raw citation source or None
         """
         ...
 
     async def cleanup_session(self, session_id: str) -> None:
-        """清理特定 session 的信息源
+        """
+        Clean up citation sources for specific session.
 
         Args:
-            session_id: 要清理的会话 ID
+            session_id: Session ID to clean up
         """
         ...
-

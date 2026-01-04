@@ -6,7 +6,6 @@ import {
   MessageSquare,
   Database,
   Brain,
-  BarChart3,
   History,
   Settings,
   FileText,
@@ -24,7 +23,6 @@ const navItems = [
   { path: '/knowledge', label: 'Knowledge', icon: Database },
   { path: '/memory', label: 'Memory', icon: Brain },
   { path: '/sessions', label: 'Sessions', icon: History },
-  { path: '/metrics', label: 'Metrics', icon: BarChart3 },
   { path: '/traces', label: 'Traces', icon: Activity },
 ]
 

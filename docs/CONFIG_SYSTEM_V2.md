@@ -49,7 +49,7 @@ Agio 配置系统采用模块化架构，遵循 **SOLID** 和 **KISS** 原则，
 3. **类型安全**：Pydantic + Union 类型提供完整的类型检查
 4. **依赖管理**：自动拓扑排序，循环依赖检测
 5. **热重载**：配置变更自动级联重建依赖组件
-6. **环境变量**：支持 `${VAR_NAME:default_value}` 格式
+6. **环境变量**：统一使用 Jinja2 语法 `{{ env.VAR | default('...') }}`
 
 ---
 
@@ -414,8 +414,8 @@ async def build(self, config: StoreConfig, dependencies: dict[str, Any]) -> Any:
         store = MongoStore(uri=backend.uri, db_name=backend.db_name)
         await store.connect()
         return store
-    elif backend.type == "postgres":
-        store = PostgresStore(url=backend.url, ...)
+    elif backend.type == "sqlite":
+        store = SQLiteStore(db_path=backend.db_path)
         await store.connect()
         return store
     elif backend.type == "inmemory":
@@ -485,7 +485,7 @@ async def handle_change(self, name: str, change_type: str, rebuild_func: Callabl
    ↓
 2. 解析 YAML 文件内容
    ↓
-3. 解析环境变量 (${VAR_NAME:default})
+3. 渲染环境变量模板（Jinja2）
    ↓
 4. 验证必需字段 (type, name)
    ↓
@@ -498,19 +498,17 @@ async def handle_change(self, name: str, change_type: str, rebuild_func: Callabl
 8. 按类型分组返回
 ```
 
-**环境变量解析**:
+**环境变量解析（Jinja2）**:
 
-支持格式：
-- `${VAR_NAME}`: 无默认值
-- `${VAR_NAME:default_value}`: 有默认值
-
-递归解析所有字符串值（包括嵌套字典和列表）。
+- 语法：`{{ env.VAR_NAME }}` 或 `{{ env.VAR_NAME | default("value") }}`
+- 支持表达式与过滤器，使用沙箱环境与 `SilentUndefined`（缺失变量返回空字符串）
+- 递归渲染所有字符串值（包含嵌套字典和列表），渲染失败保留原值并记录 warning
 
 **关键方法**:
 
 - `load_all_configs()`: 加载所有配置文件
 - `_load_yaml_file(file_path)`: 加载单个 YAML 文件
-- `_resolve_env_vars(data)`: 递归解析环境变量
+- `_resolve_env_vars(data)`: 递归渲染 Jinja2 模板
 
 **错误处理**:
 
@@ -557,17 +555,18 @@ ComponentConfig (基类)
 
 ```yaml
 backend:
-  type: <backend_type>  # mongodb/postgres/inmemory
+  type: <backend_type>  # mongodb/sqlite/inmemory
   # 后端特定字段
-  uri: ${MONGO_URI}     # MongoDB/数据库连接 URI
+  uri: "{{ env.MONGO_URI }}"     # MongoDB 连接 URI
   db_name: agio         # 数据库名称
+  db_path: "agio.db"    # SQLite 数据库文件路径
   # ...
 ```
 
 **支持的后端类型**：
 
 - `mongodb`: MongoDB 数据库
-- `postgres`: PostgreSQL 数据库
+- `sqlite`: SQLite 数据库（文件存储）
 - `inmemory`: 内存存储（无持久化）
 
 **Backend 配置定义** (`agio/config/backends.py`):
@@ -579,16 +578,14 @@ class MongoDBBackend(BackendConfig):
     db_name: str = "agio"
     collection_name: str | None = None
 
-class PostgresBackend(BackendConfig):
-    type: Literal["postgres"] = "postgres"
-    url: str
-    pool_size: int = 10
-    max_overflow: int = 20
+class SQLiteBackend(BackendConfig):
+    type: Literal["sqlite"] = "sqlite"
+    db_path: str
 
 class InMemoryBackend(BackendConfig):
     type: Literal["inmemory"] = "inmemory"
 
-StorageBackend = MongoDBBackend | PostgresBackend | InMemoryBackend
+StorageBackend = MongoDBBackend | SQLiteBackend | InMemoryBackend
 ```
 
 ### 组件配置详解
@@ -610,7 +607,7 @@ tags:
 # Provider 配置
 provider: openai              # Provider 类型
 model_name: deepseek-chat    # 模型名称
-api_key: ${DEEPSEEK_API_KEY} # API 密钥
+api_key: "{{ env.DEEPSEEK_API_KEY }}" # API 密钥
 base_url: https://api.deepseek.com  # API 端点（可选）
 
 # 模型参数
@@ -842,8 +839,8 @@ tags:
 
 backend:
   type: mongodb
-  uri: ${AGIO_MONGO_URI:mongodb://localhost:27017}
-  db_name: ${AGIO_MONGO_DB:agio}
+  uri: "{{ env.AGIO_MONGO_URI | default('mongodb://localhost:27017') }}"
+  db_name: "{{ env.AGIO_MONGO_DB | default('agio') }}"
 
 enable_indexing: true
 batch_size: 100
@@ -871,8 +868,8 @@ tags:
 
 backend:
   type: mongodb
-  uri: ${AGIO_MONGO_URI:mongodb://localhost:27017}
-  db_name: ${AGIO_MONGO_DB:agio}
+  uri: "{{ env.AGIO_MONGO_URI | default('mongodb://localhost:27017') }}"
+  db_name: "{{ env.AGIO_MONGO_DB | default('agio') }}"
   collection_name: traces
 
 buffer_size: 1000
@@ -903,8 +900,8 @@ tags:
 
 backend:
   type: mongodb
-  uri: ${MONGO_URI:mongodb://localhost:27017}
-  db_name: ${MONGO_DB_NAME:agio}
+  uri: "{{ env.MONGO_URI | default('mongodb://localhost:27017') }}"
+  db_name: "{{ env.MONGO_DB_NAME | default('agio') }}"
   collection_name: citation_sources
 
 auto_cleanup: false
@@ -975,7 +972,7 @@ new_model = ModelConfig(
     name="gpt4",
     provider="openai",
     model_name="gpt-4",
-    api_key="${OPENAI_API_KEY}"
+    api_key="{{ env.OPENAI_API_KEY }}"
 )
 
 # 保存配置（自动触发热重载）
@@ -1087,31 +1084,29 @@ def parse_tool_reference(tool_ref: str | dict) -> ParsedToolReference:
 **位置**: `agio/config/loader.py::_resolve_env_vars()`
 
 **支持格式**:
-- `${VAR_NAME}`: 无默认值
-- `${VAR_NAME:default_value}`: 有默认值
+- `{{ env.VAR_NAME }}`
+- `{{ env.VAR_NAME | default("value") }}`
 
 **实现**:
 
 ```python
 def _resolve_env_vars(self, data: dict[str, Any]) -> dict[str, Any]:
-    pattern = r"\$\{([^}:]+)(?::([^}]*))?\}"
-    
-    def replacer(match):
-        var_name = match.group(1)
-        default_value = match.group(2) if match.group(2) is not None else ""
-        return os.getenv(var_name, default_value)
-    
-    # 递归解析所有字符串值
     def resolve_value(value: Any) -> Any:
         if isinstance(value, str):
-            return re.sub(pattern, replacer, value)
+            try:
+                return renderer.render(value, env=os.environ)
+            except Exception as e:
+                logger.warning(
+                    f"Template render failed: {e}, using original value: {value[:100]}..."
+                )
+                return value
         elif isinstance(value, dict):
             return {k: resolve_value(v) for k, v in value.items()}
         elif isinstance(value, list):
             return [resolve_value(item) for item in value]
         else:
             return value
-    
+
     return resolve_value(data)
 ```
 
@@ -1213,7 +1208,7 @@ def _filter_valid_params(self, tool_class: type, kwargs: dict) -> dict:
 
 ```python
 from agio.config import get_model_provider_registry
-from agio.providers.llm.base import Model
+from agio.llm.base import Model
 
 class CustomModel(Model):
     # 实现 Model 接口
@@ -1260,7 +1255,7 @@ class CustomBackend(BackendConfig):
 **步骤 2**: 更新 Union 类型
 
 ```python
-StorageBackend = MongoDBBackend | PostgresBackend | InMemoryBackend | CustomBackend
+StorageBackend = MongoDBBackend | SQLiteBackend | InMemoryBackend | CustomBackend
 ```
 
 **步骤 3**: 在对应的 Builder 中添加构建逻辑
@@ -1271,7 +1266,7 @@ class SessionStoreBuilder(ComponentBuilder):
         backend = config.backend
         
         if backend.type == "custom":
-            from agio.providers.storage import CustomSessionStore
+            from agio.storage.session import CustomSessionStore
             store = CustomSessionStore(host=backend.host, port=backend.port)
             await store.connect()
             return store
@@ -1356,7 +1351,7 @@ configs/
 **命名规范**:
 
 - 组件名称：小写下划线，描述性强（`mongodb_session_store`）
-- 后端类型：小写，简洁（`mongodb`, `postgres`, `inmemory`）
+- 后端类型：小写，简洁（`mongodb`, `sqlite`, `inmemory`）
 - 字段名称：小写下划线（`enable_indexing`, `batch_size`）
 
 ### 配置一致性
@@ -1376,9 +1371,10 @@ configs/
 
 ### 环境变量
 
-1. **格式**：`${VAR_NAME:default_value}`
+1. **格式**：`{{ env.VAR_NAME | default("value") }}`
 2. **命名**：大写下划线，带前缀（`AGIO_MONGO_URI`）
-3. **敏感信息**：API 密钥、数据库密码等必须使用环境变量
+3. **缺省处理**：优先使用环境值，缺失时走 `default`，若仍缺失返回空字符串（`SilentUndefined`）
+4. **安全性**：沙箱渲染，敏感信息必须通过环境变量注入
 
 ### 热重载
 
