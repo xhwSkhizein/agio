@@ -1,4 +1,4 @@
-# Agio - Modern Agent Framework
+# Agio - an Agent Framework
 
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
@@ -156,7 +156,43 @@ Agio 使用 YAML 配置文件来定义 Agent、工具和工作流。配置文件
 
 ## 🔧 开发与发布
 
-### 发布前准备
+### 自动发布（GitHub Actions）
+
+项目配置了 GitHub Actions 工作流，可以自动发布到 PyPI。
+
+#### 配置 GitHub Secrets
+
+在 GitHub 仓库设置中添加以下 Secrets：
+
+1. **PYPI_API_TOKEN**（必需）：PyPI API Token
+   - 访问 [PyPI 账户设置](https://pypi.org/manage/account/) 创建 API Token
+   - 在 GitHub 仓库 Settings → Secrets and variables → Actions 中添加
+
+2. **TEST_PYPI_API_TOKEN**（可选）：TestPyPI API Token（用于测试发布）
+   - 访问 [TestPyPI 账户设置](https://test.pypi.org/manage/account/) 创建 API Token
+
+#### 发布方式
+
+**方式 1：通过 Release 发布（推荐）**
+
+1. 更新版本号：在 `pyproject.toml` 和 `agio/__init__.py` 中同步更新版本号
+2. 提交并推送代码
+3. 在 GitHub 创建 Release：
+   - 点击 "Releases" → "Create a new release"
+   - 选择或创建新的 tag（例如 `v0.1.0`）
+   - 填写 Release 标题和描述
+   - 点击 "Publish release"
+4. GitHub Actions 会自动构建并发布到 PyPI
+
+**方式 2：手动触发**
+
+1. 在 GitHub Actions 页面选择 "发布到 PyPI" 工作流
+2. 点击 "Run workflow" 手动触发
+3. 工作流会发布到 TestPyPI（如果配置了 TEST_PYPI_API_TOKEN）
+
+### 手动发布
+
+#### 发布前准备
 
 1. **更新版本号**：在 `pyproject.toml` 和 `agio/__init__.py` 中同步更新版本号
 
