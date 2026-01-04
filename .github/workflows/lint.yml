@@ -25,6 +25,10 @@ jobs:
         pip install ruff mypy
         pip install -r requirements.txt
     
+    - name: Install package in editable mode
+      run: |
+        pip install -e .
+    
     - name: Run ruff (linter)
       run: |
         ruff check .
