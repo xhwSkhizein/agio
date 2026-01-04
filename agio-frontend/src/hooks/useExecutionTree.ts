@@ -86,7 +86,6 @@ function buildExecutionTreeFromSteps(steps: BackendStep[]): ExecutionTree {
       parentRunId: firstStep.parent_run_id || undefined,
       depth: firstStep.depth || 0,
       workflowType,
-      workflowId: firstStep.workflow_id || undefined,
       nodeId: firstStep.node_id || undefined,
       branchId: firstStep.branch_key || undefined,
       status: 'completed',

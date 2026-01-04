@@ -151,7 +151,7 @@ function ExecutionSteps({ execution }: ExecutionStepsProps) {
   // Use a Map to track active index for each parallel tool call group
   const [activeParallelIndices, setActiveParallelIndices] = useState<Map<number, number>>(new Map())
 
-  const getActiveIndex = (groupIdx: number, groupLength: number): number => {
+  const getActiveIndex = (groupIdx: number): number => {
     return activeParallelIndices.get(groupIdx) ?? 0
   }
 
@@ -224,7 +224,7 @@ function ExecutionSteps({ execution }: ExecutionStepsProps) {
         // Handle grouped tool_calls (concurrent execution)
         if (Array.isArray(stepOrGroup)) {
           const toolCallSteps = stepOrGroup as Extract<ExecutionStep, { type: 'tool_call' }>[]
-          const activeIndex = getActiveIndex(idx, toolCallSteps.length)
+          const activeIndex = getActiveIndex(idx)
           const activeToolCall = toolCallSteps[activeIndex] || toolCallSteps[0]
           const toolResult = getToolResult(activeToolCall.toolCallId)
           const childExec = getChildForToolCall(activeToolCall)

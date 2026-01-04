@@ -9,7 +9,6 @@ export function useScrollManagement() {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const isUserScrolledUpRef = useRef(false)
   const scrollTimeoutRef = useRef<number | null>(null)
-  const lastScrollHeightRef = useRef<number>(0)
 
   const scrollToBottom = useCallback((force = false) => {
     if (!force && isUserScrolledUpRef.current) {

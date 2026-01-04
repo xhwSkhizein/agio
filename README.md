@@ -3,17 +3,17 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
 
-Agio 是一个专注**可组合、多代理编排**的现代 Agent 框架，提供一致的事件流、工具系统、可观测性与配置驱动能力。
+Agio is a modern Agent framework focused on **composable, multi-agent orchestration**, providing consistent event streaming, tool system, observability, and configuration-driven capabilities.
 
-## 📦 安装
+## 📦 Installation
 
-### 从 PyPI 安装（推荐）
+### Install from PyPI (Recommended)
 
 ```bash
 pip install agio
 ```
 
-### 从源码安装
+### Install from Source
 
 ```bash
 git clone https://github.com/your-org/agio.git
@@ -21,64 +21,64 @@ cd agio
 pip install -e .
 ```
 
-### 安装开发依赖
+### Install Development Dependencies
 
 ```bash
 pip install agio[dev]
 ```
 
-## 📚 文档
+## 📚 Documentation
 
-完整的架构和使用文档请参考：
+For complete architecture and usage documentation, please refer to:
 
-- [架构设计](./docs/ARCHITECTURE.md) - 整体架构概述和设计理念
-- [配置系统](./docs/CONFIG_SYSTEM_V2.md) - 配置驱动架构和使用指南
-- [工具配置](./docs/TOOL_CONFIGURATION.md) - 工具配置方式和环境变量支持
-- [Agent 系统](./docs/AGENT_SYSTEM.md) - Agent 执行引擎和 LLM 调用循环
-- [Workflow 编排](./docs/WORKFLOW_ORCHESTRATION.md) - Pipeline/Loop/Parallel 工作流
-- [Runnable 协议](./docs/RUNNABLE_PROTOCOL.md) - 统一执行接口和嵌套能力
-- [可观测性](./docs/OBSERVABILITY.md) - 分布式追踪和 Trace 查询
-- [API Control Panel](./docs/API_CONTROL_PANEL.md) - RESTful API 和流式事件接口
-- [API 集成指南](./agio/api/README.md) - 如何在现有 FastAPI 应用中集成 Agio API 和前端
+- [Architecture Design](./docs/ARCHITECTURE.md) - Overall architecture overview and design philosophy
+- [Configuration System](./docs/CONFIG_SYSTEM_V2.md) - Configuration-driven architecture and usage guide
+- [Tool Configuration](./docs/TOOL_CONFIGURATION.md) - Tool configuration methods and environment variable support
+- [Agent System](./docs/AGENT_SYSTEM.md) - Agent execution engine and LLM call loop
+- [Workflow Orchestration](./docs/WORKFLOW_ORCHESTRATION.md) - Pipeline/Loop/Parallel workflows
+- [Runnable Protocol](./docs/RUNNABLE_PROTOCOL.md) - Unified execution interface and nesting capabilities
+- [Observability](./docs/OBSERVABILITY.md) - Distributed tracing and Trace querying
+- [API Control Panel](./docs/API_CONTROL_PANEL.md) - RESTful API and streaming event interfaces
+- [API Integration Guide](./agio/api/README.md) - How to integrate Agio API and frontend into existing FastAPI applications
 
-## 🚀 快速开始
+## 🚀 Quick Start
 
-### 启动 API 服务器
+### Start API Server
 
-安装后，可以使用命令行工具启动 Agio API 服务器：
+After installation, you can use the command-line tool to start the Agio API server:
 
 ```bash
-# 使用默认配置（0.0.0.0:8900）
+# Use default configuration (0.0.0.0:8900)
 agio-server
 
-# 自定义主机和端口
+# Custom host and port
 agio-server --host 127.0.0.1 --port 8000
 
-# 开发模式（自动重载）
+# Development mode (auto-reload)
 agio-server --reload
 
-# 生产模式（多进程）
+# Production mode (multi-process)
 agio-server --workers 4
 ```
 
-### 基本使用
+### Basic Usage
 
 ```python
 from agio import Agent, ExecutionConfig, get_config_system
 
-# 初始化配置系统
+# Initialize configuration system
 config_system = get_config_system()
 
-# 创建 Agent
+# Create Agent
 agent = Agent.from_config("your-agent-config.yaml")
 
-# 运行 Agent
+# Run Agent
 result = await agent.run("Hello, Agio!")
 ```
 
-### 集成到现有 FastAPI 应用
+### Integrate into Existing FastAPI Application
 
-#### 方式 1：仅集成 API（推荐用于微服务架构）
+#### Method 1: API Only (Recommended for Microservice Architecture)
 
 ```python
 from fastapi import FastAPI
@@ -86,36 +86,36 @@ from agio.api import create_router
 
 app = FastAPI(title="My Application")
 
-# 集成 Agio API（挂载到 /agio 路径）
+# Integrate Agio API (mounted at /agio path)
 app.include_router(create_router(prefix="/agio"))
 
-# 你的其他路由
+# Your other routes
 @app.get("/")
 async def root():
     return {"message": "Hello World"}
 ```
 
-#### 方式 2：集成 API + 前端控制面板（推荐用于完整集成）
+#### Method 2: API + Frontend Control Panel (Recommended for Full Integration)
 
 ```python
 from fastapi import FastAPI
 from agio.api import create_app_with_frontend
 
-# 创建包含 API 和前端的完整应用
-# API 在 /agio，前端在根路径 /
+# Create complete application with API and frontend
+# API at /agio, frontend at root path /
 app = create_app_with_frontend(
     api_prefix="/agio",
     frontend_path="/",
     enable_frontend=True,
 )
 
-# 你的其他路由（注意不要与前端路径冲突）
+# Your other routes (be careful not to conflict with frontend paths)
 @app.get("/api/custom")
 async def custom_endpoint():
     return {"message": "Custom endpoint"}
 ```
 
-#### 方式 3：自定义路径挂载
+#### Method 3: Custom Path Mounting
 
 ```python
 from fastapi import FastAPI
@@ -123,24 +123,24 @@ from agio.api import create_router, mount_frontend
 
 app = FastAPI(title="My Application")
 
-# 挂载 API 到自定义路径
+# Mount API to custom path
 app.include_router(create_router(prefix="/admin/agio"))
 
-# 挂载前端到自定义路径
+# Mount frontend to custom path
 mount_frontend(app, path="/admin/agio/panel", api_prefix="/admin/agio")
 
-# 你的其他路由
+# Your other routes
 @app.get("/")
 async def root():
     return {"message": "Hello World"}
 ```
 
-#### 方式 4：仅使用 Agio 库功能（不启动 API）
+#### Method 4: Use Agio Library Only (No API Server)
 
 ```python
 from agio import Agent, get_config_system
 
-# 直接使用 Agio 核心功能，不启动 API 服务器
+# Use Agio core functionality directly without starting API server
 config_system = get_config_system()
 await config_system.load_from_directory("./configs")
 
@@ -148,136 +148,145 @@ agent = await config_system.get_agent("my-agent")
 result = await agent.run("Hello!")
 ```
 
-### 配置驱动
+### Configuration-Driven
 
-Agio 使用 YAML 配置文件来定义 Agent、工具和工作流。配置文件示例位于 `configs/` 目录。
+Agio uses YAML configuration files to define Agents, tools, and workflows. Example configuration files are located in the `configs/` directory.
 
-详见 [configs/README.md](./configs/README.md)
+See [configs/README.md](./configs/README.md) for details.
 
-## 🔧 开发与发布
+## 🔧 Development and Release
 
-### 自动发布（GitHub Actions）
+### Automated Release (GitHub Actions)
 
-项目配置了 GitHub Actions 工作流，可以自动发布到 PyPI。
+The project is configured with GitHub Actions workflows for automatic publishing to PyPI.
 
-#### 配置 GitHub Secrets
+#### Configure GitHub Secrets
 
-在 GitHub 仓库设置中添加以下 Secrets：
+Add the following secrets in your GitHub repository settings:
 
-1. **PYPI_API_TOKEN**（必需）：PyPI API Token
-   - 访问 [PyPI 账户设置](https://pypi.org/manage/account/) 创建 API Token
-   - 在 GitHub 仓库 Settings → Secrets and variables → Actions 中添加
+1. **PYPI_API_TOKEN** (Required): PyPI API Token
+   - Create an API Token at [PyPI Account Settings](https://pypi.org/manage/account/)
+   - Add it in GitHub repository Settings → Secrets and variables → Actions
 
-2. **TEST_PYPI_API_TOKEN**（可选）：TestPyPI API Token（用于测试发布）
-   - 访问 [TestPyPI 账户设置](https://test.pypi.org/manage/account/) 创建 API Token
+2. **TEST_PYPI_API_TOKEN** (Optional): TestPyPI API Token (for test releases)
+   - Create an API Token at [TestPyPI Account Settings](https://test.pypi.org/manage/account/)
 
-#### 发布方式
+#### Release Methods
 
-**方式 1：通过 Release 发布（推荐）**
+**Method 1: Release via GitHub Release (Recommended)**
 
-1. 更新版本号：在 `pyproject.toml` 和 `agio/__init__.py` 中同步更新版本号
-2. 提交并推送代码
-3. 在 GitHub 创建 Release：
-   - 点击 "Releases" → "Create a new release"
-   - 选择或创建新的 tag（例如 `v0.1.0`）
-   - 填写 Release 标题和描述
-   - 点击 "Publish release"
-4. GitHub Actions 会自动构建并发布到 PyPI
+1. Update version numbers: Synchronize version numbers in `pyproject.toml` and `agio/__init__.py`
+2. Commit and push code
+3. Create a GitHub Release:
+   - Click "Releases" → "Create a new release"
+   - Select or create a new tag (e.g., `v0.1.0`)
+   - Fill in the Release title and description
+   - Click "Publish release"
+4. GitHub Actions will automatically build and publish to PyPI
 
-**方式 2：手动触发**
+**Method 2: Manual Trigger**
 
-1. 在 GitHub Actions 页面选择 "发布到 PyPI" 工作流
-2. 点击 "Run workflow" 手动触发
-3. 工作流会发布到 TestPyPI（如果配置了 TEST_PYPI_API_TOKEN）
+1. Go to the GitHub Actions page and select the "发布到 PyPI" workflow
+2. Click "Run workflow" to manually trigger
+3. The workflow will publish to TestPyPI (if TEST_PYPI_API_TOKEN is configured)
 
-### 手动发布
+### Manual Release
 
-#### 发布前准备
+#### Pre-release Preparation
 
-1. **更新版本号**：在 `pyproject.toml` 和 `agio/__init__.py` 中同步更新版本号
+1. **Update version numbers**: Synchronize version numbers in `pyproject.toml` and `agio/__init__.py`
 
-2. **运行预发布检查**：
+2. **Run pre-release checks**:
 ```bash
 ./scripts/prepare_release.sh
 ```
 
-### 构建包
+### Build Package
 
 ```bash
 ./scripts/build_package.sh
 ```
 
-构建完成后，会在 `dist/` 目录生成以下文件：
-- `agio-X.X.X-py3-none-any.whl` - 轮子文件（推荐）
-- `agio-X.X.X.tar.gz` - 源码分发包
+After building, the following files will be generated in the `dist/` directory:
+- `agio-X.X.X-py3-none-any.whl` - Wheel file (recommended)
+- `agio-X.X.X.tar.gz` - Source distribution package
 
-### 检查包
+### Check Package
 
 ```bash
 ./scripts/check_package.sh
 ```
 
-### 本地测试安装
+### Local Test Installation
 
-在发布前，建议先本地测试安装：
+Before releasing, it's recommended to test installation locally:
 
 ```bash
 pip install dist/agio-*.whl
-# 或
+# or
 pip install dist/agio-*.tar.gz
 ```
 
-测试命令行工具：
+Test the command-line tool:
 ```bash
 agio-server --help
 ```
 
-### 发布到 TestPyPI（测试）
+### Publish to TestPyPI (Testing)
 
-首次发布建议先发布到 TestPyPI 进行测试：
+For first-time releases, it's recommended to publish to TestPyPI first:
 
 ```bash
 ./scripts/publish_package.sh testpypi
 ```
 
-测试安装：
+Test installation:
 ```bash
 pip install --index-url https://test.pypi.org/simple/ agio
 ```
 
-### 发布到 PyPI（生产）
+### Publish to PyPI (Production)
 
-测试通过后，发布到正式 PyPI：
+After testing passes, publish to the official PyPI:
 
 ```bash
 ./scripts/publish_package.sh pypi
 ```
 
-### PyPI 凭证配置
+### PyPI Credentials Configuration
 
-发布前需要配置 PyPI 凭证，推荐使用 API Token：
+Before publishing, you need to configure PyPI credentials. It's recommended to use API Tokens:
 
-1. **使用 API Token（推荐）**：
-   - 在 [PyPI 账户设置](https://pypi.org/manage/account/) 创建 API Token
-   - 设置环境变量：
+1. **Using API Token (Recommended)**:
+   - Create an API Token at [PyPI Account Settings](https://pypi.org/manage/account/)
+   - Set environment variables:
      ```bash
      export TWINE_USERNAME=__token__
-     export TWINE_PASSWORD=pypi-你的token
+     export TWINE_PASSWORD=pypi-your-token
      ```
 
-2. **使用 ~/.pypirc 文件**：
+2. **Using ~/.pypirc file**:
    ```ini
    [pypi]
    username = __token__
-   password = pypi-你的token
+   password = pypi-your-token
 
    [testpypi]
    username = __token__
-   password = pypi-你的testpypi-token
+   password = pypi-your-testpypi-token
    ```
 
-3. **使用传统用户名密码**（不推荐）：
+3. **Using traditional username/password** (Not recommended):
    ```bash
-   export TWINE_USERNAME=你的用户名
-   export TWINE_PASSWORD=你的密码
+   export TWINE_USERNAME=your-username
+   export TWINE_PASSWORD=your-password
    ```
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🌐 Language
+
+- [English](README.md) (Current)
+- [中文](README_zh.md)
