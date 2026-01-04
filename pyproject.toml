@@ -1,9 +1,24 @@
 [project]
 name = "agio"
 version = "0.1.0"
-description = "Modern AI Agent Framework"
+description = "Modern AI Agent Framework - A composable, multi-agent orchestration framework with event streaming, tool system, observability, and configuration-driven capabilities"
 readme = "README.md"
 requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "Agio Contributors"}
+]
+keywords = ["ai", "agent", "llm", "framework", "orchestration", "workflow"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "fastapi>=0.104.0",
     "uvicorn[standard]>=0.24.0",
@@ -38,6 +53,9 @@ dev = [
     "isort>=5.12.0",
     "mypy>=1.7.0",
 ]
+
+[project.scripts]
+agio-server = "agio.cli:main"
 
 [build-system]
 requires = ["hatchling"]

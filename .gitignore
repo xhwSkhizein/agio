@@ -75,6 +75,9 @@ agio-frontend/.next/
 agio-frontend/out/
 agio-frontend/build/
 
+# Frontend files copied to package (built during package build)
+agio/frontend/dist/
+
 # Frontend environment
 agio-frontend/.env
 agio-frontend/.env.local

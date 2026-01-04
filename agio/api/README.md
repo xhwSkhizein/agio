@@ -1,79 +1,144 @@
-# Agio FastAPI Backend
+# Agio API 集成指南
 
-Agio 的控制平面 API，基于 FastAPI + SSE，前缀默认 `/agio`。启动时会通过 `ConfigSystem` 读取 `configs/` 下的组件并构建 Agent/Workflow，可直接被前端仪表盘使用。
+本指南说明如何在你的 FastAPI 应用中集成 Agio 的 API 和前端控制面板。
 
-## ✨ 能力概览
+## 快速集成
 
-- 🔌 **配置驱动**：热重载 `configs/`，拓扑排序构建组件
-- 💬 **聊天与流式事件**：SSE 方式返回 `StepEvent`，兼容非流式
-- 🧠 **多组件管理**：Agent / Workflow / Tool / Memory / Knowledge / Repository
-- 📈 **观测性**：LLM 调用日志与 Metrics 查询
-- 🩺 **健康检查**：就绪与存活探针
+### 方式 1：完整集成（API + 前端）
 
-## ⚡ 快速开始
-
-```bash
-python main.py               # 监听 0.0.0.0:8900
-# 或使用 uvicorn
-uvicorn agio.api.app:app --host 0.0.0.0 --port 8900 --reload
-```
-
-关键环境变量：
-
-```bash
-AGIO_CONFIG_DIR=./configs
-AGIO_OPENAI_API_KEY=sk-...
-AGIO_ANTHROPIC_API_KEY=sk-...
-AGIO_DEEPSEEK_API_KEY=sk-...
-AGIO_MONGO_URI=mongodb://localhost:27017   # 如需持久化
-```
-
-文档入口（默认前缀 `/agio`）：
-
-- OpenAPI: `http://localhost:8900/agio/docs`
-- Redoc: `http://localhost:8900/agio/redoc`
-
-## 🗺️ 路由速览（前缀 `/agio`）
-
-- `GET /health` / `GET /health/ready`：健康与就绪
-- `GET /config`、`GET/PUT/DELETE /config/{type}/{name}`、`POST /config/reload`
-- `GET /agents`、`GET /agents/{name}`、`GET /agents/{name}/status`
-- `POST /chat/{agent_name}`：`stream=true` SSE，`stream=false` 普通响应
-- `GET /sessions`、`/sessions/summary`、`/sessions/{id}`、`POST /sessions/{id}/fork`、`GET /sessions/{id}/steps`、`POST /sessions/{id}/resume`
-- `GET /memory`、`GET /memory/{name}`、`POST /memory/{name}/search`
-- `GET /knowledge`、`GET /knowledge/{name}`、`POST /knowledge/{name}/search`
-- `GET /metrics/system`、`GET /metrics/agents/{agent_id}`
-- `GET /llm/logs`、`GET /llm/logs/{id}`、`GET /llm/logs/stream` (SSE) 、`GET /llm/stats`
-- `GET /runnables`、`GET /runnables/{id}`、`POST /runnables/{id}/run` (SSE)
-- `GET /workflows`、`GET /workflows/{id}`
-
-## 💬 示例：SSE Chat
+最简单的方式是使用 `create_app_with_frontend`，它会自动配置 API 和前端：
 
 ```python
-import httpx, json
+from agio.api import create_app_with_frontend
 
-with httpx.stream(
-    "POST",
-    "http://localhost:8900/agio/chat/code_assistant",
-    json={"message": "Hello", "stream": True},
-    headers={"Accept": "text/event-stream"},
-) as resp:
-    for line in resp.iter_lines():
-        if line.startswith("data:"):
-            print(json.loads(line[5:]))
+app = create_app_with_frontend(
+    api_prefix="/agio",      # API 路径前缀
+    frontend_path="/",        # 前端挂载路径
+    enable_frontend=True,     # 是否启用前端
+)
 ```
 
-## 🧪 测试
+访问：
+- 前端控制面板：`http://localhost:8000/`
+- API 文档：`http://localhost:8000/agio/docs`
+- API 端点：`http://localhost:8000/agio/...`
+
+### 方式 2：仅集成 API
+
+如果你只需要 API 功能，不需要前端：
+
+```python
+from fastapi import FastAPI
+from agio.api import create_router
+
+app = FastAPI()
+
+# 挂载 Agio API
+app.include_router(create_router(prefix="/agio"))
+```
+
+### 方式 3：自定义集成
+
+如果你需要更多控制，可以分别挂载 API 和前端：
+
+```python
+from fastapi import FastAPI
+from agio.api import create_router, mount_frontend
+
+app = FastAPI(title="My Application")
+
+# 1. 先挂载 API 路由（重要：必须在挂载前端之前）
+app.include_router(create_router(prefix="/agio"))
+
+# 2. 然后挂载前端（SPA 路由会注册在最后）
+mount_frontend(app, path="/", api_prefix="/agio")
+
+# 3. 你的其他路由
+@app.get("/api/custom")
+async def custom():
+    return {"message": "Custom endpoint"}
+```
+
+**重要提示**：
+- API 路由必须在挂载前端之前注册，这样 SPA 的 catch-all 路由不会拦截 API 请求
+- 前端路径和 API 路径不能重叠
+
+### 方式 4：挂载到子路径
+
+如果你想把 Agio 挂载到子路径（例如 `/admin/agio`）：
+
+```python
+from fastapi import FastAPI
+from agio.api import create_router, mount_frontend
+
+app = FastAPI()
+
+# API 挂载到 /admin/agio
+app.include_router(create_router(prefix="/admin/agio"))
+
+# 前端挂载到 /admin/agio/panel
+mount_frontend(app, path="/admin/agio/panel", api_prefix="/admin/agio")
+```
+
+访问：
+- 前端：`http://localhost:8000/admin/agio/panel`
+- API：`http://localhost:8000/admin/agio/...`
+
+## 环境变量配置
+
+Agio 使用环境变量进行配置：
 
 ```bash
-pytest tests/workflow -q
-pytest tests/config -q
+# 配置目录（包含 Agent、Tool、Workflow 等配置）
+export AGIO_CONFIG_DIR=./configs
+
+# LLM API Keys
+export AGIO_OPENAI_API_KEY=sk-...
+export AGIO_ANTHROPIC_API_KEY=sk-...
+export AGIO_DEEPSEEK_API_KEY=sk-...
+
+# 存储配置（可选）
+export AGIO_MONGO_URI=mongodb://localhost:27017
 ```
 
-## 🚀 部署
+## 前端配置
 
-```bash
-uvicorn agio.api.app:app --host 0.0.0.0 --port 8900 --workers 4
+前端会自动使用你指定的 `api_prefix` 作为 API 基础路径。例如：
+
+- 如果 `api_prefix="/agio"`，前端会请求 `/agio/agents`、`/agio/sessions` 等
+- 如果 `api_prefix="/admin/agio"`，前端会请求 `/admin/agio/agents` 等
+
+## 故障排除
+
+### 前端无法加载
+
+1. 确保前端已构建并包含在包中：
+   ```bash
+   # 在开发时，确保前端已构建
+   cd agio-frontend
+   npm run build
+   ```
+
+2. 检查前端文件是否存在：
+   ```python
+   from agio.api import get_frontend_dist_path
+   print(get_frontend_dist_path())  # 应该返回路径，而不是 None
+   ```
+
+### API 路由被前端拦截
+
+确保 API 路由在挂载前端之前注册：
+
+```python
+# ✅ 正确顺序
+app.include_router(create_router(prefix="/agio"))  # 先注册 API
+mount_frontend(app, path="/", api_prefix="/agio")  # 后挂载前端
+
+# ❌ 错误顺序
+mount_frontend(app, path="/", api_prefix="/agio")  # 前端会拦截所有请求
+app.include_router(create_router(prefix="/agio"))  # API 无法访问
 ```
 
-容器示例：参考根目录 `start.sh` / `stop.sh` 或自行编写 Dockerfile。
+### 静态资源 404
+
+确保前端构建产物包含 `assets` 目录，并且构建脚本已正确复制文件到包中。

@@ -1,0 +1,14 @@
+include README.md
+include LICENSE
+include pyproject.toml
+recursive-include configs *.yaml *.yml *.md
+recursive-include agio/frontend/dist *
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude * .DS_Store
+recursive-exclude tests *
+recursive-exclude agio-frontend *
+recursive-exclude logs *
+recursive-exclude trash *
+recursive-exclude skills *
+recursive-exclude docs *

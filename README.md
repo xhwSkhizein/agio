@@ -5,6 +5,28 @@
 
 Agio 是一个专注**可组合、多代理编排**的现代 Agent 框架，提供一致的事件流、工具系统、可观测性与配置驱动能力。
 
+## 📦 安装
+
+### 从 PyPI 安装（推荐）
+
+```bash
+pip install agio
+```
+
+### 从源码安装
+
+```bash
+git clone https://github.com/your-org/agio.git
+cd agio
+pip install -e .
+```
+
+### 安装开发依赖
+
+```bash
+pip install agio[dev]
+```
+
 ## 📚 文档
 
 完整的架构和使用文档请参考：
@@ -17,7 +39,209 @@ Agio 是一个专注**可组合、多代理编排**的现代 Agent 框架，提�
 - [Runnable 协议](./docs/RUNNABLE_PROTOCOL.md) - 统一执行接口和嵌套能力
 - [可观测性](./docs/OBSERVABILITY.md) - 分布式追踪和 Trace 查询
 - [API Control Panel](./docs/API_CONTROL_PANEL.md) - RESTful API 和流式事件接口
+- [API 集成指南](./agio/api/README.md) - 如何在现有 FastAPI 应用中集成 Agio API 和前端
 
 ## 🚀 快速开始
 
+### 启动 API 服务器
+
+安装后，可以使用命令行工具启动 Agio API 服务器：
+
+```bash
+# 使用默认配置（0.0.0.0:8900）
+agio-server
+
+# 自定义主机和端口
+agio-server --host 127.0.0.1 --port 8000
+
+# 开发模式（自动重载）
+agio-server --reload
+
+# 生产模式（多进程）
+agio-server --workers 4
+```
+
+### 基本使用
+
+```python
+from agio import Agent, ExecutionConfig, get_config_system
+
+# 初始化配置系统
+config_system = get_config_system()
+
+# 创建 Agent
+agent = Agent.from_config("your-agent-config.yaml")
+
+# 运行 Agent
+result = await agent.run("Hello, Agio!")
+```
+
+### 集成到现有 FastAPI 应用
+
+#### 方式 1：仅集成 API（推荐用于微服务架构）
+
+```python
+from fastapi import FastAPI
+from agio.api import create_router
+
+app = FastAPI(title="My Application")
+
+# 集成 Agio API（挂载到 /agio 路径）
+app.include_router(create_router(prefix="/agio"))
+
+# 你的其他路由
+@app.get("/")
+async def root():
+    return {"message": "Hello World"}
+```
+
+#### 方式 2：集成 API + 前端控制面板（推荐用于完整集成）
+
+```python
+from fastapi import FastAPI
+from agio.api import create_app_with_frontend
+
+# 创建包含 API 和前端的完整应用
+# API 在 /agio，前端在根路径 /
+app = create_app_with_frontend(
+    api_prefix="/agio",
+    frontend_path="/",
+    enable_frontend=True,
+)
+
+# 你的其他路由（注意不要与前端路径冲突）
+@app.get("/api/custom")
+async def custom_endpoint():
+    return {"message": "Custom endpoint"}
+```
+
+#### 方式 3：自定义路径挂载
+
+```python
+from fastapi import FastAPI
+from agio.api import create_router, mount_frontend
+
+app = FastAPI(title="My Application")
+
+# 挂载 API 到自定义路径
+app.include_router(create_router(prefix="/admin/agio"))
+
+# 挂载前端到自定义路径
+mount_frontend(app, path="/admin/agio/panel", api_prefix="/admin/agio")
+
+# 你的其他路由
+@app.get("/")
+async def root():
+    return {"message": "Hello World"}
+```
+
+#### 方式 4：仅使用 Agio 库功能（不启动 API）
+
+```python
+from agio import Agent, get_config_system
+
+# 直接使用 Agio 核心功能，不启动 API 服务器
+config_system = get_config_system()
+await config_system.load_from_directory("./configs")
+
+agent = await config_system.get_agent("my-agent")
+result = await agent.run("Hello!")
+```
+
+### 配置驱动
+
+Agio 使用 YAML 配置文件来定义 Agent、工具和工作流。配置文件示例位于 `configs/` 目录。
+
 详见 [configs/README.md](./configs/README.md)
+
+## 🔧 开发与发布
+
+### 发布前准备
+
+1. **更新版本号**：在 `pyproject.toml` 和 `agio/__init__.py` 中同步更新版本号
+
+2. **运行预发布检查**：
+```bash
+./scripts/prepare_release.sh
+```
+
+### 构建包
+
+```bash
+./scripts/build_package.sh
+```
+
+构建完成后，会在 `dist/` 目录生成以下文件：
+- `agio-X.X.X-py3-none-any.whl` - 轮子文件（推荐）
+- `agio-X.X.X.tar.gz` - 源码分发包
+
+### 检查包
+
+```bash
+./scripts/check_package.sh
+```
+
+### 本地测试安装
+
+在发布前，建议先本地测试安装：
+
+```bash
+pip install dist/agio-*.whl
+# 或
+pip install dist/agio-*.tar.gz
+```
+
+测试命令行工具：
+```bash
+agio-server --help
+```
+
+### 发布到 TestPyPI（测试）
+
+首次发布建议先发布到 TestPyPI 进行测试：
+
+```bash
+./scripts/publish_package.sh testpypi
+```
+
+测试安装：
+```bash
+pip install --index-url https://test.pypi.org/simple/ agio
+```
+
+### 发布到 PyPI（生产）
+
+测试通过后，发布到正式 PyPI：
+
+```bash
+./scripts/publish_package.sh pypi
+```
+
+### PyPI 凭证配置
+
+发布前需要配置 PyPI 凭证，推荐使用 API Token：
+
+1. **使用 API Token（推荐）**：
+   - 在 [PyPI 账户设置](https://pypi.org/manage/account/) 创建 API Token
+   - 设置环境变量：
+     ```bash
+     export TWINE_USERNAME=__token__
+     export TWINE_PASSWORD=pypi-你的token
+     ```
+
+2. **使用 ~/.pypirc 文件**：
+   ```ini
+   [pypi]
+   username = __token__
+   password = pypi-你的token
+
+   [testpypi]
+   username = __token__
+   password = pypi-你的testpypi-token
+   ```
+
+3. **使用传统用户名密码**（不推荐）：
+   ```bash
+   export TWINE_USERNAME=你的用户名
+   export TWINE_PASSWORD=你的密码
+   ```

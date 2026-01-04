@@ -15,7 +15,11 @@ Usage:
     app = FastAPI()
     app.include_router(create_router())
 
-    # Mode 3: Disable API
+    # Mode 3: Integrate with frontend
+    from agio.api import create_app_with_frontend
+    app = create_app_with_frontend()
+
+    # Mode 4: Disable API
     # Set environment variable: AGIO_API_ENABLED=false
 """
 
@@ -23,6 +27,7 @@ import os
 
 from .app import create_app
 from .router import create_router
+from .static import create_app_with_frontend, get_frontend_dist_path, mount_frontend
 
 
 def start_server(
@@ -58,7 +63,10 @@ def is_api_enabled() -> bool:
 
 __all__ = [
     "create_app",
+    "create_app_with_frontend",
     "create_router",
+    "get_frontend_dist_path",
+    "mount_frontend",
     "start_server",
     "is_api_enabled",
 ]
