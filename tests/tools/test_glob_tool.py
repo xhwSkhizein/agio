@@ -1,7 +1,6 @@
 """GlobTool 测试用例"""
 
 import pytest
-from pathlib import Path
 
 from agio.tools.builtin.glob_tool import GlobTool
 from agio.runtime.protocol import ExecutionContext

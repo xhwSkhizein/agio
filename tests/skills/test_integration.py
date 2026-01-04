@@ -4,13 +4,10 @@ Integration tests for Agent Skills system.
 
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
-from agio.agent import Agent
-from agio.config.settings import settings
-from agio.llm.openai import OpenAIModel
 from agio.skills.manager import SkillManager
 
 

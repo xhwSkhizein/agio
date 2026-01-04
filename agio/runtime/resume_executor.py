@@ -110,8 +110,8 @@ class ResumeExecutor:
             runnable_id = state.runnable_id
             if not runnable_id:
                 raise ValueError(
-                    f"Cannot infer runnable_id from steps. "
-                    f"Please provide runnable_id explicitly."
+                    "Cannot infer runnable_id from steps. "
+                    "Please provide runnable_id explicitly."
                 )
 
         logger.info(

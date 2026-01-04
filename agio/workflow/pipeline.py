@@ -188,5 +188,5 @@ class PipelineWorkflow(BaseWorkflow):
                 ),
             )
 
-        except Exception as e:
+        except Exception:
             raise

@@ -6,7 +6,6 @@ represented with all required fields.
 """
 
 import pytest
-from datetime import datetime
 
 from agio.api.routes.sessions import StepResponse
 from agio.domain import MessageRole

@@ -1,13 +1,9 @@
 """LSTool 测试用例"""
 
 import pytest
-import tempfile
-import os
 from pathlib import Path
 
 from agio.tools.builtin.ls_tool import LSTool
-from agio.runtime.protocol import ExecutionContext
-from agio.runtime import Wire
 from agio.runtime.control import AbortSignal
 
 

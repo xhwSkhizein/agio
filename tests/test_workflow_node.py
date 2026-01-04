@@ -2,7 +2,6 @@
 Tests for WorkflowNode configuration model.
 """
 
-import pytest
 from unittest.mock import MagicMock
 
 from agio.workflow.node import WorkflowNode

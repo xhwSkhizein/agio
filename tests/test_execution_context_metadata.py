@@ -5,7 +5,6 @@ Tests for ExecutionContext metadata propagation to Steps.
 import pytest
 
 from agio.domain import MessageRole, Step
-from agio.storage.session import InMemorySessionStore
 from agio.runtime.protocol import ExecutionContext
 from agio.runtime.wire import Wire
 

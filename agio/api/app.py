@@ -21,7 +21,7 @@ async def lifespan(app: FastAPI):
     # Initialize ConfigSystem
     from agio.config import get_config_system
 
-    config_dir = os.getenv("AGIO_CONFIG_DIR", "./configs")
+    config_dir = os.getenv("AGIO_CONFIG_DIR", "examples/configs")
 
     try:
         config_sys = get_config_system()

@@ -7,8 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from agio.skills.exceptions import SkillParseError
-from agio.skills.registry import SkillMetadata, SkillRegistry
+from agio.skills.registry import SkillRegistry
 
 
 @pytest.fixture

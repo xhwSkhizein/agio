@@ -4,7 +4,7 @@ Tests for tool reference parsing.
 
 import pytest
 
-from agio.config.tool_reference import parse_tool_reference, parse_tool_references, ParsedToolReference
+from agio.config.tool_reference import parse_tool_reference, parse_tool_references
 from agio.config.schema import RunnableToolConfig
 
 

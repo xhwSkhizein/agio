@@ -4,8 +4,6 @@ import pytest
 from pathlib import Path
 
 from agio.tools.builtin.grep_tool import GrepTool
-from agio.runtime.protocol import ExecutionContext
-from agio.runtime import Wire
 from agio.runtime.control import AbortSignal
 
 

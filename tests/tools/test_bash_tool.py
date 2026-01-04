@@ -1,7 +1,6 @@
 """BashTool 测试用例"""
 
 import pytest
-from pathlib import Path
 
 from agio.tools.builtin.bash_tool import BashTool
 from agio.runtime.control import AbortSignal

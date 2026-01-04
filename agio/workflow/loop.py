@@ -227,7 +227,7 @@ class LoopWorkflow(BaseWorkflow):
                 termination_reason=termination_reason,
             )
 
-        except Exception as e:
+        except Exception:
             raise
 
     async def _generate_termination_summary(

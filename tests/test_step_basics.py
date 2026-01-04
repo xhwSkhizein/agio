@@ -2,7 +2,6 @@
 Basic tests for Step model and session_store operations.
 """
 
-from datetime import datetime
 
 import pytest
 
