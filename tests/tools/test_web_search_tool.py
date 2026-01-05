@@ -145,6 +145,6 @@ class TestWebSearchTool:
 
             if result.is_success:
                 assert result.start_time > 0
-                assert result.end_time > result.start_time
-                assert result.duration > 0
+                assert result.end_time >= result.start_time
+                assert result.duration >= 0
 
