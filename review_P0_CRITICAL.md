@@ -87,7 +87,7 @@
 
 ## 3. 资源泄漏风险
 
-### 3.1 异步任务未正确清理
+### 3.1 异步任务未正确清理（已修复✅）
 **位置**: `agio/api/routes/runnables.py`, `agio/runtime/runnable_executor.py`
 
 **问题描述**:

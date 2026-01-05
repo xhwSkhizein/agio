@@ -236,6 +236,7 @@ class RunnableExecutor:
         session_id: str | None = None,
         user_id: str | None = None,
         metadata: dict | None = None,
+        cleanup_timeout: float = 5.0,
     ) -> AsyncIterator[StepEvent]:
         """
         Execute a Runnable in streaming mode, automatically managing Wire and Task lifecycle.
@@ -272,19 +273,21 @@ class RunnableExecutor:
             finally:
                 await wire.close()
 
-        task = asyncio.create_task(_run())
-
         try:
-            async for event in wire.read():
-                yield event
+            async with asyncio.TaskGroup() as tg:
+                tg.create_task(_run())
+                async for event in wire.read():
+                    yield event
         finally:
-            # Ensure task is cleaned up
-            if not task.done():
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
+            try:
+                async with asyncio.timeout(cleanup_timeout):
+                    await wire.close()
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "execute_stream_cleanup_timeout",
+                    runnable_id=runnable.id,
+                    timeout=cleanup_timeout,
+                )
 
 
 __all__ = ["RunnableExecutor"]

@@ -29,6 +29,8 @@ from agio.workflow.parallel import ParallelWorkflow
 
 router = APIRouter(prefix="/runnables")
 
+CLEANUP_TIMEOUT_SECONDS = 5.0
+
 
 class RunRequest(BaseModel):
     """Request body for running a Runnable."""
@@ -61,7 +63,7 @@ async def list_runnables(
     # Get all instances from config system
     instances = config_system.get_all_instances()
 
-    for name, instance in instances.items():
+    for _, instance in instances.items():
         # Check if it has the Runnable protocol
         if hasattr(instance, "run") and hasattr(instance, "id"):
             info = RunnableInfo(
@@ -234,11 +236,7 @@ async def run_runnable(
         finally:
             # Ensure task is cleaned up
             if not task.done():
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
+                await _cancel_task_with_timeout(task, CLEANUP_TIMEOUT_SECONDS)
 
     return EventSourceResponse(
         event_generator(),
@@ -322,11 +320,7 @@ async def _run_non_streaming(
 
     finally:
         if not task.done():
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+            await _cancel_task_with_timeout(task, CLEANUP_TIMEOUT_SECONDS)
 
     return {
         "run_id": final_run_id or "unknown",
@@ -334,3 +328,14 @@ async def _run_non_streaming(
         "response": response_content,
         "metrics": metrics,
     }
+
+
+async def _cancel_task_with_timeout(task: asyncio.Task[Any], timeout: float) -> None:
+    task.cancel()
+    try:
+        async with asyncio.timeout(timeout):
+            await task
+    except asyncio.CancelledError:
+        pass
+    except asyncio.TimeoutError:
+        pass
