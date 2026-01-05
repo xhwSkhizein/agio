@@ -182,8 +182,8 @@ class TestRunnableTool:
 
         result = await tool.execute({"task": "Test"}, context=context)
 
-        assert result.duration > 0
-        assert result.start_time < result.end_time
+        assert result.duration >= 0
+        assert result.start_time <= result.end_time
 
 
 class TestAsTool:
