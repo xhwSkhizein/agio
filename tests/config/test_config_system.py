@@ -2,6 +2,7 @@
 Tests for ConfigSystem.
 """
 
+import asyncio
 import tempfile
 from pathlib import Path
 
@@ -526,6 +527,53 @@ class TestConfigLoaderRefactor:
             
             # Config should not be registered
             assert config_system.get_config(ComponentType.MODEL, "disabled_model") is None
+
+
+class TestConfigSystemConcurrency:
+    """Concurrency regression tests."""
+
+    @pytest.mark.asyncio
+    async def test_concurrent_save_and_delete(self, config_system, temp_config_dir):
+        """Save and delete concurrently should not corrupt registry."""
+        await config_system.load_from_directory(temp_config_dir)
+        await config_system.build_all()
+
+        new_model = ModelConfig(
+            name="new_model_concurrent",
+            provider="openai",
+            model_name="gpt-4",
+            api_key="test-key",
+        )
+
+        await asyncio.gather(
+            config_system.save_config(new_model),
+            config_system.delete_config(ComponentType.MODEL, "test_model"),
+        )
+
+        assert config_system.get_config(ComponentType.MODEL, "new_model_concurrent") is not None
+        assert config_system.get_config(ComponentType.MODEL, "test_model") is None
+
+    @pytest.mark.asyncio
+    async def test_concurrent_rebuild_and_save(self, config_system, temp_config_dir):
+        """Rebuild and save concurrently should serialize without races."""
+        await config_system.load_from_directory(temp_config_dir)
+        await config_system.build_all()
+
+        updated_model = ModelConfig(
+            name="test_model",
+            provider="openai",
+            model_name="gpt-4-extended",
+            api_key="updated-key",
+        )
+
+        await asyncio.gather(
+            config_system.rebuild("test_agent"),
+            config_system.save_config(updated_model),
+        )
+
+        config = config_system.get_config(ComponentType.MODEL, "test_model")
+        assert config is not None
+        assert config["model_name"] == "gpt-4-extended"
 
 
 if __name__ == "__main__":

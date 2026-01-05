@@ -7,6 +7,7 @@ Responsibilities:
 - Handle component building process
 """
 
+import asyncio
 import threading
 from pathlib import Path
 from typing import Any
@@ -65,6 +66,7 @@ class ConfigSystem:
     }
 
     def __init__(self) -> None:
+        self._lock = asyncio.Lock()
         self.registry = ConfigRegistry()
         self.container = ComponentContainer()
         self.dependency_resolver = DependencyResolver()
@@ -94,16 +96,17 @@ class ConfigSystem:
         for configs in configs_by_type.values():
             all_config_dicts.extend(configs)
 
-        for config_dict in all_config_dicts:
-            name = config_dict.get("name", "unknown")
-            try:
-                config = self._parse_config(config_dict)
-                self.registry.register(config)
-                logger.info(f"Loaded config: {config.type}/{config.name}")
-                stats["loaded"] += 1
-            except Exception as e:
-                logger.error(f"Failed to parse config {name}: {e}")
-                stats["failed"] += 1
+        async with self._lock:
+            for config_dict in all_config_dicts:
+                name = config_dict.get("name", "unknown")
+                try:
+                    config = self._parse_config(config_dict)
+                    self.registry.register(config)
+                    logger.info(f"Loaded config: {config.type}/{config.name}")
+                    stats["loaded"] += 1
+                except Exception as e:
+                    logger.error(f"Failed to parse config {name}: {e}")
+                    stats["failed"] += 1
 
         logger.info(f"Config loading completed: {stats}")
         return stats
@@ -128,16 +131,19 @@ class ConfigSystem:
         component_type = ComponentType(config.type)
         name = config.name
 
-        is_update = self.registry.has(component_type, name)
+        async with self._lock:
+            is_update = self.registry.has(component_type, name)
 
-        self.registry.register(config)
-        logger.info(f"Config saved: {component_type.value}/{name}")
+            self.registry.register(config)
+            logger.info(f"Config saved: {component_type.value}/{name}")
 
-        if is_update and self.container.has(name):
-            await self.hot_reload.handle_change(name, "update", lambda n: self._build_by_name(n))
-        else:
-            await self._build_component(config)
-            self.hot_reload._notify_callbacks(name, "create")
+            if is_update and self.container.has(name):
+                await self.hot_reload.handle_change(
+                    name, "update", lambda n: self._build_by_name(n)
+                )
+            else:
+                await self._build_component(config)
+                self.hot_reload._notify_callbacks(name, "create")
 
     async def delete_config(self, component_type: ComponentType, name: str) -> None:
         """
@@ -147,13 +153,14 @@ class ConfigSystem:
             component_type: Component type
             name: Component name
         """
-        if not self.registry.has(component_type, name):
-            raise ConfigNotFoundError(f"Config {component_type.value}/{name} not found")
+        async with self._lock:
+            if not self.registry.has(component_type, name):
+                raise ConfigNotFoundError(f"Config {component_type.value}/{name} not found")
 
-        await self.hot_reload.handle_change(name, "delete", None)
+            await self.hot_reload.handle_change(name, "delete", None)
 
-        self.registry.remove(component_type, name)
-        logger.info(f"Config deleted: {component_type.value}/{name}")
+            self.registry.remove(component_type, name)
+            logger.info(f"Config deleted: {component_type.value}/{name}")
 
     def get_config(self, component_type: ComponentType, name: str) -> dict | None:
         """Get configuration (returns dict format for backward compatibility)."""
@@ -178,23 +185,24 @@ class ConfigSystem:
         """
         logger.info("Building all components...")
 
-        configs = self.registry.list_all()
-        available_names = self.registry.get_all_names()
+        async with self._lock:
+            configs = self.registry.list_all()
+            available_names = self.registry.get_all_names()
 
-        sorted_configs = self.dependency_resolver.topological_sort(configs, available_names)
+            sorted_configs = self.dependency_resolver.topological_sort(configs, available_names)
 
-        stats = {"built": 0, "failed": 0}
+            stats = {"built": 0, "failed": 0}
 
-        for config in sorted_configs:
-            if self.container.has(config.name):
-                continue
+            for config in sorted_configs:
+                if self.container.has(config.name):
+                    continue
 
-            try:
-                await self._build_component(config)
-                stats["built"] += 1
-            except Exception as e:
-                logger.exception(f"Failed to build {config.type}/{config.name}: {e}")
-                stats["failed"] += 1
+                try:
+                    await self._build_component(config)
+                    stats["built"] += 1
+                except Exception as e:
+                    logger.exception(f"Failed to build {config.type}/{config.name}: {e}")
+                    stats["failed"] += 1
 
         logger.info(f"Build completed: {stats}")
         return stats
@@ -206,7 +214,10 @@ class ConfigSystem:
         Args:
             name: Component name
         """
-        await self.hot_reload.handle_change(name, "update", lambda n: self._build_by_name(n))
+        async with self._lock:
+            await self.hot_reload.handle_change(
+                name, "update", lambda n: self._build_by_name(n)
+            )
 
     def get(self, name: str) -> Any:
         """Get component instance."""
