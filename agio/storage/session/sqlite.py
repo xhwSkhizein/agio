@@ -247,6 +247,8 @@ class SQLiteSessionStore(SessionStore):
         await self._ensure_connection()
 
         try:
+            if self._connection is None:
+                raise RuntimeError("Database connection not established")
             async with self._connection.execute(
                 "SELECT * FROM runs WHERE id = ?", (run_id,)
             ) as cursor:
@@ -282,6 +284,8 @@ class SQLiteSessionStore(SessionStore):
             query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
             params.extend([limit, offset])
 
+            if self._connection is None:
+                raise RuntimeError("Database connection not established")
             runs = []
             async with self._connection.execute(query, params) as cursor:
                 async for row in cursor:
@@ -296,6 +300,8 @@ class SQLiteSessionStore(SessionStore):
         await self._ensure_connection()
 
         try:
+            if self._connection is None:
+                raise RuntimeError("Database connection not established")
             run = await self.get_run(run_id)
             await self._connection.execute("DELETE FROM runs WHERE id = ?", (run_id,))
 
@@ -328,6 +334,8 @@ class SQLiteSessionStore(SessionStore):
                 VALUES ({placeholders})
             """
 
+            if self._connection is None:
+                raise RuntimeError("Database connection not established")
             await self._connection.execute(query, values)
             await self._connection.commit()
         except Exception as e:
@@ -371,7 +379,7 @@ class SQLiteSessionStore(SessionStore):
 
         try:
             query = "SELECT * FROM steps WHERE session_id = ?"
-            params = [session_id]
+            params: list[str | int | None] = [session_id]
 
             if start_seq is not None:
                 query += " AND sequence >= ?"
@@ -398,6 +406,8 @@ class SQLiteSessionStore(SessionStore):
             query += " ORDER BY sequence ASC LIMIT ?"
             params.append(limit)
 
+            if self._connection is None:
+                raise RuntimeError("Database connection not established")
             steps = []
             async with self._connection.execute(query, params) as cursor:
                 async for row in cursor:
@@ -412,6 +422,8 @@ class SQLiteSessionStore(SessionStore):
         await self._ensure_connection()
 
         try:
+            if self._connection is None:
+                raise RuntimeError("Database connection not established")
             async with self._connection.execute(
                 "SELECT * FROM steps WHERE session_id = ? ORDER BY sequence DESC LIMIT 1",
                 (session_id,),
@@ -429,6 +441,8 @@ class SQLiteSessionStore(SessionStore):
         await self._ensure_connection()
 
         try:
+            if self._connection is None:
+                raise RuntimeError("Database connection not established")
             cursor = await self._connection.execute(
                 "DELETE FROM steps WHERE session_id = ? AND sequence >= ?",
                 (session_id, start_seq),
@@ -444,6 +458,8 @@ class SQLiteSessionStore(SessionStore):
         await self._ensure_connection()
 
         try:
+            if self._connection is None:
+                raise RuntimeError("Database connection not established")
             async with self._connection.execute(
                 "SELECT COUNT(*) FROM steps WHERE session_id = ?", (session_id,)
             ) as cursor:
@@ -463,6 +479,8 @@ class SQLiteSessionStore(SessionStore):
         await self._ensure_connection()
 
         try:
+            if self._connection is None:
+                raise RuntimeError("Database connection not established")
             async with self._connection.execute(
                 "SELECT MAX(sequence) FROM steps WHERE session_id = ?", (session_id,)
             ) as cursor:
@@ -486,6 +504,8 @@ class SQLiteSessionStore(SessionStore):
         await self._ensure_connection()
 
         try:
+            if self._connection is None:
+                raise RuntimeError("Database connection not established")
             # Use BEGIN IMMEDIATE to acquire write lock immediately
             await self._connection.execute("BEGIN IMMEDIATE")
 
@@ -532,6 +552,8 @@ class SQLiteSessionStore(SessionStore):
         await self._ensure_connection()
 
         try:
+            if self._connection is None:
+                raise RuntimeError("Database connection not established")
             async with self._connection.execute(
                 "SELECT * FROM steps WHERE session_id = ? AND tool_call_id = ?",
                 (session_id, tool_call_id),

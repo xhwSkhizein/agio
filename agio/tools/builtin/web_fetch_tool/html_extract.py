@@ -139,8 +139,12 @@ def preprocess_lazy_images(html: str, base_url: str) -> str:
     # Process image links
     for img in soup.find_all("img"):
         # Check if there is a valid src (avoid overwriting existing src)
-        current_src: str | None = img.get("src")
-        if current_src and not current_src.startswith("data:"):
+        current_src = img.get("src")
+        if (
+            current_src
+            and isinstance(current_src, str)
+            and not current_src.startswith("data:")
+        ):
             img["src"] = normalize_image_url(current_src, base_url)
             continue
 
@@ -154,12 +158,15 @@ def preprocess_lazy_images(html: str, base_url: str) -> str:
         ]
 
         for attr in lazy_attrs:
-            if img.get(attr):
+            attr_value = img.get(attr)
+            if attr_value:
                 # Special handling for data-srcset/srcset (responsive images)
                 if "srcset" in attr:
-                    img["srcset"] = normalize_image_url(img[attr], base_url)
+                    if isinstance(attr_value, str):
+                        img["srcset"] = normalize_image_url(attr_value, base_url)
                 else:
-                    img["src"] = normalize_image_url(img[attr], base_url)
+                    if isinstance(attr_value, str):
+                        img["src"] = normalize_image_url(attr_value, base_url)
                 break
 
     # Delete <script> tags but keep <script type="application/ld+json">
@@ -179,10 +186,10 @@ def preprocess_lazy_images(html: str, base_url: str) -> str:
     for tag in soup.find_all(attrs={"aria-hidden": "true"}):
         # Check if there are important child elements (e.g., <img>)
         # If image is in aria-hidden container but data-src is elsewhere, may need to keep
-        if tag.find("img"):
+        img_tag = tag.find("img")
+        if img_tag:
             # Move image out of container instead of deleting container
-            img = tag.find("img")
-            tag.insert_before(img)
+            tag.insert_before(img_tag)
         # Delete container
         tag.decompose()
 

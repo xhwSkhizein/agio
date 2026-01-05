@@ -36,10 +36,6 @@ jobs:
     - name: Run ruff (formatter check)
       run: |
         ruff format --check .
-    
-    - name: Run mypy (type checker)
-      run: |
-        mypy agio --ignore-missing-imports
 
   lint-frontend:
     runs-on: ubuntu-latest

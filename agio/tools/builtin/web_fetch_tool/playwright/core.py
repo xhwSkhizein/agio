@@ -66,7 +66,7 @@ class PlaywrightCrawler:
             },
         }
 
-        self.stats = {
+        self.stats: dict[str, int | float | None] = {
             "total_requests": 0,
             "successful_requests": 0,
             "failed_requests": 0,
@@ -125,14 +125,15 @@ class PlaywrightCrawler:
 
     def _print_stats(self):
         """Print statistics."""
-        if not self.stats["start_time"]:
+        start_time = self.stats["start_time"]
+        if start_time is None:
             return
 
-        duration = time.time() - self.stats["start_time"]
+        duration = time.time() - start_time
+        total_requests = self.stats["total_requests"]
+        successful_requests = self.stats["successful_requests"]
         success_rate = (
-            (self.stats["successful_requests"] / self.stats["total_requests"] * 100)
-            if self.stats["total_requests"] > 0
-            else 0
+            (successful_requests / total_requests * 100) if total_requests > 0 else 0
         )
 
         self.logger.info(
@@ -165,9 +166,7 @@ class PlaywrightCrawler:
         # FIXME use Trafilatura to extract content
         original_html = await page.content()
 
-        content: HtmlContent = extract_content_from_html(
-            html=original_html, original_url=url
-        )
+        content = extract_content_from_html(html=original_html, original_url=url)
         if not content:
             return None
         return content
@@ -183,19 +182,25 @@ class PlaywrightCrawler:
         Returns:
             Extracted content data or None
         """
-        if not self.session_manager.is_connected():
+        if self.session_manager is None or not self.session_manager.is_connected():
             raise SessionInvalidException("Not connected to Chrome")
 
         self.stats["total_requests"] += 1
         self.logger.info(f"Crawling: {url}")
         page: Page | None = None
         try:
+            if self.session_manager.context is None:
+                raise SessionInvalidException("Browser context not available")
             page = await self.session_manager.context.new_page()
             # Set page timeout
             page.set_default_timeout(self._config.timeout_seconds * 1000)
 
             # Visit page
-            response = await page.goto(url, wait_until=self._config.wait_strategy)
+            wait_strategy = self._config.wait_strategy
+            if isinstance(wait_strategy, str):
+                # Convert string to Literal type for Playwright
+                wait_strategy = wait_strategy  # type: ignore[arg-type]
+            response = await page.goto(url, wait_until=wait_strategy)  # type: ignore[arg-type]
 
             if not response or response.status != 200:
                 self.logger.warning(
@@ -230,14 +235,19 @@ class PlaywrightCrawler:
 
         except Exception as e:
             self.logger.error(f"Crawl failed: {e}", url=url)
-            self.stats["failed_requests"] += 1
+            failed_requests = self.stats.get("failed_requests", 0)
+            if isinstance(failed_requests, int):
+                self.stats["failed_requests"] = failed_requests + 1
 
             # Health check, reconnect if connection is broken
+            if self.session_manager is None:
+                raise SessionInvalidException("Session manager not available")
             if not await self.session_manager.health_check():
                 self.logger.info(
                     "Connection broken detected, attempting to reconnect..."
                 )
                 await self.session_manager.connect()
+            return None
 
         finally:
             if page:

@@ -90,7 +90,8 @@ class ShellSession:
             )
 
         except asyncio.TimeoutError:
-            await self._terminate_process(process_info.pid)
+            if process_info.pid is not None:
+                await self._terminate_process(process_info.pid)
             process_info.status = ProcessStatus.TERMINATED
             raise
         finally:
@@ -161,9 +162,11 @@ class ShellSession:
                 else:
                     process_info.stderr += decoded_line
 
-        await asyncio.gather(
-            read_stream(process.stdout, "stdout"), read_stream(process.stderr, "stderr")
-        )
+        if process.stdout is not None and process.stderr is not None:
+            await asyncio.gather(
+                read_stream(process.stdout, "stdout"),
+                read_stream(process.stderr, "stderr"),
+            )
         await process.wait()
 
     async def terminate_process(self, process_id: str):

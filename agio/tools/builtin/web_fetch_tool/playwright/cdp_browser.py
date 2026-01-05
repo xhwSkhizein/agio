@@ -129,6 +129,8 @@ class CDPBrowserManager:
             logger.info(f"[CDPBrowserManager] User data directory: {user_data_dir}")
 
         # Launch browser
+        if self.debug_port is None:
+            raise RuntimeError("Debug port not set")
         self.launcher.browser_process = self.launcher.launch_browser(
             browser_path=browser_path,
             debug_port=self.debug_port,
@@ -137,6 +139,8 @@ class CDPBrowserManager:
         )
 
         # Wait for browser to be ready
+        if self.debug_port is None:
+            raise RuntimeError("Debug port not set")
         if not self.launcher.wait_for_browser_ready(
             self.debug_port, browser_launch_timeout
         ):
@@ -148,6 +152,8 @@ class CDPBrowserManager:
         await asyncio.sleep(1)
 
         # Test CDP connection
+        if self.debug_port is None:
+            raise RuntimeError("Debug port not set")
         if not await self._test_cdp_connection(self.debug_port):
             logger.warning(
                 "[CDPBrowserManager] CDP connection test failed, "
@@ -166,7 +172,7 @@ class CDPBrowserManager:
                 if response.status_code == 200:
                     data = response.json()
                     ws_url = data.get("webSocketDebuggerUrl")
-                    if ws_url:
+                    if ws_url and isinstance(ws_url, str):
                         logger.info(
                             f"[CDPBrowserManager] Got browser WebSocket URL: {ws_url}"
                         )
@@ -185,6 +191,8 @@ class CDPBrowserManager:
         """
         try:
             # Get correct WebSocket URL
+            if self.debug_port is None:
+                raise RuntimeError("Debug port not set")
             ws_url = await self._get_browser_websocket_url(self.debug_port)
             logger.info(f"[CDPBrowserManager] Connecting to browser via CDP: {ws_url}")
 
@@ -239,7 +247,7 @@ class CDPBrowserManager:
                     "suggest configuring system proxy or browser proxy extension before browser launch"
                 )
 
-            browser_context = await self.browser.new_context(**context_options)
+            browser_context = await self.browser.new_context(**context_options)  # type: ignore[arg-type]
             logger.info("[CDPBrowserManager] Created new browser context")
 
         return browser_context

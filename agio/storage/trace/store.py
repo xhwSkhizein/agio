@@ -5,9 +5,12 @@ Trace storage - MongoDB persistence with in-memory cache.
 import asyncio
 from collections import deque
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
 
 from agio.observability.trace import SpanStatus, Trace
 from agio.utils.logging import get_logger
@@ -62,8 +65,8 @@ class TraceStore:
         self._subscribers: list[asyncio.Queue] = []
 
         # MongoDB client (lazy init)
-        self._client = None
-        self._collection = None
+        self._client: AsyncIOMotorClient[Any] | None = None
+        self._collection: AsyncIOMotorCollection[Any] | None = None
         self._initialized = False
 
     async def initialize(self) -> None:
@@ -75,9 +78,15 @@ class TraceStore:
             try:
                 from motor.motor_asyncio import AsyncIOMotorClient
 
+                from motor.motor_asyncio import AsyncIOMotorClient
+
                 self._client = AsyncIOMotorClient(self.mongo_uri)
+                if self._client is None:
+                    raise RuntimeError("Failed to create MongoDB client")
                 db = self._client[self.db_name]
                 self._collection = db[self.collection_name]
+                if self._collection is None:
+                    raise RuntimeError("Failed to get MongoDB collection")
 
                 # Create indexes
                 await self._collection.create_index("trace_id", unique=True)

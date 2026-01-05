@@ -45,7 +45,7 @@ class SQLiteCitationStore:
 
     async def _create_tables(self) -> None:
         """Create database tables and indexes."""
-        if not self._connection:
+        if self._connection is None:
             raise RuntimeError("Database connection not established")
 
         await self._connection.execute(
@@ -142,6 +142,8 @@ class SQLiteCitationStore:
                     VALUES ({placeholders})
                 """
 
+                if self._connection is None:
+                    raise RuntimeError("Database connection not established")
                 await self._connection.execute(query, values)
                 citation_ids.append(source.citation_id)
             except Exception as e:
@@ -152,6 +154,8 @@ class SQLiteCitationStore:
                 )
                 raise
 
+        if self._connection is None:
+            raise RuntimeError("Database connection not established")
         await self._connection.commit()
 
         logger.info(
@@ -170,6 +174,8 @@ class SQLiteCitationStore:
         await self._ensure_connection()
 
         try:
+            if self._connection is None:
+                raise RuntimeError("Database connection not established")
             async with self._connection.execute(
                 "SELECT * FROM citation_sources WHERE citation_id = ? AND session_id = ?",
                 (citation_id, session_id),
@@ -208,6 +214,8 @@ class SQLiteCitationStore:
 
             params = list(citation_ids) + [session_id]
 
+            if self._connection is None:
+                raise RuntimeError("Database connection not established")
             simplified = []
             async with self._connection.execute(query, params) as cursor:
                 async for row in cursor:
@@ -249,6 +257,8 @@ class SQLiteCitationStore:
                 ORDER BY created_at ASC
             """
 
+            if self._connection is None:
+                raise RuntimeError("Database connection not established")
             simplified = []
             async with self._connection.execute(query, (session_id,)) as cursor:
                 async for row in cursor:
@@ -306,6 +316,8 @@ class SQLiteCitationStore:
                 WHERE citation_id = ? AND session_id = ?
             """
 
+            if self._connection is None:
+                raise RuntimeError("Database connection not established")
             cursor = await self._connection.execute(query, values)
             await self._connection.commit()
 
@@ -327,6 +339,8 @@ class SQLiteCitationStore:
         await self._ensure_connection()
 
         try:
+            if self._connection is None:
+                raise RuntimeError("Database connection not established")
             async with self._connection.execute(
                 "SELECT * FROM citation_sources WHERE session_id = ? AND index = ?",
                 (session_id, index),
@@ -349,6 +363,8 @@ class SQLiteCitationStore:
         await self._ensure_connection()
 
         try:
+            if self._connection is None:
+                raise RuntimeError("Database connection not established")
             cursor = await self._connection.execute(
                 "DELETE FROM citation_sources WHERE session_id = ?",
                 (session_id,),

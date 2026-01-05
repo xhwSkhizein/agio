@@ -32,7 +32,7 @@ class ChromeSessionManager:
         self.logger = get_logger(__name__)
         self.cdp_browser: CDPBrowserManager | None = None
         self.context: BrowserContext | None = None
-        self.playwright = None
+        self.playwright: Playwright | None = None
         self._connected = False
         self._connect_lock = asyncio.Lock()
 
@@ -50,7 +50,9 @@ class ChromeSessionManager:
 
                 self.playwright = await async_playwright().start()
                 self.logger.info("[ChromeSessionManager] Starting browser in CDP mode")
-                self.context: BrowserContext = await self.launch_browser_with_cdp(
+                if self.playwright is None:
+                    raise RuntimeError("Failed to start Playwright")
+                self.context = await self.launch_browser_with_cdp(
                     self.playwright,
                     None,
                     None,
@@ -81,21 +83,21 @@ class ChromeSessionManager:
             user_data_dir = os.path.join(
                 os.getcwd(), "browser_data", self._config.user_data_dir
             )
-            browser_context: BrowserContext = await chromium.launch_persistent_context(
+            context = await chromium.launch_persistent_context(
                 user_data_dir=user_data_dir,
                 accept_downloads=True,
                 headless=headless,
-                proxy=playwright_proxy,
+                proxy=playwright_proxy,  # type: ignore[arg-type]
                 viewport={"width": 1920, "height": 1080},
                 user_agent=user_agent,
             )
-            return browser_context
+            return context
         else:
-            browser = await chromium.launch(headless=headless, proxy=playwright_proxy)
-            browser_context: BrowserContext = await browser.new_context(
+            browser = await chromium.launch(headless=headless, proxy=playwright_proxy)  # type: ignore[arg-type]
+            context = await browser.new_context(
                 viewport={"width": 1920, "height": 1080}, user_agent=user_agent
             )
-            return browser_context
+            return context
 
     async def launch_browser_with_cdp(
         self,
@@ -107,12 +109,13 @@ class ChromeSessionManager:
         """Launch browser in CDP mode."""
         try:
             self.cdp_browser = CDPBrowserManager(config=self._config)
-            self.context: BrowserContext = await self.cdp_browser.launch_and_connect(
+            context = await self.cdp_browser.launch_and_connect(
                 playwright=playwright,
                 playwright_proxy=playwright_proxy,
                 user_agent=user_agent,
                 headless=headless,
             )
+            self.context = context
             # Add anti-detection scripts
             await self.cdp_browser.add_stealth_script()
 
@@ -128,10 +131,11 @@ class ChromeSessionManager:
             )
             # Fall back to standard mode
             chromium = playwright.chromium
-            self.context: BrowserContext = await self.launch_browser(
+            context = await self.launch_browser(
                 chromium, playwright_proxy, user_agent, headless
             )
-            return self.context
+            self.context = context
+            return context
 
     async def disconnect(self):
         """Disconnect (thread-safe)."""
@@ -159,6 +163,8 @@ class ChromeSessionManager:
 
         try:
             # Try creating a new page to test connection
+            if self.context is None:
+                return False
             page = await self.context.new_page()
             await page.close()
             return True

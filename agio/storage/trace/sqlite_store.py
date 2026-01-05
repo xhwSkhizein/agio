@@ -162,6 +162,8 @@ class SQLiteTraceStore:
                 VALUES ({placeholders})
             """
 
+            if self._connection is None:
+                raise RuntimeError("Database connection not established")
             await self._connection.execute(query, values)
             await self._connection.commit()
         except Exception as e:
@@ -186,6 +188,8 @@ class SQLiteTraceStore:
             await self.initialize()
 
         try:
+            if self._connection is None:
+                raise RuntimeError("Database connection not established")
             async with self._connection.execute(
                 "SELECT * FROM traces WHERE trace_id = ?",
                 (trace_id,),
@@ -205,7 +209,7 @@ class SQLiteTraceStore:
 
         try:
             sql_query = "SELECT * FROM traces WHERE 1=1"
-            params = []
+            params: list[str | int | float] = []
 
             if query.workflow_id:
                 sql_query += " AND workflow_id = ?"
@@ -242,6 +246,8 @@ class SQLiteTraceStore:
             sql_query += " ORDER BY start_time DESC LIMIT ? OFFSET ?"
             params.extend([query.limit, query.offset])
 
+            if self._connection is None:
+                raise RuntimeError("Database connection not established")
             traces = []
             async with self._connection.execute(sql_query, params) as cursor:
                 async for row in cursor:

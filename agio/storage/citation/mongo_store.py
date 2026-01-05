@@ -1,8 +1,11 @@
 """MongoDB implementation of CitationSourceRepository."""
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from motor.motor_asyncio import AsyncIOMotorClient
+
+if TYPE_CHECKING:
+    from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
 
 from agio.storage.citation.models import (
     CitationSourceRaw,
@@ -23,17 +26,25 @@ class MongoCitationStore:
     ):
         self.uri = uri
         self.db_name = db_name
-        self.client: AsyncIOMotorClient | None = None
-        self.db = None
-        self.citations_collection = None
+        self.client: AsyncIOMotorClient[Any] | None = None
+        self.db: AsyncIOMotorDatabase[Any] | None = None
+        self.citations_collection: AsyncIOMotorCollection[Any] | None = None
 
     async def _ensure_connection(self):
         """Ensure database connection is established."""
         if self.client is None:
+            from motor.motor_asyncio import (
+                AsyncIOMotorClient,
+                AsyncIOMotorCollection,
+                AsyncIOMotorDatabase,
+            )
+
             self.client = AsyncIOMotorClient(self.uri)
             self.db = self.client[self.db_name]
             self.citations_collection = self.db["citation_sources"]
 
+            if self.citations_collection is None:
+                raise RuntimeError("Failed to get citations collection")
             await self.citations_collection.create_index("citation_id", unique=True)
             await self.citations_collection.create_index("session_id")
             await self.citations_collection.create_index(
@@ -60,6 +71,8 @@ class MongoCitationStore:
             source.session_id = session_id
 
             try:
+                if self.citations_collection is None:
+                    raise RuntimeError("Database collection not initialized")
                 source_data = source.model_dump(mode="json", exclude_none=True)
                 await self.citations_collection.update_one(
                     {"citation_id": source.citation_id},
@@ -91,6 +104,8 @@ class MongoCitationStore:
         await self._ensure_connection()
 
         try:
+            if self.citations_collection is None:
+                raise RuntimeError("Database collection not initialized")
             doc = await self.citations_collection.find_one(
                 {"citation_id": citation_id, "session_id": session_id}
             )
@@ -114,6 +129,8 @@ class MongoCitationStore:
         await self._ensure_connection()
 
         try:
+            if self.citations_collection is None:
+                raise RuntimeError("Database collection not initialized")
             cursor = self.citations_collection.find(
                 {"citation_id": {"$in": citation_ids}, "session_id": session_id}
             )
@@ -151,6 +168,8 @@ class MongoCitationStore:
         await self._ensure_connection()
 
         try:
+            if self.citations_collection is None:
+                raise RuntimeError("Database collection not initialized")
             cursor = self.citations_collection.find({"session_id": session_id})
 
             simplified = []
@@ -188,6 +207,8 @@ class MongoCitationStore:
         await self._ensure_connection()
 
         try:
+            if self.citations_collection is None:
+                raise RuntimeError("Database collection not initialized")
             result = await self.citations_collection.update_one(
                 {"citation_id": citation_id, "session_id": session_id},
                 {"$set": updates},
@@ -210,6 +231,8 @@ class MongoCitationStore:
         await self._ensure_connection()
 
         try:
+            if self.citations_collection is None:
+                raise RuntimeError("Database collection not initialized")
             doc = await self.citations_collection.find_one(
                 {"session_id": session_id, "index": index}
             )
@@ -230,6 +253,8 @@ class MongoCitationStore:
         await self._ensure_connection()
 
         try:
+            if self.citations_collection is None:
+                raise RuntimeError("Database collection not initialized")
             result = await self.citations_collection.delete_many(
                 {"session_id": session_id}
             )

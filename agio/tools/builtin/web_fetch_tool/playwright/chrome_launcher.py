@@ -21,8 +21,8 @@ class ChromeLauncher:
 
     def __init__(self) -> None:
         self.system = platform.system()
-        self.browser_process = None
-        self.debug_port = None
+        self.browser_process: subprocess.Popen[bytes] | None = None
+        self.debug_port: int | None = None
 
     def detect_browser_paths(self) -> list[str]:
         """
@@ -174,7 +174,7 @@ class ChromeLauncher:
                     args,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
-                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,  # type: ignore[attr-defined]
                 )
             else:
                 process = subprocess.Popen(

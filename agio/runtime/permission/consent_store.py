@@ -10,7 +10,12 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any, Literal
 
+from typing import TYPE_CHECKING
+
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+
+if TYPE_CHECKING:
+    from motor.motor_asyncio import AsyncIOMotorCollection
 from pydantic import BaseModel
 
 from agio.utils.logging import get_logger
@@ -124,8 +129,8 @@ class MongoConsentStore(ConsentStore):
         """
         self.client = client
         self.db_name = db_name
-        self.db: AsyncIOMotorDatabase | None = None
-        self.consents_collection = None
+        self.db: AsyncIOMotorDatabase[Any] | None = None
+        self.consents_collection: AsyncIOMotorCollection[Any] | None = None
         self._initialized = False
         self._init_lock = asyncio.Lock()
 
@@ -173,6 +178,8 @@ class MongoConsentStore(ConsentStore):
                     {"tool_name": None},  # Global patterns
                 ]
 
+            if self.consents_collection is None:
+                raise RuntimeError("Consents collection not initialized")
             cursor = self.consents_collection.find(query)
             async for doc in cursor:
                 record = ConsentRecord.model_validate(doc)
