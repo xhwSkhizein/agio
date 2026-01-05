@@ -7,13 +7,13 @@ import { useScrollManagement } from '../hooks/useScrollManagement'
 import { useAgentSelection } from '../hooks/useAgentSelection'
 import { useExecutionTree } from '../hooks/useExecutionTree'
 import { ChatHeader } from '../components/ChatHeader'
-import { ChatTimeline } from '../components/ChatTimeline'
+import { ChatTimelineV2 } from '../components/v2/ChatTimelineV2'
 import { ChatInput } from '../components/ChatInput'
 import { ChatEmptyState } from '../components/ChatEmptyState'
 import { AgentConfigModal } from '../components/AgentConfigModal'
-import { LayoutPanelLeft } from 'lucide-react'
+import { LayoutPanelLeft, Bug } from 'lucide-react'
 
-export default function Chat() {
+export default function ChatV2() {
   const { sessionId: urlSessionId } = useParams<{ sessionId?: string }>()
   const navigate = useNavigate()
   const location = useLocation()
@@ -46,6 +46,7 @@ export default function Chat() {
   const [isStreaming, setIsStreaming] = useState(false)
   const [showConfigModal, setShowConfigModal] = useState(false)
   const [currentRunId, setCurrentRunId] = useState<string | null>(null)
+  const [debugMode, setDebugMode] = useState(true)
   const abortControllerRef = useRef<AbortController | null>(null)
 
   // Execution tree state
@@ -93,14 +94,13 @@ export default function Chat() {
   })
 
   // Load existing session steps if sessionId is provided in URL
-  // Use getAllSessionSteps to fetch all steps via pagination for continue functionality
   const { data: existingSteps, refetch: refetchSteps } = useQuery({
     queryKey: ['session-steps', urlSessionId],
     queryFn: () => sessionService.getAllSessionSteps(urlSessionId!),
     enabled: !!urlSessionId,
   })
 
-  // Check if session has pending tool_calls (last step is assistant with tool_calls)
+  // Check if session has pending tool_calls
   const hasPendingToolCalls = existingSteps && existingSteps.length > 0 && (() => {
     const lastStep = existingSteps[existingSteps.length - 1]
     return lastStep.role === 'assistant' && lastStep.tool_calls && lastStep.tool_calls.length > 0
@@ -111,25 +111,21 @@ export default function Chat() {
     if (!existingSteps || existingSteps.length === 0) return
     if (!urlSessionId) return
 
-    // If tree has different session ID, reset and rehydrate
     const needsReset = treeSessionId !== null && treeSessionId !== urlSessionId
 
-    // If tree already has data for this session, skip hydration
     if (!needsReset && executionTree.executions.length > 0 && treeSessionId === urlSessionId) {
       return
     }
 
-    // Reset tree if switching to different session
     if (needsReset) {
       resetTree()
     }
 
-    // Hydrate with new session's steps
     hydrateFromSteps(existingSteps)
     setCurrentSessionId(urlSessionId)
   }, [existingSteps, urlSessionId, treeSessionId, executionTree.executions.length, hydrateFromSteps, resetTree])
 
-  // Preselect agent when navigating with state (e.g., from Sessions continue)
+  // Preselect agent when navigating with state
   useEffect(() => {
     if (locationState?.agentId) {
       setSelectedAgentId(locationState.agentId)
@@ -143,25 +139,17 @@ export default function Chat() {
     }
   }, [urlSessionId])
 
-  // Update URL when session is created (to persist conversation on refresh)
+  // Update URL when session is created
   useEffect(() => {
     if (currentSessionId && !urlSessionId) {
       navigate(`/chat/${currentSessionId}`, { replace: true })
     }
   }, [currentSessionId, urlSessionId, navigate])
 
-  // Clear location state after using pending message (to prevent refill on refresh)
-  useEffect(() => {
-    if (pendingMessage) {
-      // Replace current history entry without the state
-      navigate(location.pathname, { replace: true, state: {} })
-    }
-  }, [])
-
-  // Track previous scroll height to detect content growth
+  // Track previous scroll height
   const prevScrollHeightRef = useRef<number>(0)
 
-  // Auto-scroll only if user is near bottom (with debouncing for streaming)
+  // Auto-scroll
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current
     if (!scrollContainer) return
@@ -170,19 +158,13 @@ export default function Chat() {
     const hasContentGrown = currentScrollHeight > prevScrollHeightRef.current
     prevScrollHeightRef.current = currentScrollHeight
 
-    // Only auto-scroll if:
-    // 1. User is near bottom (hasn't scrolled up)
-    // 2. Content has actually grown (new content added)
     if (hasContentGrown && isNearBottom(scrollContainer)) {
-      // Use a small delay to batch rapid updates during streaming
-      // This prevents excessive scrolling when content updates frequently
       const timeoutId = setTimeout(() => {
         if (scrollContainer && isNearBottom(scrollContainer)) {
           scrollToBottom()
           isUserScrolledUpRef.current = false
         }
       }, 50)
-
       return () => clearTimeout(timeoutId)
     }
   }, [executionTree, isNearBottom, scrollToBottom])
@@ -192,7 +174,6 @@ export default function Chat() {
       abortControllerRef.current.abort()
       abortControllerRef.current = null
       setIsStreaming(false)
-      // Add cancel error via tree
       processTreeEvent('error', { error: 'Request cancelled by user' })
     }
   }
@@ -203,7 +184,6 @@ export default function Chat() {
     addTreeUserMessage(input)
     setInput('')
     setIsStreaming(true)
-    // Force scroll to bottom when user sends a message
     isUserScrolledUpRef.current = false
     setTimeout(() => scrollToBottom(true), 100)
 
@@ -211,9 +191,7 @@ export default function Chat() {
     abortControllerRef.current = new AbortController()
 
     try {
-      // Use unified runnable API for agents
       const apiUrl = `/agio/runnables/${selectedAgentId}/run`
-
       const requestBody = {
         query: userMessage,
         session_id: currentSessionId,
@@ -232,38 +210,26 @@ export default function Chat() {
 
       const reader = response.body?.getReader()
       const decoder = new TextDecoder()
-
       if (!reader) return
 
       let buffer = ''
-
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
-
         buffer += decoder.decode(value, { stream: true })
-
-        // Parse SSE events using utility (handles both CRLF and LF line endings)
         const { events: sseEvents, remaining } = parseSSEBuffer(buffer)
         buffer = remaining
-
         for (const sseEvent of sseEvents) {
-          const eventType = sseEvent.event
-          const dataStr = sseEvent.data
-
           try {
-            const data = JSON.parse(dataStr)
-            handleSSEEvent(eventType, data)
+            const data = JSON.parse(sseEvent.data)
+            handleSSEEvent(sseEvent.event, data)
           } catch (e) {
             console.error('Parse error:', e)
           }
         }
       }
     } catch (error: any) {
-      if (error.name === 'AbortError') {
-        // Already handled in handleCancel
-        return
-      }
+      if (error.name === 'AbortError') return
       console.error('Streaming error:', error)
       processTreeEvent('error', { error: 'Failed to send message' })
     } finally {
@@ -273,57 +239,35 @@ export default function Chat() {
     }
   }
 
-  // Handle continue (resume from pending tool_calls)
   const handleContinue = async () => {
     if (!currentSessionId || !hasPendingToolCalls) return
-
     setIsStreaming(true)
     abortControllerRef.current = new AbortController()
-
     try {
       const response = await fetch(sessionService.getResumeSessionUrl(currentSessionId, selectedAgentId), {
         method: 'POST',
-        headers: {
-          Accept: 'text/event-stream',
-        },
+        headers: { Accept: 'text/event-stream' },
         signal: abortControllerRef.current.signal,
       })
-
       const reader = response.body?.getReader()
       const decoder = new TextDecoder()
-
       if (!reader) return
-
       let buffer = ''
-
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
-
         buffer += decoder.decode(value, { stream: true })
-
         const { events: sseEvents, remaining } = parseSSEBuffer(buffer)
         buffer = remaining
-
         for (const sseEvent of sseEvents) {
-          const eventType = sseEvent.event
-          const dataStr = sseEvent.data
-
-          if (!eventType || !dataStr) continue
-
           try {
-            const data = JSON.parse(dataStr)
-            if (eventType !== 'step_delta') {
-              console.log('Resume SSE Event:', eventType, data)
-            }
-            handleSSEEvent(eventType, data)
+            const data = JSON.parse(sseEvent.data)
+            handleSSEEvent(sseEvent.event, data)
           } catch (e) {
             console.error('Parse error:', e)
           }
         }
       }
-
-      // Refetch steps to update hasPendingToolCalls state
       refetchSteps()
     } catch (error: any) {
       if (error.name === 'AbortError') return
@@ -335,7 +279,6 @@ export default function Chat() {
     }
   }
 
-  // Start new chat
   const handleNewChat = () => {
     setCurrentSessionId(null)
     setCurrentRunId(null)
@@ -343,49 +286,63 @@ export default function Chat() {
     navigate('/chat')
   }
 
-  // Determine if timeline has content
   const hasContent = executionTree.messages.length > 0 || executionTree.executions.length > 0
 
   return (
     <div className="flex flex-col h-[calc(100vh-3rem)] max-w-4xl mx-auto">
-      {/* Header with Agent Selector */}
-      <ChatHeader
-        selectedAgentId={selectedAgentId}
-        setSelectedAgentId={setSelectedAgentId}
-        showAgentDropdown={showAgentDropdown}
-        setShowAgentDropdown={setShowAgentDropdown}
-        agents={agents}
-        agent={agent}
-        onNewChat={handleNewChat}
-        onOpenSettings={() => setShowConfigModal(true)}
-      />
-
-      {/* Version Switcher */}
-      <div className="flex items-center gap-2 pb-3 px-1">
-        <button 
-          onClick={() => navigate(currentSessionId ? `/chat/${currentSessionId}` : '/chat')}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 transition-colors"
-        >
-          <LayoutPanelLeft className="w-3.5 h-3.5" />
-          Switch to V2 (New Default)
-        </button>
+      {/* Sticky Header with Mode Switcher */}
+      <div className="sticky top-0 z-20 bg-background/80 backdrop-blur-md">
+        <ChatHeader
+          selectedAgentId={selectedAgentId}
+          setSelectedAgentId={setSelectedAgentId}
+          showAgentDropdown={showAgentDropdown}
+          setShowAgentDropdown={setShowAgentDropdown}
+          agents={agents}
+          agent={agent}
+          onNewChat={handleNewChat}
+          onOpenSettings={() => setShowConfigModal(true)}
+        />
+        
+        <div className="flex items-center justify-between pb-3 px-1">
+           <div className="flex items-center gap-2">
+             <button 
+               onClick={() => navigate(urlSessionId ? `/chat-v1/${urlSessionId}` : '/chat-v1')}
+               className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-white/5 text-gray-400 hover:text-white transition-colors"
+             >
+               <LayoutPanelLeft className="w-3.5 h-3.5" />
+               Switch to Legacy V1
+             </button>
+           </div>
+           
+           <div className="flex items-center gap-2">
+             <button 
+               onClick={() => setDebugMode(!debugMode)}
+               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                 debugMode 
+                   ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' 
+                   : 'bg-white/5 text-gray-400 hover:text-white border border-transparent'
+               }`}
+             >
+               <Bug className="w-3.5 h-3.5" />
+               {debugMode ? 'Debug Mode: ON' : 'Debug Mode: OFF'}
+             </button>
+           </div>
+        </div>
       </div>
 
       {/* Timeline */}
       {!hasContent && !isStreaming ? (
-        <div
-          ref={scrollContainerRef}
-          className="flex-1 overflow-y-auto pr-4 -mr-4 mb-4"
-        >
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto pr-4 -mr-4 mb-4">
           <ChatEmptyState agent={agent} />
         </div>
       ) : (
-        <ChatTimeline
+        <ChatTimelineV2
           tree={executionTree}
           isStreaming={isStreaming}
           currentRunId={currentRunId}
           scrollContainerRef={scrollContainerRef}
           messagesEndRef={messagesEndRef}
+          debugMode={debugMode}
         />
       )}
 
@@ -400,7 +357,6 @@ export default function Chat() {
         onContinue={handleContinue}
       />
 
-      {/* Agent Config Modal */}
       {agent && (
         <AgentConfigModal
           agent={agent}

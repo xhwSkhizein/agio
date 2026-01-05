@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard'
 import ConfigList from './pages/ConfigList'
 import ConfigEditor from './pages/ConfigEditor'
 import Chat from './pages/Chat'
+import ChatV2 from './pages/ChatV2'
 import Sessions from './pages/Sessions'
 import Traces from './pages/Traces'
 import TraceDetail from './pages/TraceDetail'
@@ -16,8 +17,12 @@ function App() {
       <Layout>
         <Routes>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/chat" element={<Chat />} />
-          <Route path="/chat/:sessionId" element={<Chat />} />
+          <Route path="/chat" element={<ChatV2 />} />
+          <Route path="/chat/:sessionId" element={<ChatV2 />} />
+          <Route path="/chat-v1" element={<Chat />} />
+          <Route path="/chat-v1/:sessionId" element={<Chat />} />
+          <Route path="/chat-v2" element={<ChatV2 />} />
+          <Route path="/chat-v2/:sessionId" element={<ChatV2 />} />
           <Route path="/sessions" element={<Sessions />} />
           <Route path="/traces" element={<Traces />} />
           <Route path="/traces/:traceId" element={<TraceDetail />} />
