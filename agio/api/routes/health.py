@@ -36,7 +36,9 @@ async def health_check() -> HealthResponse:
 
 
 @router.get("/ready", response_model=ReadyResponse)
-async def ready_check(config_sys: ConfigSystem = Depends(get_config_sys)) -> ReadyResponse:
+async def ready_check(
+    config_sys: ConfigSystem = Depends(get_config_sys),
+) -> ReadyResponse:
     """Readiness check - verifies system is fully initialized."""
     components = config_sys.list_components()
     configs = config_sys.list_configs()

@@ -47,7 +47,6 @@ class PipelineWorkflow(BaseWorkflow):
         *,
         context: ExecutionContext,
     ) -> RunOutput:
-
         start_time = time.time()
         run_id = context.run_id
         wire = context.wire

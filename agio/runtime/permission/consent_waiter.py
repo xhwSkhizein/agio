@@ -148,7 +148,9 @@ class ConsentWaiter:
                 self._events.pop(tool_call_id, None)
                 self._timeouts.pop(tool_call_id, None)
                 # Create deny decision
-                self._decisions[tool_call_id] = ConsentDecision(decision="deny", patterns=[])
+                self._decisions[tool_call_id] = ConsentDecision(
+                    decision="deny", patterns=[]
+                )
 
         logger.info("consent_cancelled", tool_call_id=tool_call_id)
 

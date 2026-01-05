@@ -84,7 +84,9 @@ class MongoSessionStore(SessionStore):
             await self.steps_collection.create_index(
                 [("session_id", 1), ("run_id", 1), ("node_id", 1), ("sequence", 1)]
             )
-            await self.steps_collection.create_index([("session_id", 1), ("tool_call_id", 1)])
+            await self.steps_collection.create_index(
+                [("session_id", 1), ("tool_call_id", 1)]
+            )
             await self.steps_collection.create_index("created_at")
 
             # Create index for counters collection
@@ -100,7 +102,9 @@ class MongoSessionStore(SessionStore):
             run_data = run.model_dump(mode="json", exclude_none=True)
             run_data = filter_none_values(run_data)
 
-            await self.runs_collection.update_one({"id": run.id}, {"$set": run_data}, upsert=True)
+            await self.runs_collection.update_one(
+                {"id": run.id}, {"$set": run_data}, upsert=True
+            )
         except Exception as e:
             logger.error("save_run_failed", error=str(e), run_id=run.id)
             raise
@@ -136,7 +140,10 @@ class MongoSessionStore(SessionStore):
                 query["session_id"] = session_id
 
             cursor = (
-                self.runs_collection.find(query).sort("created_at", -1).skip(offset).limit(limit)
+                self.runs_collection.find(query)
+                .sort("created_at", -1)
+                .skip(offset)
+                .limit(limit)
             )
 
             runs = []
@@ -208,7 +215,9 @@ class MongoSessionStore(SessionStore):
 
                 from pymongo import UpdateOne
 
-                operations.append(UpdateOne({"id": step.id}, {"$set": step_data}, upsert=True))
+                operations.append(
+                    UpdateOne({"id": step.id}, {"$set": step_data}, upsert=True)
+                )
 
             if operations:
                 await self.steps_collection.bulk_write(operations)
@@ -268,7 +277,9 @@ class MongoSessionStore(SessionStore):
 
         try:
             cursor = (
-                self.steps_collection.find({"session_id": session_id}).sort("sequence", -1).limit(1)
+                self.steps_collection.find({"session_id": session_id})
+                .sort("sequence", -1)
+                .limit(1)
             )
 
             async for doc in cursor:
@@ -296,7 +307,9 @@ class MongoSessionStore(SessionStore):
         await self._ensure_connection()
 
         try:
-            return await self.steps_collection.count_documents({"session_id": session_id})
+            return await self.steps_collection.count_documents(
+                {"session_id": session_id}
+            )
         except Exception as e:
             logger.error("get_step_count_failed", error=str(e), session_id=session_id)
             raise
@@ -312,7 +325,9 @@ class MongoSessionStore(SessionStore):
 
         try:
             cursor = (
-                self.steps_collection.find({"session_id": session_id}).sort("sequence", -1).limit(1)
+                self.steps_collection.find({"session_id": session_id})
+                .sort("sequence", -1)
+                .limit(1)
             )
 
             async for doc in cursor:
@@ -369,10 +384,14 @@ class MongoSessionStore(SessionStore):
                 if result:
                     return result["sequence"]
                 # Should never reach here
-                raise RuntimeError(f"Failed to allocate sequence for session {session_id}")
+                raise RuntimeError(
+                    f"Failed to allocate sequence for session {session_id}"
+                )
 
         except Exception as e:
-            logger.error("allocate_sequence_failed", error=str(e), session_id=session_id)
+            logger.error(
+                "allocate_sequence_failed", error=str(e), session_id=session_id
+            )
             raise
 
     async def get_step_by_tool_call_id(
@@ -394,7 +413,11 @@ class MongoSessionStore(SessionStore):
                 return Step.model_validate(doc)
             return None
         except Exception as e:
-            logger.error("get_step_by_tool_call_id_failed", error=str(e), tool_call_id=tool_call_id)
+            logger.error(
+                "get_step_by_tool_call_id_failed",
+                error=str(e),
+                tool_call_id=tool_call_id,
+            )
             raise
 
 

@@ -192,11 +192,27 @@ class WebFetchTool(BaseTool, ConfigurableToolMixin):
             else:
                 # Fallback to playwright
                 logger.info(f"curl_cffi failed, using Playwright: {url}")
-                await self._playwright_crawl.start()
-                content = await self._playwright_crawl.crawl_url(url)
+                started = False
+                fallback_error: str | None = None
+                try:
+                    await self._playwright_crawl.start()
+                    started = True
+                    content = await self._playwright_crawl.crawl_url(url)
+                except Exception as exc:  # noqa: BLE001
+                    fallback_error = str(exc)
+                    content = None
+                finally:
+                    if started:
+                        await self._playwright_crawl.stop()
 
             if not content:
-                return self._create_error_result(parameters, "Failed to fetch content", start_time)
+                if fallback_error:
+                    return self._create_error_result(
+                        parameters, fallback_error, start_time
+                    )
+                return self._create_error_result(
+                    parameters, "Failed to fetch content", start_time
+                )
 
             # Check abort signal
             if abort_signal and abort_signal.is_aborted():
@@ -207,7 +223,9 @@ class WebFetchTool(BaseTool, ConfigurableToolMixin):
                 if summarize or len(content.text or "") > self.max_length:
                     content = await self._summarize_by_llm(content, abort_signal)
                 elif search_query:
-                    content = await self._extract_by_query(content, search_query, abort_signal)
+                    content = await self._extract_by_query(
+                        content, search_query, abort_signal
+                    )
 
             # Truncate content
             processed_content = content.raw_text or content.text or ""
@@ -334,7 +352,9 @@ Your task is to:
 
             # Call Model streaming interface and aggregate results
             content_parts = []
-            async for chunk in self._llm_model.arun_stream(messages=messages, tools=None):
+            async for chunk in self._llm_model.arun_stream(
+                messages=messages, tools=None
+            ):
                 # Check abort signal
                 if abort_signal and abort_signal.is_aborted():
                     logger.info("LLM summarization aborted")
@@ -401,7 +421,9 @@ user's query is:
 
             # Call Model streaming interface and aggregate results
             content_parts = []
-            async for chunk in self._llm_model.arun_stream(messages=messages, tools=None):
+            async for chunk in self._llm_model.arun_stream(
+                messages=messages, tools=None
+            ):
                 # Check abort signal
                 if abort_signal and abort_signal.is_aborted():
                     logger.info("LLM extraction aborted")
@@ -416,5 +438,7 @@ user's query is:
             else:
                 return content
         except Exception as e:
-            logger.error(f"Error extracting content by query: {e}", extra={"query": query})
+            logger.error(
+                f"Error extracting content by query: {e}", extra={"query": query}
+            )
             return content

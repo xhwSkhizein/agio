@@ -47,7 +47,9 @@ class StepResponse(BaseModel):
     sequence: int
     role: str
     content: str | None
-    reasoning_content: str | None = None  # Reasoning content (e.g., DeepSeek thinking mode)
+    reasoning_content: str | None = (
+        None  # Reasoning content (e.g., DeepSeek thinking mode)
+    )
     # Assistant step: list of tool calls to execute
     tool_calls: list[dict] | None = None
     # Tool step: name of the tool that was called
@@ -178,7 +180,9 @@ async def list_session_summaries(
                 run_count=len(data["runs"]),
                 step_count=step_count,
                 last_message=last_message[:100] if last_message else None,
-                last_activity=data["last_activity"].isoformat() if data["last_activity"] else "",
+                last_activity=data["last_activity"].isoformat()
+                if data["last_activity"]
+                else "",
                 status=data["status"],
             )
         )
@@ -280,7 +284,9 @@ async def get_session_runs(
     session_store: SessionStore = Depends(get_session_store),
 ) -> PaginatedRuns:
     """Get runs for a session."""
-    runs = await session_store.list_runs(session_id=session_id, limit=limit, offset=offset)
+    runs = await session_store.list_runs(
+        session_id=session_id, limit=limit, offset=offset
+    )
 
     items = [
         RunResponse(
@@ -350,7 +356,9 @@ class ForkRequest(BaseModel):
 
     sequence: int
     content: str | None = None  # Optional modified content for assistant step
-    tool_calls: list[dict] | None = None  # Optional modified tool_calls for assistant step
+    tool_calls: list[dict] | None = (
+        None  # Optional modified tool_calls for assistant step
+    )
 
 
 class ForkResponse(BaseModel):
@@ -359,7 +367,9 @@ class ForkResponse(BaseModel):
     new_session_id: str
     copied_steps: int
     last_sequence: int
-    pending_user_message: str | None = None  # For user step fork, the message to put in input box
+    pending_user_message: str | None = (
+        None  # For user step fork, the message to put in input box
+    )
 
 
 @router.post("/{session_id}/fork")
@@ -428,7 +438,9 @@ async def fork_session_endpoint(
 class ResumeRequest(BaseModel):
     """Request to resume a session."""
 
-    runnable_id: str | None = None  # Optional - auto-inferred from Steps if not provided
+    runnable_id: str | None = (
+        None  # Optional - auto-inferred from Steps if not provided
+    )
 
 
 @router.post("/{session_id}/resume")

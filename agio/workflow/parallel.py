@@ -103,7 +103,10 @@ class ParallelWorkflow(BaseWorkflow):
                     await wire.write(
                         ef.branch_completed(
                             branch_id=branch_id,
-                            data={"output_length": len(cached_output or ""), "cached": True},
+                            data={
+                                "output_length": len(cached_output or ""),
+                                "cached": True,
+                            },
                             branch_index=index,
                             total_branches=total_branches,
                             workflow_type="parallel",

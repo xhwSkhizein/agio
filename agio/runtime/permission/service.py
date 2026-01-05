@@ -73,7 +73,9 @@ class PermissionService:
             return PermissionDecision(
                 decision="requires_consent",
                 reason=f"Tool {tool_name} configuration not found",
-                suggested_patterns=self._generate_suggested_patterns(tool_name, tool_args),
+                suggested_patterns=self._generate_suggested_patterns(
+                    tool_name, tool_args
+                ),
             )
 
         requires_consent = tool_config.get("requires_consent", False)
@@ -118,7 +120,10 @@ class PermissionService:
 
             configs = self.config_system.list_configs(ComponentType.TOOL)
             for config in configs:
-                if config.get("name") == tool_name or config.get("tool_name") == tool_name:
+                if (
+                    config.get("name") == tool_name
+                    or config.get("tool_name") == tool_name
+                ):
                     return config
 
             return None
@@ -131,7 +136,9 @@ class PermissionService:
             )
             return None
 
-    def _generate_suggested_patterns(self, tool_name: str, tool_args: dict[str, Any]) -> list[str]:
+    def _generate_suggested_patterns(
+        self, tool_name: str, tool_args: dict[str, Any]
+    ) -> list[str]:
         """
         Generate suggested patterns for user consent.
 

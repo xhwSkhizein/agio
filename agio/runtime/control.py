@@ -111,7 +111,9 @@ async def fork_session(
             - int: 最后一个 step 的 sequence 号
             - str | None: 如果是 user step fork，返回待处理的 user message；否则为 None
     """
-    logger.info("fork_started", original_session_id=original_session_id, sequence=sequence)
+    logger.info(
+        "fork_started", original_session_id=original_session_id, sequence=sequence
+    )
 
     # 1. Get steps up to sequence
     steps = await session_store.get_steps(original_session_id, end_seq=sequence)
@@ -162,7 +164,9 @@ async def fork_session(
             if modified_content is not None:
                 update_fields["content"] = modified_content
             if modified_tool_calls is not None:
-                update_fields["tool_calls"] = modified_tool_calls if modified_tool_calls else None
+                update_fields["tool_calls"] = (
+                    modified_tool_calls if modified_tool_calls else None
+                )
 
         new_step = step.model_copy(update=update_fields)
         new_steps.append(new_step)

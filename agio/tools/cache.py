@@ -125,7 +125,9 @@ class ToolResultCache:
         """
         # This is O(n) but cache size should be small
         keys_to_delete = [
-            k for k in self._cache if k.startswith(session_id[:16])  # Rough prefix match
+            k
+            for k in self._cache
+            if k.startswith(session_id[:16])  # Rough prefix match
         ]
         for k in keys_to_delete:
             del self._cache[k]

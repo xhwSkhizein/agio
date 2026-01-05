@@ -40,7 +40,9 @@ class FileReadConfig:
         default_factory=lambda: _get_env_float("AGIO_FILE_READ_MAX_SIZE_MB", "10.0")
     )
     max_image_size_mb: float = field(
-        default_factory=lambda: _get_env_float("AGIO_FILE_READ_MAX_IMAGE_SIZE_MB", "5.0")
+        default_factory=lambda: _get_env_float(
+            "AGIO_FILE_READ_MAX_IMAGE_SIZE_MB", "5.0"
+        )
     )
     max_image_width: int = field(
         default_factory=lambda: _get_env_int("AGIO_FILE_READ_MAX_IMAGE_WIDTH", "1920")
@@ -78,16 +80,24 @@ class FileEditConfig:
 class GrepConfig:
     """Configuration for GrepTool."""
 
-    timeout_seconds: int = field(default_factory=lambda: _get_env_int("AGIO_GREP_TIMEOUT", "30"))
-    max_results: int = field(default_factory=lambda: _get_env_int("AGIO_GREP_MAX_RESULTS", "1000"))
+    timeout_seconds: int = field(
+        default_factory=lambda: _get_env_int("AGIO_GREP_TIMEOUT", "30")
+    )
+    max_results: int = field(
+        default_factory=lambda: _get_env_int("AGIO_GREP_MAX_RESULTS", "1000")
+    )
 
 
 @dataclass
 class GlobConfig:
     """Configuration for GlobTool."""
 
-    timeout_seconds: int = field(default_factory=lambda: _get_env_int("AGIO_GLOB_TIMEOUT", "30"))
-    max_results: int = field(default_factory=lambda: _get_env_int("AGIO_GLOB_MAX_RESULTS", "1000"))
+    timeout_seconds: int = field(
+        default_factory=lambda: _get_env_int("AGIO_GLOB_TIMEOUT", "30")
+    )
+    max_results: int = field(
+        default_factory=lambda: _get_env_int("AGIO_GLOB_MAX_RESULTS", "1000")
+    )
     max_search_depth: int = field(
         default_factory=lambda: _get_env_int("AGIO_GLOB_MAX_SEARCH_DEPTH", "10")
     )
@@ -103,16 +113,24 @@ class GlobConfig:
 class LSConfig:
     """Configuration for LSTool."""
 
-    timeout_seconds: int = field(default_factory=lambda: _get_env_int("AGIO_LS_TIMEOUT", "30"))
-    max_files: int = field(default_factory=lambda: _get_env_int("AGIO_LS_MAX_FILES", "1000"))
-    max_lines: int = field(default_factory=lambda: _get_env_int("AGIO_LS_MAX_LINES", "100"))
+    timeout_seconds: int = field(
+        default_factory=lambda: _get_env_int("AGIO_LS_TIMEOUT", "30")
+    )
+    max_files: int = field(
+        default_factory=lambda: _get_env_int("AGIO_LS_MAX_FILES", "1000")
+    )
+    max_lines: int = field(
+        default_factory=lambda: _get_env_int("AGIO_LS_MAX_LINES", "100")
+    )
 
 
 @dataclass
 class BashConfig:
     """Configuration for BashTool."""
 
-    timeout_seconds: int = field(default_factory=lambda: _get_env_int("AGIO_BASH_TIMEOUT", "300"))
+    timeout_seconds: int = field(
+        default_factory=lambda: _get_env_int("AGIO_BASH_TIMEOUT", "300")
+    )
     max_output_size_kb: int = field(
         default_factory=lambda: _get_env_int("AGIO_BASH_MAX_OUTPUT_SIZE_KB", "1024")
     )
@@ -141,26 +159,54 @@ class WebFetchConfig:
         default_factory=lambda: _get_env_int("AGIO_WEB_FETCH_TIMEOUT", "30")
     )
     max_content_length: int = field(
-        default_factory=lambda: _get_env_int("AGIO_WEB_FETCH_MAX_CONTENT_LENGTH", "4096")
+        default_factory=lambda: _get_env_int(
+            "AGIO_WEB_FETCH_MAX_CONTENT_LENGTH", "4096"
+        )
     )
     max_retries: int = field(
         default_factory=lambda: _get_env_int("AGIO_WEB_FETCH_MAX_RETRIES", "1")
     )
     wait_strategy: str = field(
-        default_factory=lambda: _get_env_str("AGIO_WEB_FETCH_WAIT_STRATEGY", "domcontentloaded")
+        default_factory=lambda: _get_env_str(
+            "AGIO_WEB_FETCH_WAIT_STRATEGY", "domcontentloaded"
+        )
     )
     max_size_mb: float = field(
         default_factory=lambda: _get_env_float("AGIO_WEB_FETCH_MAX_SIZE_MB", "10.0")
     )
-    headless: bool = field(default_factory=lambda: _get_env_bool("AGIO_WEB_FETCH_HEADLESS", "true"))
+    headless: bool = field(
+        default_factory=lambda: _get_env_bool("AGIO_WEB_FETCH_HEADLESS", "true")
+    )
     save_login_state: bool = field(
-        default_factory=lambda: _get_env_bool("AGIO_WEB_FETCH_SAVE_LOGIN_STATE", "false")
+        default_factory=lambda: _get_env_bool(
+            "AGIO_WEB_FETCH_SAVE_LOGIN_STATE", "false"
+        )
     )
     user_data_dir: str = field(
-        default_factory=lambda: _get_env_str("AGIO_WEB_FETCH_USER_DATA_DIR", "chrome_user_data")
+        default_factory=lambda: _get_env_str(
+            "AGIO_WEB_FETCH_USER_DATA_DIR", "chrome_user_data"
+        )
     )
     browser_launch_timeout: int = field(
-        default_factory=lambda: _get_env_int("AGIO_WEB_FETCH_BROWSER_LAUNCH_TIMEOUT", "30")
+        default_factory=lambda: _get_env_int(
+            "AGIO_WEB_FETCH_BROWSER_LAUNCH_TIMEOUT", "30"
+        )
+    )
+    max_browsers: int = field(
+        default_factory=lambda: _get_env_int("AGIO_WEB_FETCH_MAX_BROWSERS", "2")
+    )
+    browser_idle_ttl_seconds: int = field(
+        default_factory=lambda: _get_env_int(
+            "AGIO_WEB_FETCH_BROWSER_IDLE_TTL_SECONDS", "300"
+        )
+    )
+    browser_max_uses: int = field(
+        default_factory=lambda: _get_env_int("AGIO_WEB_FETCH_BROWSER_MAX_USES", "50")
+    )
+    auto_close_browser: bool = field(
+        default_factory=lambda: _get_env_bool(
+            "AGIO_WEB_FETCH_AUTO_CLOSE_BROWSER", "true"
+        )
     )
 
 

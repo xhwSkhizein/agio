@@ -56,7 +56,9 @@ class AgioSettings(BaseSettings):
     otlp_endpoint: str | None = None  # e.g., "http://localhost:4317" for gRPC
     otlp_protocol: Literal["grpc", "http"] = "grpc"
     otlp_headers: dict[str, str] = Field(default_factory=dict)
-    otlp_sampling_rate: float = Field(default=1.0, ge=0.0, le=1.0)  # 1.0 = 100% sampling
+    otlp_sampling_rate: float = Field(
+        default=1.0, ge=0.0, le=1.0
+    )  # 1.0 = 100% sampling
 
     # Skills configuration
     skills_dirs: list[str] = Field(

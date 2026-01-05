@@ -87,7 +87,8 @@ class TemplateRenderer:
                 self._template_cache[cache_key] = self.env.from_string(template_str)
             except Exception as e:
                 raise ValueError(
-                    f"Template compilation error: {e}\n" f"Template: {template_str[:5000]}..."
+                    f"Template compilation error: {e}\n"
+                    f"Template: {template_str[:5000]}..."
                 ) from e
 
         try:

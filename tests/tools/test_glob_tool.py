@@ -19,16 +19,21 @@ class TestGlobTool:
     @pytest.fixture
     def context(self):
         """创建执行上下文"""
-        return ExecutionContext(run_id="test_run", session_id="test_session", wire=Wire())
+        return ExecutionContext(
+            run_id="test_run", session_id="test_session", wire=Wire()
+        )
 
     @pytest.mark.asyncio
     async def test_basic_glob(self, tool, context):
         """测试基本 glob 搜索"""
-        result = await tool.execute({
-            "tool_call_id": "test_123",
-            "pattern": "*.py",
-            "path": "agio",
-        }, context=context)
+        result = await tool.execute(
+            {
+                "tool_call_id": "test_123",
+                "pattern": "*.py",
+                "path": "agio",
+            },
+            context=context,
+        )
 
         assert result.is_success
         assert result.tool_name == tool.name
@@ -38,11 +43,14 @@ class TestGlobTool:
     @pytest.mark.asyncio
     async def test_recursive_glob(self, tool, context):
         """测试递归搜索"""
-        result = await tool.execute({
-            "tool_call_id": "test_recursive",
-            "pattern": "**/*.py",
-            "path": "tests",
-        }, context=context)
+        result = await tool.execute(
+            {
+                "tool_call_id": "test_recursive",
+                "pattern": "**/*.py",
+                "path": "tests",
+            },
+            context=context,
+        )
 
         assert result.is_success
         assert result.output["num_files"] >= 0
@@ -65,11 +73,14 @@ class TestGlobTool:
     @pytest.mark.asyncio
     async def test_no_results(self, tool, context):
         """测试无结果"""
-        result = await tool.execute({
-            "tool_call_id": "test_no_results",
-            "pattern": "*.nonexistent12345",
-            "path": ".",
-        }, context=context)
+        result = await tool.execute(
+            {
+                "tool_call_id": "test_no_results",
+                "pattern": "*.nonexistent12345",
+                "path": ".",
+            },
+            context=context,
+        )
 
         assert result.is_success
         assert result.output["num_files"] == 0
@@ -77,11 +88,14 @@ class TestGlobTool:
     @pytest.mark.asyncio
     async def test_invalid_pattern(self, tool, context):
         """测试无效模式"""
-        result = await tool.execute({
-            "tool_call_id": "test_invalid",
-            "pattern": "",
-            "path": ".",
-        }, context=context)
+        result = await tool.execute(
+            {
+                "tool_call_id": "test_invalid",
+                "pattern": "",
+                "path": ".",
+            },
+            context=context,
+        )
 
         assert not result.is_success
         assert result.error
@@ -89,11 +103,14 @@ class TestGlobTool:
     @pytest.mark.asyncio
     async def test_nonexistent_path(self, tool, context):
         """测试不存在的路径"""
-        result = await tool.execute({
-            "tool_call_id": "test_nonexistent",
-            "pattern": "*.py",
-            "path": "/nonexistent/path/12345",
-        }, context=context)
+        result = await tool.execute(
+            {
+                "tool_call_id": "test_nonexistent",
+                "pattern": "*.py",
+                "path": "/nonexistent/path/12345",
+            },
+            context=context,
+        )
 
         assert not result.is_success
         assert "not found" in result.content.lower() or "Error" in result.content
@@ -120,11 +137,14 @@ class TestGlobTool:
     @pytest.mark.asyncio
     async def test_output_structure(self, tool, context):
         """测试输出结构"""
-        result = await tool.execute({
-            "tool_call_id": "test_output",
-            "pattern": "*.md",
-            "path": ".",
-        }, context=context)
+        result = await tool.execute(
+            {
+                "tool_call_id": "test_output",
+                "pattern": "*.md",
+                "path": ".",
+            },
+            context=context,
+        )
 
         assert result.is_success
         assert "duration_ms" in result.output
@@ -136,11 +156,14 @@ class TestGlobTool:
     @pytest.mark.asyncio
     async def test_timing_information(self, tool, context):
         """测试时间信息"""
-        result = await tool.execute({
-            "tool_call_id": "test_timing",
-            "pattern": "*.py",
-            "path": "agio",
-        }, context=context)
+        result = await tool.execute(
+            {
+                "tool_call_id": "test_timing",
+                "pattern": "*.py",
+                "path": "agio",
+            },
+            context=context,
+        )
 
         assert result.is_success
         assert result.start_time > 0

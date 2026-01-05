@@ -35,7 +35,9 @@ class BashToolManager:
         }
         self._monitor_task = None
 
-    async def create_session(self, project_dir: str, session_id: str | None = None) -> str:
+    async def create_session(
+        self, project_dir: str, session_id: str | None = None
+    ) -> str:
         """Create new shell session."""
         session_id = session_id or str(uuid.uuid4())
 
@@ -49,7 +51,9 @@ class BashToolManager:
         self.sessions[session_id] = ShellSession(working_dir)
         return session_id
 
-    async def execute_in_session(self, session_id: str, command: str, **kwargs) -> ProcessInfo:
+    async def execute_in_session(
+        self, session_id: str, command: str, **kwargs
+    ) -> ProcessInfo:
         """Execute command in specified session."""
         if session_id not in self.sessions:
             raise ValueError(f"Session {session_id} not found")
@@ -65,14 +69,18 @@ class BashToolManager:
 
         return await session.execute(command, **kwargs)
 
-    async def execute_background_in_session(self, session_id: str, command: str) -> ProcessInfo:
+    async def execute_background_in_session(
+        self, session_id: str, command: str
+    ) -> ProcessInfo:
         """Execute command in background in session."""
         if session_id not in self.sessions:
             raise ValueError(f"Session {session_id} not found")
 
         return await self.sessions[session_id].execute_background(command)
 
-    async def get_process_info(self, session_id: str, process_id: str) -> ProcessInfo | None:
+    async def get_process_info(
+        self, session_id: str, process_id: str
+    ) -> ProcessInfo | None:
         """Get process information."""
         if session_id in self.sessions:
             return self.sessions[session_id].processes.get(process_id)
@@ -116,7 +124,10 @@ class BashToolManager:
                     # Can implement throttling strategies
                     pass
 
-                if memory_info.used / 1024 / 1024 > self.resource_limits["max_memory_mb"]:
+                if (
+                    memory_info.used / 1024 / 1024
+                    > self.resource_limits["max_memory_mb"]
+                ):
                     # Can implement cleanup strategies
                     pass
 

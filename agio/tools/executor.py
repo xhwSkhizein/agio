@@ -152,7 +152,9 @@ class ToolExecutor:
                     is_success=cached.is_success,
                 )
 
-        timeout_seconds = self._default_timeout or getattr(tool, "timeout_seconds", None)
+        timeout_seconds = self._default_timeout or getattr(
+            tool, "timeout_seconds", None
+        )
 
         try:
             logger.debug("executing_tool", tool_name=fn_name, tool_call_id=call_id)
@@ -234,9 +236,12 @@ class ToolExecutor:
         Returns:
             list[ToolResult]: List of tool execution results
         """
+
         async def _run_single(tc: dict[str, Any]) -> ToolResult:
             try:
-                return await self.execute(tc, context=context, abort_signal=abort_signal)
+                return await self.execute(
+                    tc, context=context, abort_signal=abort_signal
+                )
             except Exception as e:  # Defensive: should not propagate
                 fn = tc.get("function", {}) if isinstance(tc, dict) else {}
                 tool_name = fn.get("name", "unknown")

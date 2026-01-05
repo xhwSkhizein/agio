@@ -129,7 +129,9 @@ class ToolResult(BaseModel):
     tool_call_id: str
     input_args: dict[str, Any]
     content: str  # Result for LLM (used when building messages)
-    content_for_user: str | None = None  # Display content for frontend (preferred for UI)
+    content_for_user: str | None = (
+        None  # Display content for frontend (preferred for UI)
+    )
     output: Any  # Raw execution result
     error: str | None = None
     start_time: float
@@ -281,8 +283,12 @@ def create_step_completed_event(
     )
 
 
-def create_error_event(run_id: str, error: str, error_type: str = "unknown") -> StepEvent:
+def create_error_event(
+    run_id: str, error: str, error_type: str = "unknown"
+) -> StepEvent:
     """Create an ERROR event"""
     return StepEvent(
-        type=StepEventType.ERROR, run_id=run_id, data={"error": error, "error_type": error_type}
+        type=StepEventType.ERROR,
+        run_id=run_id,
+        data={"error": error, "error_type": error_type},
     )

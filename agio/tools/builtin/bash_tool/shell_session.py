@@ -49,7 +49,9 @@ class ShellSession:
     ) -> ProcessInfo:
         """Execute command."""
         process_id = str(uuid.uuid4())
-        process_info = ProcessInfo(id=process_id, command=command, status=ProcessStatus.PENDING)
+        process_info = ProcessInfo(
+            id=process_id, command=command, status=ProcessStatus.PENDING
+        )
 
         async with self._lock:
             self.processes[process_id] = process_info
@@ -74,13 +76,17 @@ class ShellSession:
                 await self._stream_output(process, process_info)
             else:
                 # Batch output
-                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(), timeout=timeout
+                )
                 process_info.stdout = stdout.decode("utf-8", errors="replace")
                 process_info.stderr = stderr.decode("utf-8", errors="replace")
 
             process_info.exit_code = process.returncode
             process_info.status = (
-                ProcessStatus.COMPLETED if process.returncode == 0 else ProcessStatus.FAILED
+                ProcessStatus.COMPLETED
+                if process.returncode == 0
+                else ProcessStatus.FAILED
             )
 
         except asyncio.TimeoutError:
@@ -95,7 +101,9 @@ class ShellSession:
     async def execute_background(self, command: str) -> ProcessInfo:
         """Execute long-running command in background."""
         process_id = str(uuid.uuid4())
-        process_info = ProcessInfo(id=process_id, command=command, status=ProcessStatus.PENDING)
+        process_info = ProcessInfo(
+            id=process_id, command=command, status=ProcessStatus.PENDING
+        )
 
         async with self._lock:
             self.processes[process_id] = process_info
@@ -126,7 +134,9 @@ class ShellSession:
 
             process_info.exit_code = process.returncode
             process_info.status = (
-                ProcessStatus.COMPLETED if process.returncode == 0 else ProcessStatus.FAILED
+                ProcessStatus.COMPLETED
+                if process.returncode == 0
+                else ProcessStatus.FAILED
             )
 
         except Exception as e:
@@ -135,7 +145,9 @@ class ShellSession:
         finally:
             process_info.end_time = datetime.now()
 
-    async def _stream_output(self, process: asyncio.subprocess.Process, process_info: ProcessInfo):
+    async def _stream_output(
+        self, process: asyncio.subprocess.Process, process_info: ProcessInfo
+    ):
         """Stream process output."""
 
         async def read_stream(stream: asyncio.StreamReader, output_type: str):

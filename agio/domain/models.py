@@ -67,7 +67,9 @@ def normalize_usage_metrics(usage_data: dict[str, Any] | None) -> dict[str, int 
 
     # Handle both OpenAI-style and unified-style keys
     input_tokens = usage_data.get("input_tokens") or usage_data.get("prompt_tokens")
-    output_tokens = usage_data.get("output_tokens") or usage_data.get("completion_tokens")
+    output_tokens = usage_data.get("output_tokens") or usage_data.get(
+        "completion_tokens"
+    )
     total_tokens = usage_data.get("total_tokens")
 
     # Calculate total_tokens if not provided but both input/output are available
@@ -221,8 +223,12 @@ class Step(BaseModel):
     # --- Core Content (Standard LLM Message) ---
     role: MessageRole
     content: str | None = None  # LLM message content
-    content_for_user: str | None = None  # Display content for frontend (preferred for UI)
-    reasoning_content: str | None = None  # Reasoning content (e.g., DeepSeek thinking mode)
+    content_for_user: str | None = (
+        None  # Display content for frontend (preferred for UI)
+    )
+    reasoning_content: str | None = (
+        None  # Reasoning content (e.g., DeepSeek thinking mode)
+    )
 
     # Assistant-specific fields
     tool_calls: list[dict] | None = None
@@ -251,7 +257,9 @@ class Step(BaseModel):
     depth: int = 0  # Nesting depth in workflow
 
     # --- LLM Call Context (for assistant steps) ---
-    llm_messages: list[dict[str, Any]] | None = None  # Complete message list sent to LLM
+    llm_messages: list[dict[str, Any]] | None = (
+        None  # Complete message list sent to LLM
+    )
     llm_tools: list[dict[str, Any]] | None = None  # Tool definitions sent to LLM
     llm_request_params: dict[str, Any] | None = (
         None  # Request parameters (temperature, max_tokens, etc.)

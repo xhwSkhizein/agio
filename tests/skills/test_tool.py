@@ -135,4 +135,3 @@ async def test_execute_nonexistent_skill(skill_tool, mock_context):
     assert isinstance(result, ToolResult)
     assert result.is_success is False
     assert "not found" in result.error.lower()
-

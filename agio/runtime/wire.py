@@ -14,10 +14,10 @@ Usage:
     # At API entry point
     wire = Wire()
     context = RunContext(wire=wire, ...)
-    
+
     # Start execution (non-blocking)
     task = asyncio.create_task(agent.run(query, context=context))
-    
+
     # Stream events to client
     async for event in wire.read():
         yield event

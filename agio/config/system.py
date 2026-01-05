@@ -155,7 +155,9 @@ class ConfigSystem:
         """
         async with self._lock:
             if not self.registry.has(component_type, name):
-                raise ConfigNotFoundError(f"Config {component_type.value}/{name} not found")
+                raise ConfigNotFoundError(
+                    f"Config {component_type.value}/{name} not found"
+                )
 
             await self.hot_reload.handle_change(name, "delete", None)
 
@@ -189,7 +191,9 @@ class ConfigSystem:
             configs = self.registry.list_all()
             available_names = self.registry.get_all_names()
 
-            sorted_configs = self.dependency_resolver.topological_sort(configs, available_names)
+            sorted_configs = self.dependency_resolver.topological_sort(
+                configs, available_names
+            )
 
             stats = {"built": 0, "failed": 0}
 
@@ -201,7 +205,9 @@ class ConfigSystem:
                     await self._build_component(config)
                     stats["built"] += 1
                 except Exception as e:
-                    logger.exception(f"Failed to build {config.type}/{config.name}: {e}")
+                    logger.exception(
+                        f"Failed to build {config.type}/{config.name}: {e}"
+                    )
                     stats["failed"] += 1
 
         logger.info(f"Build completed: {stats}")
@@ -345,7 +351,9 @@ class ConfigSystem:
             dependencies[param_name] = self.container.get(dep_name)
         return dependencies
 
-    async def _resolve_workflow_dependencies(self, config: WorkflowConfig) -> dict[str, Any]:
+    async def _resolve_workflow_dependencies(
+        self, config: WorkflowConfig
+    ) -> dict[str, Any]:
         """Resolve Workflow dependencies."""
         dependencies = {}
 
@@ -402,7 +410,9 @@ class ConfigSystem:
             )
 
         session_store = (
-            self.container.get_or_none(session_store_name) if session_store_name else None
+            self.container.get_or_none(session_store_name)
+            if session_store_name
+            else None
         )
 
         runnable = self.container.get(runnable_id)

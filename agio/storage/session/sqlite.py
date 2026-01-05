@@ -518,7 +518,9 @@ class SQLiteSessionStore(SessionStore):
                 await self._connection.rollback()
                 raise
         except Exception as e:
-            logger.error("allocate_sequence_failed", error=str(e), session_id=session_id)
+            logger.error(
+                "allocate_sequence_failed", error=str(e), session_id=session_id
+            )
             raise
 
     async def get_step_by_tool_call_id(
@@ -539,7 +541,11 @@ class SQLiteSessionStore(SessionStore):
                     return self._deserialize_step(row)
                 return None
         except Exception as e:
-            logger.error("get_step_by_tool_call_id_failed", error=str(e), tool_call_id=tool_call_id)
+            logger.error(
+                "get_step_by_tool_call_id_failed",
+                error=str(e),
+                tool_call_id=tool_call_id,
+            )
             raise
 
 

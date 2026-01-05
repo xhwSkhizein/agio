@@ -63,7 +63,9 @@ async def list_configs_by_type(
     try:
         comp_type = ComponentType(config_type)
     except ValueError:
-        raise HTTPException(status_code=400, detail=f"Invalid config type: {config_type}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid config type: {config_type}"
+        )
 
     configs = config_sys.list_configs(comp_type)
     # list_configs already returns dict objects, not nested structures
@@ -80,11 +82,15 @@ async def get_config(
     try:
         comp_type = ComponentType(config_type)
     except ValueError:
-        raise HTTPException(status_code=400, detail=f"Invalid config type: {config_type}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid config type: {config_type}"
+        )
 
     config = config_sys.get_config(comp_type, name)
     if not config:
-        raise HTTPException(status_code=404, detail=f"Config '{config_type}/{name}' not found")
+        raise HTTPException(
+            status_code=404, detail=f"Config '{config_type}/{name}' not found"
+        )
 
     return config
 
@@ -100,7 +106,9 @@ async def upsert_config(
     try:
         comp_type = ComponentType(config_type)
     except ValueError:
-        raise HTTPException(status_code=400, detail=f"Invalid config type: {config_type}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid config type: {config_type}"
+        )
 
     # Ensure name and type are set
     config_data = data.config.copy()
@@ -111,7 +119,9 @@ async def upsert_config(
     try:
         config_class = config_sys.CONFIG_CLASSES.get(comp_type)
         if not config_class:
-            raise HTTPException(status_code=400, detail=f"Unknown config type: {config_type}")
+            raise HTTPException(
+                status_code=400, detail=f"Unknown config type: {config_type}"
+            )
 
         config = config_class(**config_data)
         await config_sys.save_config(config)
@@ -131,11 +141,15 @@ async def delete_config(
     try:
         comp_type = ComponentType(config_type)
     except ValueError:
-        raise HTTPException(status_code=400, detail=f"Invalid config type: {config_type}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid config type: {config_type}"
+        )
 
     # Check exists
     if not config_sys.get_config(comp_type, name):
-        raise HTTPException(status_code=404, detail=f"Config '{config_type}/{name}' not found")
+        raise HTTPException(
+            status_code=404, detail=f"Config '{config_type}/{name}' not found"
+        )
 
     await config_sys.delete_config(comp_type, name)
     return MessageResponse(message=f"Config '{config_type}/{name}' deleted")

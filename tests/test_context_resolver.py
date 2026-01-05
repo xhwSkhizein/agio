@@ -82,7 +82,9 @@ async def test_resolve_node_output(session_store):
     result = await resolver.resolve_template(
         "Input: {{ input }}, Node A: {{ nodes.node_a.output }}, Node B: {{ nodes.node_b.output }}"
     )
-    assert result == "Input: Original input, Node A: Node A output, Node B: Node B output"
+    assert (
+        result == "Input: Original input, Node A: Node A output, Node B: Node B output"
+    )
 
 
 @pytest.mark.asyncio
@@ -169,4 +171,3 @@ async def test_get_node_output_directly(session_store):
     # Non-existent node
     output_none = await resolver.get_node_output("node_none")
     assert output_none is None
-

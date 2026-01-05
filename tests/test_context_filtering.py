@@ -198,4 +198,3 @@ async def test_filter_with_system_prompt(session_store):
     assert messages[0]["role"] == "system"
     assert messages[0]["content"] == "You are helpful"
     assert messages[1]["role"] == "user"
-

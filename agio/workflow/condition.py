@@ -64,9 +64,7 @@ class ConditionEvaluator:
             condition = f"{{{{ {condition} }}}}"
 
         # Use Jinja2 if-statement to evaluate
-        template = (
-            f"{{% if {condition.strip('{{').strip('}}')} %}}TRUE{{% else %}}FALSE{{% endif %}}"
-        )
+        template = f"{{% if {condition.strip('{{').strip('}}')} %}}TRUE{{% else %}}FALSE{{% endif %}}"
 
         try:
             result = renderer.render(template, **context)

@@ -304,7 +304,9 @@ Usage notes:
         if len(content) > self.max_output_length:
             # Truncate content, take beginning and end
             mid = self.max_output_length // 2
-            truncated_content = content[:mid] + "\n... (output truncated)\n" + content[-mid:]
+            truncated_content = (
+                content[:mid] + "\n... (output truncated)\n" + content[-mid:]
+            )
             return {
                 "content": truncated_content,
                 "total_lines": total_lines,
@@ -332,7 +334,9 @@ Usage notes:
             # Validate input
             validation = self.validate_input(command)
             if not validation["valid"]:
-                return self._create_error_result(parameters, validation["message"], start_time)
+                return self._create_error_result(
+                    parameters, validation["message"], start_time
+                )
 
             # Check abort signal again
             if abort_signal and abort_signal.is_aborted():
@@ -384,7 +388,9 @@ Usage notes:
         except asyncio.CancelledError:
             return self._create_abort_result(parameters, start_time)
         except Exception as e:
-            return self._create_error_result(parameters, f"Command failed: {e!s}", start_time)
+            return self._create_error_result(
+                parameters, f"Command failed: {e!s}", start_time
+            )
 
     def _render_result_for_assistant(self, interrupted, stdout, stderr):
         error_message = stderr.strip()

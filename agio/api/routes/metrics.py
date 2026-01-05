@@ -66,8 +66,12 @@ async def get_agent_metrics(
         )
 
     except Exception as e:
-        logger.error("get_agent_metrics_failed", agent_id=agent_id, error=str(e), exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get agent metrics: {str(e)}")
+        logger.error(
+            "get_agent_metrics_failed", agent_id=agent_id, error=str(e), exc_info=True
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get agent metrics: {str(e)}"
+        )
 
 
 @router.get("/system", response_model=SystemMetrics)
@@ -84,9 +88,15 @@ async def get_system_metrics() -> SystemMetrics:
         logger.info("system_metrics_requested")
 
         return SystemMetrics(
-            total_agents=0, total_runs=0, active_runs=0, total_tokens_today=0, avg_response_time=0.0
+            total_agents=0,
+            total_runs=0,
+            active_runs=0,
+            total_tokens_today=0,
+            avg_response_time=0.0,
         )
 
     except Exception as e:
         logger.error("get_system_metrics_failed", error=str(e), exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get system metrics: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get system metrics: {str(e)}"
+        )

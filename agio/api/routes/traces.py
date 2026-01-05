@@ -52,7 +52,9 @@ class SpanSummary(BaseModel):
     error_message: str | None
     attributes: dict[str, Any]
     metrics: dict[str, Any]
-    llm_details: dict[str, Any] | None = None  # Complete LLM call details (for LLM_CALL spans)
+    llm_details: dict[str, Any] | None = (
+        None  # Complete LLM call details (for LLM_CALL spans)
+    )
 
 
 class TraceDetail(BaseModel):
@@ -97,7 +99,9 @@ class WaterfallSpan(BaseModel):
     sublabel: str | None
     tokens: int | None
     metrics: dict[str, Any] | None = None
-    llm_details: dict[str, Any] | None = None  # Complete LLM call details (for LLM_CALL spans)
+    llm_details: dict[str, Any] | None = (
+        None  # Complete LLM call details (for LLM_CALL spans)
+    )
 
 
 class WaterfallData(BaseModel):

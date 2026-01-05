@@ -169,7 +169,9 @@ class GlobTool(BaseTool, ConfigurableToolMixin):
 
         return pattern
 
-    async def _glob_search(self, pattern: str, search_path: Path) -> tuple[list[str], bool]:
+    async def _glob_search(
+        self, pattern: str, search_path: Path
+    ) -> tuple[list[str], bool]:
         """Execute glob search."""
         try:
             # Use pathlib for glob search
@@ -282,7 +284,9 @@ class GlobTool(BaseTool, ConfigurableToolMixin):
             # Validate input
             validation = self.validate_input(pattern, path)
             if not validation["valid"]:
-                return self._create_error_result(parameters, validation["message"], start_time)
+                return self._create_error_result(
+                    parameters, validation["message"], start_time
+                )
 
             # Resolve search path
             search_path = self._resolve_path(path)
@@ -351,4 +355,6 @@ class GlobTool(BaseTool, ConfigurableToolMixin):
             )
 
         except Exception as e:
-            return self._create_error_result(parameters, f"Glob search failed: {e!s}", start_time)
+            return self._create_error_result(
+                parameters, f"Glob search failed: {e!s}", start_time
+            )

@@ -168,7 +168,9 @@ class OTLPExporter:
             # Convert span_id
             span_id_bytes = self._uuid_to_span_id(span.span_id)
             parent_span_id_bytes = (
-                self._uuid_to_span_id(span.parent_span_id) if span.parent_span_id else None
+                self._uuid_to_span_id(span.parent_span_id)
+                if span.parent_span_id
+                else None
             )
 
             # Create SpanContext
@@ -183,13 +185,17 @@ class OTLPExporter:
             status_code = (
                 StatusCode.OK
                 if span.status == SpanStatus.OK
-                else StatusCode.ERROR if span.status == SpanStatus.ERROR else StatusCode.UNSET
+                else StatusCode.ERROR
+                if span.status == SpanStatus.ERROR
+                else StatusCode.UNSET
             )
             status = Status(status_code=status_code, description=span.error_message)
 
             # Convert timestamps to nanoseconds
             start_time_ns = int(span.start_time.timestamp() * 1e9)
-            end_time_ns = int(span.end_time.timestamp() * 1e9) if span.end_time else start_time_ns
+            end_time_ns = (
+                int(span.end_time.timestamp() * 1e9) if span.end_time else start_time_ns
+            )
 
             # Build attributes
             attributes = dict(span.attributes)

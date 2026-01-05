@@ -91,7 +91,10 @@ def create_file_tree(sorted_paths: list[str]) -> list[TreeNode]:
 
 
 def print_tree(
-    tree: list[TreeNode], root_label: str | None = None, level: int = 0, prefix: str = ""
+    tree: list[TreeNode],
+    root_label: str | None = None,
+    level: int = 0,
+    prefix: str = "",
 ) -> str:
     """Render tree structure as formatted string"""
     result = ""
@@ -207,7 +210,8 @@ Usage:
             return {
                 "valid": False,
                 "message": (
-                    "Permission denied: cannot read directory " f"{resolved_path.as_posix()}"
+                    "Permission denied: cannot read directory "
+                    f"{resolved_path.as_posix()}"
                 ),
             }
 
@@ -345,7 +349,9 @@ Usage:
                 return self._create_error_result(parameters, str(error), start_time)
 
             if not validation["valid"]:
-                return self._create_error_result(parameters, validation["message"], start_time)
+                return self._create_error_result(
+                    parameters, validation["message"], start_time
+                )
 
             resolved_path: Path = validation["resolved_path"]
 
@@ -369,7 +375,9 @@ Usage:
             is_truncated = len(formatted_files) >= self.max_files
 
             # Format outputs
-            assistant_output = self._format_result_for_assistant(tree_output, is_truncated)
+            assistant_output = self._format_result_for_assistant(
+                tree_output, is_truncated
+            )
 
             return ToolResult(
                 tool_name=self.name,

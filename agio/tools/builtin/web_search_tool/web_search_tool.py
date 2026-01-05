@@ -170,7 +170,9 @@ To fetch full content from a search result, use web_fetch tool with the result i
 
             # Check if search results exist
             if "organic" not in results:
-                return f"No results found for query: '{query}'. Try a less specific query."
+                return (
+                    f"No results found for query: '{query}'. Try a less specific query."
+                )
 
             # Extract search results (return raw data)
             search_results = []
@@ -216,7 +218,9 @@ To fetch full content from a search result, use web_fetch tool with the result i
         ]
 
         for i, result in enumerate(simplified_results):
-            citation_id = citation_ids[i] if i < len(citation_ids) else result.citation_id
+            citation_id = (
+                citation_ids[i] if i < len(citation_ids) else result.citation_id
+            )
             citation_mark = f"[cite:{citation_id}] " if citation_id else ""
 
             index_str = f"{result.index}. " if result.index is not None else ""
@@ -303,8 +307,8 @@ To fetch full content from a search result, use web_fetch tool with the result i
         if self._citation_source_store:
             try:
                 # Get maximum index for current session
-                existing_sources = await self._citation_source_store.get_session_citations(
-                    session_id
+                existing_sources = (
+                    await self._citation_source_store.get_session_citations(session_id)
                 )
                 start_index = (
                     max(
@@ -328,9 +332,11 @@ To fetch full content from a search result, use web_fetch tool with the result i
                 )
 
                 # Get simplified results
-                simplified_results = await self._citation_source_store.get_simplified_sources(
-                    session_id=session_id,
-                    citation_ids=citation_ids,
+                simplified_results = (
+                    await self._citation_source_store.get_simplified_sources(
+                        session_id=session_id,
+                        citation_ids=citation_ids,
+                    )
                 )
 
                 logger.info(
@@ -378,7 +384,9 @@ To fetch full content from a search result, use web_fetch tool with the result i
             query = parameters.get("query")
 
             if not query:
-                return self._create_error_result(parameters, "Error: No query provided", start_time)
+                return self._create_error_result(
+                    parameters, "Error: No query provided", start_time
+                )
 
             # Check abort signal
             if abort_signal and abort_signal.is_aborted():
@@ -389,7 +397,9 @@ To fetch full content from a search result, use web_fetch tool with the result i
                 raw_results = self._google_search_with_serp(query)
 
                 if isinstance(raw_results, str):  # Error message
-                    return self._create_error_result(parameters, raw_results, start_time)
+                    return self._create_error_result(
+                        parameters, raw_results, start_time
+                    )
 
                 # Check abort signal
                 if abort_signal and abort_signal.is_aborted():

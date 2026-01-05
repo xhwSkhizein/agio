@@ -88,11 +88,15 @@ class ToolBuilder(ComponentBuilder):
             sig = inspect.signature(tool_class.__init__)
             if "config" in sig.parameters:
                 # Build config object from params
-                config_obj = self._build_config_object(config.tool_name or config.name, kwargs)
+                config_obj = self._build_config_object(
+                    config.tool_name or config.name, kwargs
+                )
                 if config_obj:
                     kwargs["config"] = config_obj
                     # Remove config params from kwargs (they're now in config object)
-                    config_params = self._get_config_params(config.tool_name or config.name)
+                    config_params = self._get_config_params(
+                        config.tool_name or config.name
+                    )
                     kwargs = {k: v for k, v in kwargs.items() if k not in config_params}
 
             # Handle project_root parameter
@@ -243,7 +247,8 @@ class MemoryBuilder(ComponentBuilder):
         """Build memory instance."""
         # Memory components are not yet implemented
         raise ComponentBuildError(
-            f"Memory components are not yet implemented. " f"Failed to build memory {config.name}"
+            f"Memory components are not yet implemented. "
+            f"Failed to build memory {config.name}"
         )
 
 
@@ -262,7 +267,9 @@ class KnowledgeBuilder(ComponentBuilder):
 class SessionStoreBuilder(ComponentBuilder):
     """Builder for session store components (stores Run and Step data)."""
 
-    async def build(self, config: SessionStoreConfig, dependencies: dict[str, Any]) -> Any:
+    async def build(
+        self, config: SessionStoreConfig, dependencies: dict[str, Any]
+    ) -> Any:
         """Build session store instance."""
         try:
             backend = config.backend
@@ -299,10 +306,14 @@ class SessionStoreBuilder(ComponentBuilder):
                 return InMemorySessionStore()
 
             else:
-                raise ComponentBuildError(f"Unknown session store backend type: {backend.type}")
+                raise ComponentBuildError(
+                    f"Unknown session store backend type: {backend.type}"
+                )
 
         except Exception as e:
-            raise ComponentBuildError(f"Failed to build session_store {config.name}: {e}")
+            raise ComponentBuildError(
+                f"Failed to build session_store {config.name}: {e}"
+            )
 
     async def cleanup(self, instance: Any) -> None:
         """Cleanup session store resources."""
@@ -405,7 +416,10 @@ class WorkflowBuilder(ComponentBuilder):
                     # Recursively build nested workflow
                     # Inherit session_store from parent if not specified
                     nested_config_dict = dict(runnable_ref)
-                    if "session_store" not in nested_config_dict and config.session_store:
+                    if (
+                        "session_store" not in nested_config_dict
+                        and config.session_store
+                    ):
                         nested_config_dict["session_store"] = config.session_store
 
                     nested_config = WorkflowConfig(
@@ -448,7 +462,9 @@ class WorkflowBuilder(ComponentBuilder):
                     session_store=session_store,
                 )
             else:
-                raise ComponentBuildError(f"Unknown workflow type: {config.workflow_type}")
+                raise ComponentBuildError(
+                    f"Unknown workflow type: {config.workflow_type}"
+                )
 
             # Set registry so workflow can resolve runnable references
             workflow.set_registry(registry)
@@ -462,7 +478,9 @@ class WorkflowBuilder(ComponentBuilder):
 class TraceStoreBuilder(ComponentBuilder):
     """Builder for TraceStore components."""
 
-    async def build(self, config: TraceStoreConfig, dependencies: dict[str, Any]) -> Any:
+    async def build(
+        self, config: TraceStoreConfig, dependencies: dict[str, Any]
+    ) -> Any:
         """Build TraceStore instance."""
         from agio.storage.trace.store import TraceStore
 
@@ -506,7 +524,9 @@ class TraceStoreBuilder(ComponentBuilder):
                 return store
 
             else:
-                raise ComponentBuildError(f"Unknown trace store backend type: {backend.type}")
+                raise ComponentBuildError(
+                    f"Unknown trace store backend type: {backend.type}"
+                )
 
         except Exception as e:
             raise ComponentBuildError(f"Failed to build trace_store {config.name}: {e}")
@@ -515,7 +535,9 @@ class TraceStoreBuilder(ComponentBuilder):
 class CitationStoreBuilder(ComponentBuilder):
     """Builder for CitationStore components."""
 
-    async def build(self, config: CitationStoreConfig, dependencies: dict[str, Any]) -> Any:
+    async def build(
+        self, config: CitationStoreConfig, dependencies: dict[str, Any]
+    ) -> Any:
         """Build CitationStore instance."""
         try:
             backend = config.backend
@@ -551,10 +573,14 @@ class CitationStoreBuilder(ComponentBuilder):
                 return InMemoryCitationStore()
 
             else:
-                raise ComponentBuildError(f"Unknown citation store backend type: {backend.type}")
+                raise ComponentBuildError(
+                    f"Unknown citation store backend type: {backend.type}"
+                )
 
         except Exception as e:
-            raise ComponentBuildError(f"Failed to build citation_store {config.name}: {e}")
+            raise ComponentBuildError(
+                f"Failed to build citation_store {config.name}: {e}"
+            )
 
     async def cleanup(self, instance: Any) -> None:
         """Cleanup citation store resources."""

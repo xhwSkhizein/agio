@@ -89,6 +89,3 @@ async def test_step_metadata_persistence():
     assert retrieved.node_id == "node_1"
     assert retrieved.parent_run_id == "parent_1"
     assert retrieved.branch_key == "branch_1"
-
-
-

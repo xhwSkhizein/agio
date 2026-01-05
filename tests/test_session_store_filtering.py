@@ -253,10 +253,13 @@ async def test_get_last_assistant_content(session_store):
     await session_store.save_step(step3)
 
     # Get last assistant content for node_a (uses workflow_id for isolation)
-    content = await session_store.get_last_assistant_content("session_123", "node_a", workflow_id="workflow_1")
+    content = await session_store.get_last_assistant_content(
+        "session_123", "node_a", workflow_id="workflow_1"
+    )
     assert content == "Second response"
 
     # Test with non-existent node
-    content_none = await session_store.get_last_assistant_content("session_123", "node_none", workflow_id="workflow_1")
+    content_none = await session_store.get_last_assistant_content(
+        "session_123", "node_none", workflow_id="workflow_1"
+    )
     assert content_none is None
-

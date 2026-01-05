@@ -156,5 +156,8 @@ class InMemoryCitationStore:
         return {
             "total_sessions": len(self._sources),
             "total_sources": sum(len(sources) for sources in self._sources.values()),
-            "sessions": {session_id: len(sources) for session_id, sources in self._sources.items()},
+            "sessions": {
+                session_id: len(sources)
+                for session_id, sources in self._sources.items()
+            },
         }

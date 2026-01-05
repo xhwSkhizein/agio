@@ -34,8 +34,12 @@ class CitationSourceRaw(BaseModel):
     source: str | None = Field(default=None, description="Source")
 
     # Content information
-    full_content: str | None = Field(default=None, description="Full content (fetch result)")
-    processed_content: str | None = Field(default=None, description="Processed content for LLM")
+    full_content: str | None = Field(
+        default=None, description="Full content (fetch result)"
+    )
+    processed_content: str | None = Field(
+        default=None, description="Processed content for LLM"
+    )
     original_content: dict[str, Any] | None = Field(
         default=None, description="Original content metadata"
     )
@@ -51,12 +55,16 @@ class CitationSourceRaw(BaseModel):
     # Metadata
     query: str | None = Field(default=None, description="Search query (search type)")
     parameters: dict[str, Any] = Field(
-        default_factory=dict, description="Processing parameters (search_query, summarize, etc.)"
+        default_factory=dict,
+        description="Processing parameters (search_query, summarize, etc.)",
     )
     index: int | None = Field(
-        default=None, description="Numeric index (for search results, used in web_fetch(index=N))"
+        default=None,
+        description="Numeric index (for search results, used in web_fetch(index=N))",
     )
-    created_at: datetime = Field(default_factory=datetime.now, description="Creation timestamp")
+    created_at: datetime = Field(
+        default_factory=datetime.now, description="Creation timestamp"
+    )
 
 
 class CitationSourceSimplified(BaseModel):
@@ -66,7 +74,8 @@ class CitationSourceSimplified(BaseModel):
     source_type: CitationSourceType = Field(description="Source type")
     url: str = Field(description="Web page URL")
     index: int | None = Field(
-        default=None, description="Numeric index (for search results, used in web_fetch(index=N))"
+        default=None,
+        description="Numeric index (for search results, used in web_fetch(index=N))",
     )
     title: str | None = Field(default=None, description="Title")
     snippet: str | None = Field(default=None, description="Snippet")

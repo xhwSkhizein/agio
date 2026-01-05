@@ -62,7 +62,9 @@ class DeepseekModel(OpenAIModel):
 
         Model.model_post_init(self, __context)
 
-    def _preprocess_messages_for_thinking_mode(self, messages: list[dict]) -> list[dict]:
+    def _preprocess_messages_for_thinking_mode(
+        self, messages: list[dict]
+    ) -> list[dict]:
         """
         Preprocess messages for DeepSeek thinking mode.
 
@@ -82,7 +84,8 @@ class DeepseekModel(OpenAIModel):
         # Check if this is a thinking mode model
         model_name = self.model_name or self.name
         is_thinking_mode = (
-            "reasoner" in model_name.lower() or "deepseek-reasoner" in model_name.lower()
+            "reasoner" in model_name.lower()
+            or "deepseek-reasoner" in model_name.lower()
         )
 
         # Check if last message is a user message (new conversation turn)

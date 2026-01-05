@@ -48,7 +48,9 @@ async def list_memories(
         try:
             instance = config_sys.get_or_none(name)
             has_history = hasattr(instance, "history") and instance.history is not None
-            has_semantic = hasattr(instance, "semantic") and instance.semantic is not None
+            has_semantic = (
+                hasattr(instance, "semantic") and instance.semantic is not None
+            )
         except Exception:
             has_history = False
             has_semantic = False
@@ -140,7 +142,9 @@ async def get_memory_history(
         raise HTTPException(status_code=404, detail=f"Memory '{name}' not found: {e}")
 
     if not hasattr(memory, "history") or memory.history is None:
-        raise HTTPException(status_code=400, detail=f"Memory '{name}' does not support history")
+        raise HTTPException(
+            status_code=400, detail=f"Memory '{name}' does not support history"
+        )
 
     steps = await memory.history.get_recent_history(session_id, limit=limit)
 

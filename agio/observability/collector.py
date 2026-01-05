@@ -108,7 +108,9 @@ class TraceCollector:
                     status=SpanStatus.ERROR,
                     error_message=str(e),
                 )
-            logger.error("trace_collection_failed", trace_id=trace.trace_id, error=str(e))
+            logger.error(
+                "trace_collection_failed", trace_id=trace.trace_id, error=str(e)
+            )
             raise
         finally:
             # Save trace
@@ -119,7 +121,9 @@ class TraceCollector:
                 try:
                     await self.store.save_trace(trace)
                 except Exception as e:
-                    logger.error("trace_save_failed", trace_id=trace.trace_id, error=str(e))
+                    logger.error(
+                        "trace_save_failed", trace_id=trace.trace_id, error=str(e)
+                    )
 
             # Export to OTLP (async, non-blocking)
             try:
@@ -129,7 +133,9 @@ class TraceCollector:
                 if exporter.enabled:
                     await exporter.export_trace(trace)
             except Exception as e:
-                logger.warning("otlp_export_failed", trace_id=trace.trace_id, error=str(e))
+                logger.warning(
+                    "otlp_export_failed", trace_id=trace.trace_id, error=str(e)
+                )
 
     def _process_event(
         self,
@@ -155,7 +161,9 @@ class TraceCollector:
             # Check if this is a nested execution
             if event.nested_runnable_id:
                 # Find parent span for nested execution
-                parent_span = self._find_parent_span_for_nested(event, span_stack, current_span)
+                parent_span = self._find_parent_span_for_nested(
+                    event, span_stack, current_span
+                )
 
                 # Create nested Agent Span
                 span = Span(
@@ -193,7 +201,9 @@ class TraceCollector:
                         "workflow_type": data.get("type"),
                     },
                     input_preview=(
-                        trace.input_query[: self.PREVIEW_LENGTH] if trace.input_query else None
+                        trace.input_query[: self.PREVIEW_LENGTH]
+                        if trace.input_query
+                        else None
                     ),
                 )
                 trace.root_span_id = span.span_id
@@ -294,7 +304,9 @@ class TraceCollector:
                 if start_time and start_time.tzinfo is None:
                     start_time = start_time.replace(tzinfo=timezone.utc)
                 end_time = (
-                    step.metrics.exec_end_at if step.metrics and step.metrics.exec_end_at else None
+                    step.metrics.exec_end_at
+                    if step.metrics and step.metrics.exec_end_at
+                    else None
                 )
                 # Ensure end_time is timezone-aware
                 if end_time and end_time.tzinfo is None:
@@ -344,7 +356,9 @@ class TraceCollector:
                         # Find matching tool_call in Assistant Step
                         for tc in assistant_step.tool_calls:
                             if tc.get("id") == step.tool_call_id:
-                                fn_args_str = tc.get("function", {}).get("arguments", "{}")
+                                fn_args_str = tc.get("function", {}).get(
+                                    "arguments", "{}"
+                                )
                                 try:
                                     if isinstance(fn_args_str, str):
                                         tool_input_args = json.loads(fn_args_str)
@@ -378,7 +392,8 @@ class TraceCollector:
                     run_id=step.run_id,
                     start_time=start_time,
                     end_time=end_time,
-                    duration_ms=duration_ms or (step.metrics.duration_ms if step.metrics else None),
+                    duration_ms=duration_ms
+                    or (step.metrics.duration_ms if step.metrics else None),
                     status=status,
                     error_message=error_message,
                 )
@@ -405,7 +420,9 @@ class TraceCollector:
                 if start_time and start_time.tzinfo is None:
                     start_time = start_time.replace(tzinfo=timezone.utc)
                 end_time = (
-                    step.metrics.exec_end_at if step.metrics and step.metrics.exec_end_at else None
+                    step.metrics.exec_end_at
+                    if step.metrics and step.metrics.exec_end_at
+                    else None
                 )
                 # Ensure end_time is timezone-aware
                 if end_time and end_time.tzinfo is None:
@@ -449,7 +466,9 @@ class TraceCollector:
 
                 # Build name with iteration info if available
                 name = (
-                    step.metrics.model_name if step.metrics and step.metrics.model_name else "llm"
+                    step.metrics.model_name
+                    if step.metrics and step.metrics.model_name
+                    else "llm"
                 )
                 if step.iteration is not None:
                     name = f"{name} (iteration {step.iteration})"
@@ -472,7 +491,9 @@ class TraceCollector:
                     end_time=end_time,
                     duration_ms=duration_ms,
                     status=SpanStatus.OK,
-                    output_preview=step.content[: self.PREVIEW_LENGTH] if step.content else None,
+                    output_preview=step.content[: self.PREVIEW_LENGTH]
+                    if step.content
+                    else None,
                     llm_details=self._build_llm_details(step),
                 )
 
@@ -502,7 +523,9 @@ class TraceCollector:
                 response = event.data.get("response") if event.data else None
                 span.complete(
                     status=SpanStatus.OK,
-                    output_preview=response[: self.PREVIEW_LENGTH] if response else None,
+                    output_preview=response[: self.PREVIEW_LENGTH]
+                    if response
+                    else None,
                 )
                 trace.final_output = response
             return span_stack.get(event.run_id), {}

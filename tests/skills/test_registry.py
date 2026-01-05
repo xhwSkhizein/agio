@@ -148,4 +148,3 @@ description: Another test skill.
     assert len(registry.list_available()) == 2
     assert "test-skill" in registry.list_available()
     assert "test-skill-2" in registry.list_available()
-

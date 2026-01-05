@@ -30,7 +30,8 @@ class StreamChunk(BaseModel):
 
     content: str | None = Field(default=None, description="Text content delta")
     reasoning_content: str | None = Field(
-        default=None, description="Reasoning content delta (e.g., DeepSeek thinking mode)"
+        default=None,
+        description="Reasoning content delta (e.g., DeepSeek thinking mode)",
     )
     tool_calls: list[dict] | None = Field(
         default=None, description="Tool calls delta (OpenAI format)"

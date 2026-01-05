@@ -25,7 +25,7 @@ class TestStepResponse:
             role=MessageRole.USER,
             content="Hello, world!",
         )
-        
+
         response = StepResponse(
             id=step.id,
             session_id=step.session_id,
@@ -37,7 +37,7 @@ class TestStepResponse:
             tool_call_id=step.tool_call_id,
             created_at=step.created_at.isoformat(),
         )
-        
+
         assert response.role == "user"
         assert response.content == "Hello, world!"
         assert response.tool_calls is None
@@ -50,13 +50,10 @@ class TestStepResponse:
             {
                 "id": "call-123",
                 "type": "function",
-                "function": {
-                    "name": "get_weather",
-                    "arguments": '{"city": "Tokyo"}'
-                }
+                "function": {"name": "get_weather", "arguments": '{"city": "Tokyo"}'},
             }
         ]
-        
+
         step = Step(
             id="step-2",
             session_id="session-1",
@@ -66,7 +63,7 @@ class TestStepResponse:
             content=None,
             tool_calls=tool_calls,
         )
-        
+
         response = StepResponse(
             id=step.id,
             session_id=step.session_id,
@@ -78,7 +75,7 @@ class TestStepResponse:
             tool_call_id=step.tool_call_id,
             created_at=step.created_at.isoformat(),
         )
-        
+
         assert response.role == "assistant"
         assert response.content is None
         assert response.tool_calls is not None
@@ -102,7 +99,7 @@ class TestStepResponse:
             tool_call_id="call-123",
             content='{"temperature": 22, "condition": "sunny"}',
         )
-        
+
         response = StepResponse(
             id=step.id,
             session_id=step.session_id,
@@ -114,7 +111,7 @@ class TestStepResponse:
             tool_call_id=step.tool_call_id,
             created_at=step.created_at.isoformat(),
         )
-        
+
         assert response.role == "tool"
         assert response.name == "get_weather"
         assert response.tool_call_id == "call-123"
@@ -130,11 +127,11 @@ class TestStepResponse:
                 "type": "function",
                 "function": {
                     "name": "search_web",
-                    "arguments": '{"query": "Python tutorials"}'
-                }
+                    "arguments": '{"query": "Python tutorials"}',
+                },
             }
         ]
-        
+
         step = Step(
             id="step-4",
             session_id="session-1",
@@ -144,7 +141,7 @@ class TestStepResponse:
             content="Let me search for that.",
             tool_calls=tool_calls,
         )
-        
+
         response = StepResponse(
             id=step.id,
             session_id=step.session_id,
@@ -156,7 +153,7 @@ class TestStepResponse:
             tool_call_id=step.tool_call_id,
             created_at=step.created_at.isoformat(),
         )
-        
+
         assert response.role == "assistant"
         assert response.content == "Let me search for that."
         assert response.tool_calls is not None
@@ -180,10 +177,10 @@ class TestStepResponseSerialization:
             tool_call_id="call-789",
             created_at="2024-01-01T00:00:00",
         )
-        
+
         # Simulate JSON serialization
         data = response.model_dump(exclude_none=True)
-        
+
         # Frontend expects these fields for tool display
         assert "name" in data
         assert "tool_call_id" in data
@@ -196,21 +193,18 @@ class TestStepResponseSerialization:
             {
                 "id": "call-abc",
                 "type": "function",
-                "function": {
-                    "name": "calculate",
-                    "arguments": '{"a": 1, "b": 2}'
-                }
+                "function": {"name": "calculate", "arguments": '{"a": 1, "b": 2}'},
             },
             {
                 "id": "call-def",
                 "type": "function",
                 "function": {
                     "name": "format_result",
-                    "arguments": '{"format": "json"}'
-                }
-            }
+                    "arguments": '{"format": "json"}',
+                },
+            },
         ]
-        
+
         response = StepResponse(
             id="step-assistant",
             session_id="session-1",
@@ -224,16 +218,16 @@ class TestStepResponseSerialization:
         )
 
         data = response.model_dump(exclude_none=True)
-        
+
         # Frontend parses tool_calls[].id and tool_calls[].function.name/arguments
         assert data["tool_calls"] is not None
         assert len(data["tool_calls"]) == 2
-        
+
         tc1 = data["tool_calls"][0]
         assert tc1["id"] == "call-abc"
         assert tc1["function"]["name"] == "calculate"
         assert tc1["function"]["arguments"] == '{"a": 1, "b": 2}'
-        
+
         tc2 = data["tool_calls"][1]
         assert tc2["id"] == "call-def"
         assert tc2["function"]["name"] == "format_result"

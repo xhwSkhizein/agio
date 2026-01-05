@@ -195,4 +195,3 @@ class SkillLoader:
             raise SkillNotFoundError(f"Skill '{skill_name}' not found")
 
         return (metadata.base_dir / "assets" / asset_name).absolute()
-

@@ -56,7 +56,9 @@ class SimpleAsyncClient:
                 **kwargs,
             )
             if response.status_code != 200:
-                logger.warning(f"HTTP {response.status_code}: {response.text[:200]}", url=url)
+                logger.warning(
+                    f"HTTP {response.status_code}: {response.text[:200]}", url=url
+                )
                 return None
 
             return extract_content_from_html(html=response.text, original_url=url)

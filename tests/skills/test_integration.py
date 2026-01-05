@@ -115,4 +115,3 @@ async def test_skills_section_in_prompt(temp_skill_dir, sample_skill):
     assert "test-skill" in section
     assert "A test skill for integration testing" in section
     assert "How to use skills" in section
-

@@ -196,4 +196,3 @@ async def test_workflow_state_only_last_assistant(session_store):
 
     # Should only have the last one
     assert state.get_output("node_a") == "Third response"
-

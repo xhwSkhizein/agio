@@ -8,7 +8,12 @@ from typing import AsyncIterator
 from pydantic import ConfigDict, Field, SecretStr
 
 try:
-    from anthropic import APIConnectionError, APITimeoutError, AsyncAnthropic, RateLimitError
+    from anthropic import (
+        APIConnectionError,
+        APITimeoutError,
+        AsyncAnthropic,
+        RateLimitError,
+    )
 except ImportError:
     raise ImportError("Please install anthropic package: uv add anthropic")
 
@@ -93,7 +98,9 @@ class AnthropicModel(Model):
                             }
                         )
 
-                    anthropic_messages.append({"role": "assistant", "content": content_blocks})
+                    anthropic_messages.append(
+                        {"role": "assistant", "content": content_blocks}
+                    )
                 else:
                     anthropic_messages.append({"role": "assistant", "content": content})
             elif role == "tool":

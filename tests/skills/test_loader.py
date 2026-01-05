@@ -131,4 +131,3 @@ async def test_get_asset_path(registry_with_skill, sample_skill):
 
     assert path.exists()
     assert path.name == "template.html"
-

@@ -107,7 +107,9 @@ class ToolRegistry:
         elif name in self.BUILTIN_TOOLS:
             module_path, class_name = self.BUILTIN_TOOLS[name]
         else:
-            raise KeyError(f"Tool not found: {name}. Available: {self.list_available()}")
+            raise KeyError(
+                f"Tool not found: {name}. Available: {self.list_available()}"
+            )
 
         import importlib
 
@@ -194,7 +196,9 @@ def register_tool(name: str, module_path: str, class_name: str) -> None:
     get_tool_registry().register(name, module_path, class_name)
 
 
-def create_tool(name: str, params: dict[str, Any] | None = None, **kwargs: Any) -> "BaseTool":
+def create_tool(
+    name: str, params: dict[str, Any] | None = None, **kwargs: Any
+) -> "BaseTool":
     """Create a tool instance (convenience function)."""
     return get_tool_registry().create(name, params, **kwargs)
 

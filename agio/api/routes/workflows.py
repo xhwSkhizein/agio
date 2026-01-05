@@ -80,7 +80,9 @@ async def get_workflow_structure(
     try:
         instance = config_system.get_instance(workflow_id)
     except Exception:
-        raise HTTPException(status_code=404, detail=f"Workflow not found: {workflow_id}")
+        raise HTTPException(
+            status_code=404, detail=f"Workflow not found: {workflow_id}"
+        )
 
     if not isinstance(instance, BaseWorkflow):
         raise HTTPException(
@@ -91,7 +93,9 @@ async def get_workflow_structure(
     stages = [
         StageInfo(
             id=node.id,
-            runnable=node.runnable if isinstance(node.runnable, str) else node.runnable.id,
+            runnable=node.runnable
+            if isinstance(node.runnable, str)
+            else node.runnable.id,
             input_template=node.input_template,
             condition=node.condition,
         )
@@ -127,7 +131,9 @@ async def get_workflow_dependencies(
     try:
         instance = config_system.get_instance(workflow_id)
     except Exception:
-        raise HTTPException(status_code=404, detail=f"Workflow not found: {workflow_id}")
+        raise HTTPException(
+            status_code=404, detail=f"Workflow not found: {workflow_id}"
+        )
 
     if not isinstance(instance, BaseWorkflow):
         raise HTTPException(

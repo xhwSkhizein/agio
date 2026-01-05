@@ -34,8 +34,6 @@ def test_workflow_node_with_condition():
     assert node.condition == "len(input) > 10"
 
 
-
-
 def test_workflow_node_with_runnable_instance():
     """Test WorkflowNode with Runnable instance"""
     mock_runnable = MagicMock()
@@ -49,4 +47,3 @@ def test_workflow_node_with_runnable_instance():
 
     assert node.runnable == mock_runnable
     assert node.runnable.id == "agent_1"
-

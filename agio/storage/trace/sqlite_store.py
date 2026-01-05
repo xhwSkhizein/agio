@@ -114,7 +114,9 @@ class SQLiteTraceStore:
 
         # Convert spans list to JSON string
         if "spans" in data and data["spans"]:
-            data["spans"] = json.dumps([span.model_dump(mode="json") for span in trace.spans])
+            data["spans"] = json.dumps(
+                [span.model_dump(mode="json") for span in trace.spans]
+            )
 
         # Convert datetime to ISO format string
         if "start_time" in data and isinstance(data["start_time"], str) is False:

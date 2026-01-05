@@ -20,6 +20,10 @@ from agio.tools.builtin.web_fetch_tool.html_extract import (
 from agio.tools.builtin.web_fetch_tool.playwright.chrome_session import (
     ChromeSessionManager,
 )
+from agio.tools.builtin.web_fetch_tool.playwright.browser_pool import (
+    BrowserLease,
+    BrowserPool,
+)
 from agio.tools.builtin.web_fetch_tool.playwright.exceptions import (
     BlockedException,
     SessionInvalidException,
@@ -34,6 +38,8 @@ class PlaywrightCrawler:
         self.logger = get_logger(__name__)
         self._config = config or WebFetchConfig()
         self.session_manager: ChromeSessionManager | None = None
+        self._pool = BrowserPool(config=self._config)
+        self._lease: BrowserLease | None = None
         self._start_lock = asyncio.Lock()
         self._started = False
         self.site_configs: dict[str, dict[str, Any]] = {
@@ -81,16 +87,18 @@ class PlaywrightCrawler:
         """Start crawler (thread-safe, ensures single start)."""
         async with self._start_lock:
             # If already started, return directly
-            if self._started and self.session_manager and self.session_manager.is_connected():
+            if (
+                self._started
+                and self.session_manager
+                and self.session_manager.is_connected()
+            ):
                 return
 
             self.stats["start_time"] = time.time()
             self.logger.info("Starting production-grade crawler")
-            if not self.session_manager:
-                self.session_manager = ChromeSessionManager(config=self._config)
-
-            # Connect to Chrome
-            await self.session_manager.connect()
+            if not self._lease:
+                self._lease = await self._pool.acquire()
+            self.session_manager = self._lease.session_manager
             self._started = True
 
     async def stop(self):
@@ -104,9 +112,14 @@ class PlaywrightCrawler:
             # Print statistics
             self._print_stats()
 
-            # Disconnect
-            if self.session_manager:
-                await self.session_manager.disconnect()
+            # Release lease back to pool
+            if self._lease:
+                broken = (
+                    not self.session_manager or not self.session_manager.is_connected()
+                )
+                await self._pool.release(self._lease, broken=broken)
+                self._lease = None
+                self.session_manager = None
 
             self._started = False
 
@@ -152,7 +165,9 @@ class PlaywrightCrawler:
         # FIXME use Trafilatura to extract content
         original_html = await page.content()
 
-        content: HtmlContent = extract_content_from_html(html=original_html, original_url=url)
+        content: HtmlContent = extract_content_from_html(
+            html=original_html, original_url=url
+        )
         if not content:
             return None
         return content
@@ -173,6 +188,7 @@ class PlaywrightCrawler:
 
         self.stats["total_requests"] += 1
         self.logger.info(f"Crawling: {url}")
+        page: Page | None = None
         try:
             page = await self.session_manager.context.new_page()
             # Set page timeout
@@ -199,7 +215,8 @@ class PlaywrightCrawler:
             content = await self._extract_content(page, url)
             self.stats["successful_requests"] += 1
             self.logger.info(
-                f"Crawl successful: title:{content.title if content else 'None'}", url=url
+                f"Crawl successful: title:{content.title if content else 'None'}",
+                url=url,
             )
 
             return content
@@ -217,11 +234,14 @@ class PlaywrightCrawler:
 
             # Health check, reconnect if connection is broken
             if not await self.session_manager.health_check():
-                self.logger.info("Connection broken detected, attempting to reconnect...")
+                self.logger.info(
+                    "Connection broken detected, attempting to reconnect..."
+                )
                 await self.session_manager.connect()
 
         finally:
-            await page.close()
+            if page:
+                await page.close()
 
     async def crawl_batch(
         self, urls: list[str], save_dir: Path | None = None
@@ -259,5 +279,7 @@ class PlaywrightCrawler:
             except Exception as e:
                 self.logger.error(f"Failed to process URL: {e}")
 
-        self.logger.info(f"Batch crawl completed, successful {len(results)}/{len(urls)}")
+        self.logger.info(
+            f"Batch crawl completed, successful {len(results)}/{len(urls)}"
+        )
         return results

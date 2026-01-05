@@ -86,7 +86,9 @@ async def list_agents(
     total = len(items)
     paginated_items = items[offset : offset + limit]
 
-    return PaginatedAgents(total=total, items=paginated_items, limit=limit, offset=offset)
+    return PaginatedAgents(
+        total=total, items=paginated_items, limit=limit, offset=offset
+    )
 
 
 @router.get("/{name}", response_model=AgentResponse)

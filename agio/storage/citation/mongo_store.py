@@ -36,7 +36,9 @@ class MongoCitationStore:
 
             await self.citations_collection.create_index("citation_id", unique=True)
             await self.citations_collection.create_index("session_id")
-            await self.citations_collection.create_index([("session_id", 1), ("index", 1)])
+            await self.citations_collection.create_index(
+                [("session_id", 1), ("index", 1)]
+            )
             await self.citations_collection.create_index("created_at")
 
             logger.info(
@@ -228,7 +230,9 @@ class MongoCitationStore:
         await self._ensure_connection()
 
         try:
-            result = await self.citations_collection.delete_many({"session_id": session_id})
+            result = await self.citations_collection.delete_many(
+                {"session_id": session_id}
+            )
             logger.info(
                 "citation_session_cleaned",
                 session_id=session_id,

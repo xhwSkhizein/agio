@@ -71,7 +71,9 @@ class ConfigRegistry:
         Returns:
             List of configurations
         """
-        return [config for (ct, _), config in self._configs.items() if ct == component_type]
+        return [
+            config for (ct, _), config in self._configs.items() if ct == component_type
+        ]
 
     def list_all(self) -> list[ComponentConfig]:
         """

@@ -29,9 +29,7 @@ class WorkflowNode(BaseModel):
 
     id: str  # Node unique identifier (replaces stage_id)
     runnable: Any | str  # Agent or SubWorkflow (instance or reference ID)
-    input_template: (
-        str  # Input template string, e.g., "User said: {input}, previous result: {node_a.output}"
-    )
+    input_template: str  # Input template string, e.g., "User said: {input}, previous result: {node_a.output}"
     condition: str | None = None  # Optional execution condition
 
     model_config = {"arbitrary_types_allowed": True}
@@ -50,7 +48,7 @@ class WorkflowNode(BaseModel):
         return mapping.get_node_dependencies()
 
     def __repr__(self) -> str:
-        runnable_ref = self.runnable if isinstance(self.runnable, str) else self.runnable.id
-        return (
-            f"WorkflowNode(id={self.id!r}, runnable={runnable_ref!r}, condition={self.condition!r})"
+        runnable_ref = (
+            self.runnable if isinstance(self.runnable, str) else self.runnable.id
         )
+        return f"WorkflowNode(id={self.id!r}, runnable={runnable_ref!r}, condition={self.condition!r})"

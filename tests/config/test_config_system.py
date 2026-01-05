@@ -22,11 +22,11 @@ def temp_config_dir():
         models_dir = Path(tmpdir) / "models"
         agents_dir = Path(tmpdir) / "agents"
         tools_dir = Path(tmpdir) / "tools"
-        
+
         models_dir.mkdir()
         agents_dir.mkdir()
         tools_dir.mkdir()
-        
+
         # Create a model config
         model_config = {
             "type": "model",
@@ -37,7 +37,7 @@ def temp_config_dir():
         }
         with open(models_dir / "test_model.yaml", "w") as f:
             yaml.dump(model_config, f)
-        
+
         # Create an agent config
         agent_config = {
             "type": "agent",
@@ -48,7 +48,7 @@ def temp_config_dir():
         }
         with open(agents_dir / "test_agent.yaml", "w") as f:
             yaml.dump(agent_config, f)
-        
+
         yield tmpdir
 
 
@@ -66,17 +66,17 @@ def nested_config_dir():
         production_dir = Path(tmpdir) / "production"
         dev_dir = Path(tmpdir) / "development"
         shared_dir = Path(tmpdir) / "shared"
-        
+
         production_dir.mkdir()
         dev_dir.mkdir()
         shared_dir.mkdir()
-        
+
         # Create nested subdirectories
         (production_dir / "models").mkdir()
         (production_dir / "agents").mkdir()
         (dev_dir / "models").mkdir()
         (shared_dir / "storages").mkdir()
-        
+
         # Create configs in nested directories
         prod_model_config = {
             "type": "model",
@@ -87,7 +87,7 @@ def nested_config_dir():
         }
         with open(production_dir / "models" / "prod_model.yaml", "w") as f:
             yaml.dump(prod_model_config, f)
-        
+
         dev_model_config = {
             "type": "model",
             "name": "dev_model",
@@ -97,7 +97,7 @@ def nested_config_dir():
         }
         with open(dev_dir / "models" / "dev_model.yaml", "w") as f:
             yaml.dump(dev_model_config, f)
-        
+
         storage_config = {
             "type": "session_store",
             "name": "shared_storage",
@@ -109,7 +109,7 @@ def nested_config_dir():
         }
         with open(shared_dir / "storages" / "shared_storage.yaml", "w") as f:
             yaml.dump(storage_config, f)
-        
+
         # Create a config directly in root (no subdirectory)
         root_tool_config = {
             "type": "tool",
@@ -118,7 +118,7 @@ def nested_config_dir():
         }
         with open(Path(tmpdir) / "root_tool.yaml", "w") as f:
             yaml.dump(root_tool_config, f)
-        
+
         yield tmpdir
 
 
@@ -129,7 +129,7 @@ class TestConfigSystemBasic:
     async def test_load_from_directory(self, config_system, temp_config_dir):
         """Test loading configs from directory."""
         stats = await config_system.load_from_directory(temp_config_dir)
-        
+
         assert stats["loaded"] >= 2  # model + agent
         assert stats["failed"] == 0
 
@@ -137,11 +137,11 @@ class TestConfigSystemBasic:
     async def test_list_configs(self, config_system, temp_config_dir):
         """Test listing configs."""
         await config_system.load_from_directory(temp_config_dir)
-        
+
         # List all configs
         all_configs = config_system.list_configs()
         assert len(all_configs) >= 2
-        
+
         # List by type
         model_configs = config_system.list_configs(ComponentType.MODEL)
         assert len(model_configs) == 1
@@ -151,7 +151,7 @@ class TestConfigSystemBasic:
     async def test_get_config(self, config_system, temp_config_dir):
         """Test getting a specific config."""
         await config_system.load_from_directory(temp_config_dir)
-        
+
         config = config_system.get_config(ComponentType.MODEL, "test_model")
         assert config is not None
         assert config["name"] == "test_model"
@@ -161,7 +161,7 @@ class TestConfigSystemBasic:
     async def test_get_config_not_found(self, config_system, temp_config_dir):
         """Test getting a non-existent config."""
         await config_system.load_from_directory(temp_config_dir)
-        
+
         config = config_system.get_config(ComponentType.MODEL, "nonexistent")
         assert config is None
 
@@ -174,7 +174,7 @@ class TestConfigSystemBuild:
         """Test building all components."""
         await config_system.load_from_directory(temp_config_dir)
         stats = await config_system.build_all()
-        
+
         # Model should build successfully
         # Agent may fail if model is not properly configured
         assert stats["built"] >= 1
@@ -184,7 +184,7 @@ class TestConfigSystemBuild:
         """Test getting a built component."""
         await config_system.load_from_directory(temp_config_dir)
         await config_system.build_all()
-        
+
         # Model should be available
         model = config_system.get_or_none("test_model")
         assert model is not None
@@ -200,10 +200,10 @@ class TestConfigSystemBuild:
         """Test listing built components."""
         await config_system.load_from_directory(temp_config_dir)
         await config_system.build_all()
-        
+
         components = config_system.list_components()
         assert len(components) >= 1
-        
+
         # Check component info structure
         for comp in components:
             assert "name" in comp
@@ -218,7 +218,7 @@ class TestConfigSystemSaveDelete:
     async def test_save_config(self, config_system, temp_config_dir):
         """Test saving a new config."""
         await config_system.load_from_directory(temp_config_dir)
-        
+
         # Save a new model config
         new_model = ModelConfig(
             name="new_model",
@@ -227,7 +227,7 @@ class TestConfigSystemSaveDelete:
             api_key="test-key",
         )
         await config_system.save_config(new_model)
-        
+
         # Verify it was saved
         config = config_system.get_config(ComponentType.MODEL, "new_model")
         assert config is not None
@@ -237,10 +237,10 @@ class TestConfigSystemSaveDelete:
     async def test_delete_config(self, config_system, temp_config_dir):
         """Test deleting a config."""
         await config_system.load_from_directory(temp_config_dir)
-        
+
         # Delete the model config
         await config_system.delete_config(ComponentType.MODEL, "test_model")
-        
+
         # Verify it was deleted
         config = config_system.get_config(ComponentType.MODEL, "test_model")
         assert config is None
@@ -249,7 +249,7 @@ class TestConfigSystemSaveDelete:
     async def test_delete_config_not_found(self, config_system, temp_config_dir):
         """Test deleting a non-existent config."""
         await config_system.load_from_directory(temp_config_dir)
-        
+
         with pytest.raises(ConfigNotFoundError):
             await config_system.delete_config(ComponentType.MODEL, "nonexistent")
 
@@ -261,14 +261,14 @@ class TestConfigSystemChangeCallbacks:
     async def test_on_change_callback(self, config_system, temp_config_dir):
         """Test change callback is called."""
         await config_system.load_from_directory(temp_config_dir)
-        
+
         changes = []
-        
+
         def on_change(name: str, change_type: str):
             changes.append((name, change_type))
-        
+
         config_system.on_change(on_change)
-        
+
         # Save a new config
         new_model = ModelConfig(
             name="callback_test_model",
@@ -277,7 +277,7 @@ class TestConfigSystemChangeCallbacks:
             api_key="test-key",
         )
         await config_system.save_config(new_model)
-        
+
         # Verify callback was called
         assert len(changes) == 1
         assert changes[0][0] == "callback_test_model"
@@ -292,9 +292,9 @@ class TestConfigSystemComponentInfo:
         """Test getting component info."""
         await config_system.load_from_directory(temp_config_dir)
         await config_system.build_all()
-        
+
         info = config_system.get_component_info("test_model")
-        
+
         if info:  # May be None if build failed
             assert info["name"] == "test_model"
             assert info["type"] == "model"
@@ -315,23 +315,25 @@ class TestConfigLoaderRefactor:
     async def test_load_recursive_scan(self, config_system, nested_config_dir):
         """Test recursive scanning of nested directories."""
         stats = await config_system.load_from_directory(nested_config_dir)
-        
+
         # Should load configs from nested directories
         assert stats["loaded"] >= 4  # prod_model, dev_model, shared_storage, root_tool
         assert stats["failed"] == 0
-        
+
         # Verify configs are loaded correctly
         prod_model = config_system.get_config(ComponentType.MODEL, "prod_model")
         assert prod_model is not None
         assert prod_model["model_name"] == "gpt-4"
-        
+
         dev_model = config_system.get_config(ComponentType.MODEL, "dev_model")
         assert dev_model is not None
         assert dev_model["model_name"] == "gpt-3.5-turbo"
-        
-        storage = config_system.get_config(ComponentType.SESSION_STORE, "shared_storage")
+
+        storage = config_system.get_config(
+            ComponentType.SESSION_STORE, "shared_storage"
+        )
         assert storage is not None
-        
+
         tool = config_system.get_config(ComponentType.TOOL, "root_tool")
         assert tool is not None
 
@@ -342,7 +344,7 @@ class TestConfigLoaderRefactor:
             # Create configs in arbitrary folder structure
             custom_dir = Path(tmpdir) / "custom" / "nested" / "path"
             custom_dir.mkdir(parents=True)
-            
+
             # Model config in a non-standard folder
             model_config = {
                 "type": "model",
@@ -353,7 +355,7 @@ class TestConfigLoaderRefactor:
             }
             with open(custom_dir / "model.yaml", "w") as f:
                 yaml.dump(model_config, f)
-            
+
             # Agent config in same folder
             agent_config = {
                 "type": "agent",
@@ -363,16 +365,16 @@ class TestConfigLoaderRefactor:
             }
             with open(custom_dir / "agent.yaml", "w") as f:
                 yaml.dump(agent_config, f)
-            
+
             stats = await config_system.load_from_directory(tmpdir)
-            
+
             # Should load both configs correctly based on type field
             assert stats["loaded"] == 2
             assert stats["failed"] == 0
-            
+
             model = config_system.get_config(ComponentType.MODEL, "custom_model")
             assert model is not None
-            
+
             agent = config_system.get_config(ComponentType.AGENT, "custom_agent")
             assert agent is not None
 
@@ -385,7 +387,7 @@ class TestConfigLoaderRefactor:
             dir2 = Path(tmpdir) / "folder2"
             dir1.mkdir()
             dir2.mkdir()
-            
+
             config1 = {
                 "type": "model",
                 "name": "duplicate_model",
@@ -395,7 +397,7 @@ class TestConfigLoaderRefactor:
             }
             with open(dir1 / "model.yaml", "w") as f:
                 yaml.dump(config1, f)
-            
+
             config2 = {
                 "type": "model",
                 "name": "duplicate_model",
@@ -405,15 +407,17 @@ class TestConfigLoaderRefactor:
             }
             with open(dir2 / "model.yaml", "w") as f:
                 yaml.dump(config2, f)
-            
+
             stats = await config_system.load_from_directory(tmpdir)
-            
+
             # Both should be loaded, but second one overwrites first
             assert stats["loaded"] == 2  # Both files are loaded
             assert stats["failed"] == 0
-            
+
             # The last loaded config should be the one stored
-            final_config = config_system.get_config(ComponentType.MODEL, "duplicate_model")
+            final_config = config_system.get_config(
+                ComponentType.MODEL, "duplicate_model"
+            )
             assert final_config is not None
             # Note: Which one wins depends on file iteration order, but one should win
 
@@ -426,7 +430,7 @@ class TestConfigLoaderRefactor:
             team_b = Path(tmpdir) / "teams" / "team-b" / "configs"
             team_a.mkdir(parents=True)
             team_b.mkdir(parents=True)
-            
+
             # Team A configs
             team_a_model = {
                 "type": "model",
@@ -437,7 +441,7 @@ class TestConfigLoaderRefactor:
             }
             with open(team_a / "model.yaml", "w") as f:
                 yaml.dump(team_a_model, f)
-            
+
             # Team B configs
             team_b_model = {
                 "type": "model",
@@ -448,7 +452,7 @@ class TestConfigLoaderRefactor:
             }
             with open(team_b / "model.yaml", "w") as f:
                 yaml.dump(team_b_model, f)
-            
+
             # Shared config at root
             shared_tool = {
                 "type": "tool",
@@ -457,17 +461,25 @@ class TestConfigLoaderRefactor:
             }
             with open(Path(tmpdir) / "shared_tool.yaml", "w") as f:
                 yaml.dump(shared_tool, f)
-            
+
             stats = await config_system.load_from_directory(tmpdir)
-            
+
             # All configs should be loaded regardless of folder structure
             assert stats["loaded"] == 3
             assert stats["failed"] == 0
-            
+
             # Verify all configs are accessible
-            assert config_system.get_config(ComponentType.MODEL, "team_a_model") is not None
-            assert config_system.get_config(ComponentType.MODEL, "team_b_model") is not None
-            assert config_system.get_config(ComponentType.TOOL, "shared_tool") is not None
+            assert (
+                config_system.get_config(ComponentType.MODEL, "team_a_model")
+                is not None
+            )
+            assert (
+                config_system.get_config(ComponentType.MODEL, "team_b_model")
+                is not None
+            )
+            assert (
+                config_system.get_config(ComponentType.TOOL, "shared_tool") is not None
+            )
 
     @pytest.mark.asyncio
     async def test_missing_type_field(self, config_system):
@@ -480,9 +492,9 @@ class TestConfigLoaderRefactor:
             }
             with open(Path(tmpdir) / "invalid.yaml", "w") as f:
                 yaml.dump(invalid_config, f)
-            
+
             stats = await config_system.load_from_directory(tmpdir)
-            
+
             # Should skip invalid config
             assert stats["loaded"] == 0
             assert stats["failed"] == 0  # Not counted as failed, just skipped
@@ -497,9 +509,9 @@ class TestConfigLoaderRefactor:
             }
             with open(Path(tmpdir) / "unknown.yaml", "w") as f:
                 yaml.dump(unknown_type_config, f)
-            
+
             stats = await config_system.load_from_directory(tmpdir)
-            
+
             # Should skip unknown type config
             assert stats["loaded"] == 0
             assert stats["failed"] == 0  # Not counted as failed, just skipped
@@ -518,15 +530,17 @@ class TestConfigLoaderRefactor:
             }
             with open(Path(tmpdir) / "disabled.yaml", "w") as f:
                 yaml.dump(disabled_config, f)
-            
+
             stats = await config_system.load_from_directory(tmpdir)
-            
+
             # Disabled config should be skipped
             assert stats["loaded"] == 0
             assert stats["failed"] == 0
-            
+
             # Config should not be registered
-            assert config_system.get_config(ComponentType.MODEL, "disabled_model") is None
+            assert (
+                config_system.get_config(ComponentType.MODEL, "disabled_model") is None
+            )
 
 
 class TestConfigSystemConcurrency:
@@ -550,7 +564,10 @@ class TestConfigSystemConcurrency:
             config_system.delete_config(ComponentType.MODEL, "test_model"),
         )
 
-        assert config_system.get_config(ComponentType.MODEL, "new_model_concurrent") is not None
+        assert (
+            config_system.get_config(ComponentType.MODEL, "new_model_concurrent")
+            is not None
+        )
         assert config_system.get_config(ComponentType.MODEL, "test_model") is None
 
     @pytest.mark.asyncio

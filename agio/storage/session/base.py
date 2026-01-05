@@ -295,7 +295,9 @@ class InMemorySessionStore(SessionStore):
             return 0
 
         original_count = len(self.steps[session_id])
-        self.steps[session_id] = [s for s in self.steps[session_id] if s.sequence < start_seq]
+        self.steps[session_id] = [
+            s for s in self.steps[session_id] if s.sequence < start_seq
+        ]
         return original_count - len(self.steps[session_id])
 
     async def get_step_count(self, session_id: str) -> int:

@@ -238,9 +238,10 @@ class SkillRegistry:
             name=name,
             description=description,
             license=license_str if isinstance(license_str, str) else None,
-            compatibility=compatibility_str if isinstance(compatibility_str, str) else None,
+            compatibility=compatibility_str
+            if isinstance(compatibility_str, str)
+            else None,
             metadata=metadata_str_dict,
             path=skill_path,
             base_dir=skill_path.parent,
         )
-

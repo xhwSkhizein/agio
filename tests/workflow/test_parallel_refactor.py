@@ -24,14 +24,14 @@ def mock_runnable():
     runnable = MagicMock()
     runnable.id = "agent_1"
     runnable.runnable_type = RunnableType.AGENT
-    
+
     async def mock_run(input, *, context, emit_run_events=True):
         return RunOutput(
             response=f"Branch response: {input}",
             run_id=context.run_id,
             metrics=RunMetrics(total_tokens=10, duration=0.1),
         )
-    
+
     runnable.run = AsyncMock(side_effect=mock_run)
     return runnable
 
@@ -49,7 +49,9 @@ def workflow_context():
 
 
 @pytest.mark.asyncio
-async def test_parallel_workflow_basic_execution(mock_runnable, session_store, workflow_context):
+async def test_parallel_workflow_basic_execution(
+    mock_runnable, session_store, workflow_context
+):
     """Test basic ParallelWorkflow execution"""
     nodes = [
         WorkflowNode(
@@ -76,7 +78,9 @@ async def test_parallel_workflow_basic_execution(mock_runnable, session_store, w
 
 
 @pytest.mark.asyncio
-async def test_parallel_workflow_idempotency(mock_runnable, session_store, workflow_context):
+async def test_parallel_workflow_idempotency(
+    mock_runnable, session_store, workflow_context
+):
     """Test that ParallelWorkflow skips already-executed branches"""
     from agio.domain import MessageRole, Step
 
@@ -115,7 +119,9 @@ async def test_parallel_workflow_idempotency(mock_runnable, session_store, workf
 
 
 @pytest.mark.asyncio
-async def test_parallel_workflow_branch_key(mock_runnable, session_store, workflow_context):
+async def test_parallel_workflow_branch_key(
+    mock_runnable, session_store, workflow_context
+):
     """Test that Steps are marked with branch_key"""
     nodes = [
         WorkflowNode(
@@ -134,4 +140,3 @@ async def test_parallel_workflow_branch_key(mock_runnable, session_store, workfl
     # Note: This requires the Runnable to actually create Steps with branch_key
     # In real execution, Agent would create steps with branch_key from metadata
     # This test would need a real Agent to verify branch_key is set correctly
-

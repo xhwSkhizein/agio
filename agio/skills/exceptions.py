@@ -21,4 +21,3 @@ class SkillParseError(SkillError):
     """Raised when skill parsing fails."""
 
     pass
-

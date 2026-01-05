@@ -24,14 +24,14 @@ def mock_runnable():
     runnable = MagicMock()
     runnable.id = "agent_1"
     runnable.runnable_type = RunnableType.AGENT
-    
+
     async def mock_run(input, *, context, emit_run_events=True):
         return RunOutput(
             response=f"Response to: {input}",
             run_id=context.run_id,
             metrics=RunMetrics(total_tokens=10, duration=0.1),
         )
-    
+
     runnable.run = AsyncMock(side_effect=mock_run)
     return runnable
 
@@ -49,7 +49,9 @@ def workflow_context():
 
 
 @pytest.mark.asyncio
-async def test_pipeline_workflow_basic_execution(mock_runnable, session_store, workflow_context):
+async def test_pipeline_workflow_basic_execution(
+    mock_runnable, session_store, workflow_context
+):
     """Test basic PipelineWorkflow execution"""
     nodes = [
         WorkflowNode(
@@ -75,7 +77,9 @@ async def test_pipeline_workflow_basic_execution(mock_runnable, session_store, w
 
 
 @pytest.mark.asyncio
-async def test_pipeline_workflow_idempotency(mock_runnable, session_store, workflow_context):
+async def test_pipeline_workflow_idempotency(
+    mock_runnable, session_store, workflow_context
+):
     """Test that PipelineWorkflow skips already-executed nodes"""
     from agio.domain import MessageRole, Step
 
@@ -115,13 +119,14 @@ async def test_pipeline_workflow_idempotency(mock_runnable, session_store, workf
 
 
 @pytest.mark.asyncio
-async def test_pipeline_workflow_unified_session(mock_runnable, session_store, workflow_context):
+async def test_pipeline_workflow_unified_session(
+    mock_runnable, session_store, workflow_context
+):
     """Test that all nested executions share the same session_id"""
     # Create a mock Runnable that creates Steps
     from agio.domain import MessageRole, Step
-    
+
     async def mock_run_with_steps(input, *, context, emit_run_events=True):
-        
         # Create Steps to simulate what Agent would do
         user_step = Step(
             session_id=context.session_id,
@@ -145,15 +150,15 @@ async def test_pipeline_workflow_unified_session(mock_runnable, session_store, w
         )
         await session_store.save_step(user_step)
         await session_store.save_step(assistant_step)
-        
+
         return RunOutput(
             response=f"Response to: {input}",
             run_id=context.run_id,
             metrics=RunMetrics(total_tokens=10, duration=0.1),
         )
-    
+
     mock_runnable.run = AsyncMock(side_effect=mock_run_with_steps)
-    
+
     nodes = [
         WorkflowNode(
             id="node_1",
@@ -175,7 +180,9 @@ async def test_pipeline_workflow_unified_session(mock_runnable, session_store, w
 
 
 @pytest.mark.asyncio
-async def test_pipeline_workflow_node_metadata(mock_runnable, session_store, workflow_context):
+async def test_pipeline_workflow_node_metadata(
+    mock_runnable, session_store, workflow_context
+):
     """Test that Steps are marked with correct node_id and workflow_id"""
     from agio.domain import MessageRole
 
@@ -195,12 +202,9 @@ async def test_pipeline_workflow_node_metadata(mock_runnable, session_store, wor
     # Check steps have correct metadata
     steps = await session_store.get_steps("session_123")
     assistant_steps = [s for s in steps if s.role == MessageRole.ASSISTANT]
-    
+
     if assistant_steps:
         # Steps created by the workflow should have workflow_id and node_id
         # Note: This depends on how mock_runnable creates steps
         # In real execution, Agent would create steps with these fields
         pass  # This test would need a real Agent to verify
-
-
-

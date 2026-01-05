@@ -26,14 +26,14 @@ def mock_runnable():
     runnable = MagicMock()
     runnable.id = "agent_1"
     runnable.runnable_type = RunnableType.AGENT
-    
+
     async def mock_run(input, *, context, emit_run_events=True):
         return RunOutput(
             response=f"Response: {input}",
             run_id=context.run_id,
             metrics=RunMetrics(total_tokens=10, duration=0.1),
         )
-    
+
     runnable.run = AsyncMock(side_effect=mock_run)
     return runnable
 
@@ -51,7 +51,9 @@ def workflow_context():
 
 
 @pytest.mark.asyncio
-async def test_workflow_resume_skips_completed_nodes(mock_runnable, session_store, workflow_context):
+async def test_workflow_resume_skips_completed_nodes(
+    mock_runnable, session_store, workflow_context
+):
     """Test that resuming a workflow skips already-completed nodes"""
     # Create existing output for node_1 (simulating previous execution)
     step = Step(
@@ -96,7 +98,9 @@ async def test_workflow_resume_skips_completed_nodes(mock_runnable, session_stor
 
 
 @pytest.mark.asyncio
-async def test_workflow_resume_all_nodes_completed(mock_runnable, session_store, workflow_context):
+async def test_workflow_resume_all_nodes_completed(
+    mock_runnable, session_store, workflow_context
+):
     """Test resuming when all nodes are already completed"""
     # Create outputs for both nodes
     step1 = Step(
@@ -146,7 +150,9 @@ async def test_workflow_resume_all_nodes_completed(mock_runnable, session_store,
 
 
 @pytest.mark.asyncio
-async def test_workflow_resume_partial_execution(mock_runnable, session_store, workflow_context):
+async def test_workflow_resume_partial_execution(
+    mock_runnable, session_store, workflow_context
+):
     """Test resuming when only some nodes are completed"""
     # Only node_1 is completed
     step = Step(
@@ -188,4 +194,3 @@ async def test_workflow_resume_partial_execution(mock_runnable, session_store, w
 
     # node_2 and node_3 should execute
     assert mock_runnable.run.call_count == 2
-

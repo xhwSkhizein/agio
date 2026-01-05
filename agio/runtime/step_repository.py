@@ -36,7 +36,9 @@ class StepRepository:
         await repo.flush()
     """
 
-    def __init__(self, session_store: "SessionStore | None", auto_flush_size: int = 2) -> None:
+    def __init__(
+        self, session_store: "SessionStore | None", auto_flush_size: int = 2
+    ) -> None:
         """
         Initialize repository.
 

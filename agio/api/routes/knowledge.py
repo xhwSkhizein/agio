@@ -72,7 +72,9 @@ async def search_knowledge(
     try:
         knowledge = config_sys.get(name)
     except Exception as e:
-        raise HTTPException(status_code=404, detail=f"Knowledge '{name}' not found: {e}")
+        raise HTTPException(
+            status_code=404, detail=f"Knowledge '{name}' not found: {e}"
+        )
 
     results = await knowledge.search(query=request.query, limit=request.limit)
 

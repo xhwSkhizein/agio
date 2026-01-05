@@ -44,7 +44,9 @@ class StepAdapter:
         return msg
 
     @staticmethod
-    def from_llm_message(msg: dict, session_id: str, run_id: str, sequence: int) -> Step:
+    def from_llm_message(
+        msg: dict, session_id: str, run_id: str, sequence: int
+    ) -> Step:
         """
         Create Step from LLM message format.
 

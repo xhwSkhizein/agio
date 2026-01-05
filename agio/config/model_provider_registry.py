@@ -114,7 +114,8 @@ class ModelProviderRegistry:
         if not factory:
             available = ", ".join(self.list_providers())
             raise ValueError(
-                f"Unknown model provider: {config.provider}. " f"Available providers: {available}"
+                f"Unknown model provider: {config.provider}. "
+                f"Available providers: {available}"
             )
 
         return factory(

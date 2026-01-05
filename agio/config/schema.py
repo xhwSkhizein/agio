@@ -25,25 +25,39 @@ class ExecutionConfig(BaseModel):
     """
 
     # Loop configuration
-    max_steps: int = Field(default=30, ge=1, le=100, description="Maximum execution steps")
-    timeout_per_step: float = Field(default=120.0, ge=1.0, description="Timeout per step (seconds)")
-    parallel_tool_calls: bool = Field(default=True, description="Execute tools in parallel")
+    max_steps: int = Field(
+        default=30, ge=1, le=100, description="Maximum execution steps"
+    )
+    timeout_per_step: float = Field(
+        default=120.0, ge=1.0, description="Timeout per step (seconds)"
+    )
+    parallel_tool_calls: bool = Field(
+        default=True, description="Execute tools in parallel"
+    )
     max_total_tokens: int | None = Field(
         default=None, description="Maximum total tokens (input + output)"
     )
 
     # Context configuration
-    max_history_messages: int = Field(default=10, description="Maximum history messages")
+    max_history_messages: int = Field(
+        default=10, description="Maximum history messages"
+    )
     max_rag_docs: int = Field(default=3, description="Maximum RAG documents")
     max_memories: int = Field(default=5, description="Maximum semantic memories")
 
     # Memory configuration
-    enable_memory_update: bool = Field(default=False, description="Enable memory updates")
+    enable_memory_update: bool = Field(
+        default=False, description="Enable memory updates"
+    )
     memory_update_async: bool = Field(default=True, description="Async memory updates")
 
     # Timeout configuration
-    tool_timeout: float | None = Field(default=30.0, description="Tool execution timeout (seconds)")
-    run_timeout: float | None = Field(default=None, description="Overall run timeout (seconds)")
+    tool_timeout: float | None = Field(
+        default=30.0, description="Tool execution timeout (seconds)"
+    )
+    run_timeout: float | None = Field(
+        default=None, description="Overall run timeout (seconds)"
+    )
 
     # Concurrency configuration
     max_parallel_tools: int = Field(default=10, description="Maximum parallel tools")
@@ -98,15 +112,27 @@ class ModelConfig(ComponentConfig):
     type: Literal["model"] = "model"
 
     # Provider configuration
-    provider: str = Field(..., description="Provider type: openai, anthropic, deepseek, etc.")
+    provider: str = Field(
+        ..., description="Provider type: openai, anthropic, deepseek, etc."
+    )
     model_name: str = Field(..., description="Model name")
-    api_key: str | None = Field(default=None, description="API key (optional, can use env var)")
-    base_url: str | None = Field(default=None, description="Custom API base URL (optional)")
+    api_key: str | None = Field(
+        default=None, description="API key (optional, can use env var)"
+    )
+    base_url: str | None = Field(
+        default=None, description="Custom API base URL (optional)"
+    )
 
     # Model parameters
-    temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="Sampling temperature")
-    max_tokens: int | None = Field(default=None, ge=1, description="Maximum tokens to generate")
-    timeout: float | None = Field(default=None, ge=1.0, description="Request timeout in seconds")
+    temperature: float = Field(
+        default=0.7, ge=0.0, le=2.0, description="Sampling temperature"
+    )
+    max_tokens: int | None = Field(
+        default=None, ge=1, description="Maximum tokens to generate"
+    )
+    timeout: float | None = Field(
+        default=None, ge=1.0, description="Request timeout in seconds"
+    )
 
 
 class ToolConfig(ComponentConfig):
@@ -159,11 +185,17 @@ class MemoryConfig(ComponentConfig):
     backend: str = Field(..., description="Backend type: redis, inmemory")
 
     # Memory-specific configuration
-    ttl: int | None = Field(default=None, ge=1, description="Time-to-live in seconds (optional)")
-    max_size: int | None = Field(default=None, ge=1, description="Maximum cache size (optional)")
+    ttl: int | None = Field(
+        default=None, ge=1, description="Time-to-live in seconds (optional)"
+    )
+    max_size: int | None = Field(
+        default=None, ge=1, description="Maximum cache size (optional)"
+    )
 
     # Legacy params field for backward compatibility
-    params: dict = Field(default_factory=dict, description="Additional backend parameters")
+    params: dict = Field(
+        default_factory=dict, description="Additional backend parameters"
+    )
 
 
 class KnowledgeConfig(ComponentConfig):
@@ -175,12 +207,16 @@ class KnowledgeConfig(ComponentConfig):
     backend: str = Field(..., description="Backend type: chroma, pinecone")
 
     # Knowledge-specific configuration
-    embedding_model: str | None = Field(default=None, description="Embedding model name (optional)")
+    embedding_model: str | None = Field(
+        default=None, description="Embedding model name (optional)"
+    )
     chunk_size: int = Field(default=512, ge=1, description="Text chunk size")
     chunk_overlap: int = Field(default=50, ge=0, description="Chunk overlap size")
 
     # Legacy params field for backward compatibility
-    params: dict = Field(default_factory=dict, description="Additional backend parameters")
+    params: dict = Field(
+        default_factory=dict, description="Additional backend parameters"
+    )
 
 
 class SessionStoreConfig(ComponentConfig):
@@ -206,8 +242,12 @@ class TraceStoreConfig(ComponentConfig):
 
     # TraceStore specific configuration
     buffer_size: int = Field(default=1000, ge=1, description="In-memory buffer size")
-    flush_interval: int = Field(default=60, ge=1, description="Flush interval in seconds")
-    enable_persistence: bool = Field(default=True, description="Enable persistent storage")
+    flush_interval: int = Field(
+        default=60, ge=1, description="Flush interval in seconds"
+    )
+    enable_persistence: bool = Field(
+        default=True, description="Enable persistent storage"
+    )
 
 
 class CitationStoreConfig(ComponentConfig):
@@ -220,7 +260,9 @@ class CitationStoreConfig(ComponentConfig):
 
     # CitationStore specific configuration
     auto_cleanup: bool = Field(default=False, description="Enable automatic cleanup")
-    cleanup_after_days: int = Field(default=30, ge=1, description="Cleanup after N days")
+    cleanup_after_days: int = Field(
+        default=30, ge=1, description="Cleanup after N days"
+    )
 
 
 class RunnableToolConfig(BaseModel):
@@ -261,18 +303,18 @@ class AgentConfig(ComponentConfig):
 
     # Termination summary configuration
     enable_termination_summary: bool = Field(
-        default=False, description="Generate summary when execution reaches max_steps limit"
+        default=False,
+        description="Generate summary when execution reaches max_steps limit",
     )
     termination_summary_prompt: str | None = Field(
         default=None, description="Custom prompt for termination summary"
     )
 
     # Skills configuration
-    enable_skills: bool = Field(
-        default=True, description="Enable Agent Skills support"
-    )
+    enable_skills: bool = Field(default=True, description="Enable Agent Skills support")
     skill_dirs: list[str] | None = Field(
-        default=None, description="Custom skill directories for this agent (overrides global)"
+        default=None,
+        description="Custom skill directories for this agent (overrides global)",
     )
 
 

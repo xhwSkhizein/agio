@@ -45,19 +45,23 @@ class MockRunnable:
         """Execute and write events to context.wire, return RunOutput."""
         if self._should_fail:
             raise RuntimeError("Mock error")
-        
+
         # Write events to wire if available
         if context and context.wire:
-            await context.wire.write(StepEvent(
-                type=StepEventType.RUN_STARTED,
-                run_id="test_run",
-            ))
-            await context.wire.write(StepEvent(
-                type=StepEventType.RUN_COMPLETED,
-                run_id="test_run",
-                data={"response": self._output},
-            ))
-        
+            await context.wire.write(
+                StepEvent(
+                    type=StepEventType.RUN_STARTED,
+                    run_id="test_run",
+                )
+            )
+            await context.wire.write(
+                StepEvent(
+                    type=StepEventType.RUN_COMPLETED,
+                    run_id="test_run",
+                    data={"response": self._output},
+                )
+            )
+
         return RunOutput(
             response=self._output,
             run_id="test_run",
@@ -74,7 +78,9 @@ class TestRunnableTool:
         mock_runnable = MockRunnable(output="Hello from mock")
         tool = as_tool(mock_runnable, "Test tool")
         mock_wire = MockWire()
-        context = ExecutionContext(run_id="test_run", session_id="test_session", wire=mock_wire)
+        context = ExecutionContext(
+            run_id="test_run", session_id="test_session", wire=mock_wire
+        )
 
         result = await tool.execute({"task": "Do something"}, context=context)
 
@@ -125,12 +131,17 @@ class TestRunnableTool:
         mock_runnable = MockRunnable()
         tool = as_tool(mock_runnable)
         mock_wire = MockWire()
-        context = ExecutionContext(run_id="test_run", session_id="test_session", wire=mock_wire)
+        context = ExecutionContext(
+            run_id="test_run", session_id="test_session", wire=mock_wire
+        )
 
-        result = await tool.execute({
-            "task": "Do something",
-            "context": "Additional context here",
-        }, context=context)
+        result = await tool.execute(
+            {
+                "task": "Do something",
+                "context": "Additional context here",
+            },
+            context=context,
+        )
 
         assert result.is_success
         assert result.input_args["task"] == "Do something"
@@ -142,7 +153,9 @@ class TestRunnableTool:
         mock_runnable = MockRunnable(should_fail=True)
         tool = as_tool(mock_runnable)
         mock_wire = MockWire()
-        context = ExecutionContext(run_id="test_run", session_id="test_session", wire=mock_wire)
+        context = ExecutionContext(
+            run_id="test_run", session_id="test_session", wire=mock_wire
+        )
 
         result = await tool.execute({"task": "This will fail"}, context=context)
 
@@ -178,7 +191,9 @@ class TestRunnableTool:
         mock_runnable = MockRunnable()
         tool = as_tool(mock_runnable)
         mock_wire = MockWire()
-        context = ExecutionContext(run_id="test_run", session_id="test_session", wire=mock_wire)
+        context = ExecutionContext(
+            run_id="test_run", session_id="test_session", wire=mock_wire
+        )
 
         result = await tool.execute({"task": "Test"}, context=context)
 
@@ -269,7 +284,9 @@ class TestSafetyFeatures:
         mock_runnable = MockRunnable()
         tool = as_tool(mock_runnable)
         mock_wire = MockWire()
-        context = ExecutionContext(run_id="test_run", session_id="test_session", wire=mock_wire)
+        context = ExecutionContext(
+            run_id="test_run", session_id="test_session", wire=mock_wire
+        )
 
         # First call - no call stack yet
         result = await tool.execute({"task": "Test"}, context=context)

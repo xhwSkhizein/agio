@@ -37,16 +37,32 @@ class ChromeLauncher:
             # Common Chrome/Edge installation paths on Windows
             possible_paths = [
                 # Chrome paths
-                os.path.expandvars(r"%PROGRAMFILES%\Google\Chrome\Application\chrome.exe"),
-                os.path.expandvars(r"%PROGRAMFILES(X86)%\Google\Chrome\Application\chrome.exe"),
-                os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+                os.path.expandvars(
+                    r"%PROGRAMFILES%\Google\Chrome\Application\chrome.exe"
+                ),
+                os.path.expandvars(
+                    r"%PROGRAMFILES(X86)%\Google\Chrome\Application\chrome.exe"
+                ),
+                os.path.expandvars(
+                    r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"
+                ),
                 # Edge paths
-                os.path.expandvars(r"%PROGRAMFILES%\Microsoft\Edge\Application\msedge.exe"),
-                os.path.expandvars(r"%PROGRAMFILES(X86)%\Microsoft\Edge\Application\msedge.exe"),
+                os.path.expandvars(
+                    r"%PROGRAMFILES%\Microsoft\Edge\Application\msedge.exe"
+                ),
+                os.path.expandvars(
+                    r"%PROGRAMFILES(X86)%\Microsoft\Edge\Application\msedge.exe"
+                ),
                 # Chrome Beta/Dev/Canary
-                os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome Beta\Application\chrome.exe"),
-                os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome Dev\Application\chrome.exe"),
-                os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome SxS\Application\chrome.exe"),
+                os.path.expandvars(
+                    r"%LOCALAPPDATA%\Google\Chrome Beta\Application\chrome.exe"
+                ),
+                os.path.expandvars(
+                    r"%LOCALAPPDATA%\Google\Chrome Dev\Application\chrome.exe"
+                ),
+                os.path.expandvars(
+                    r"%LOCALAPPDATA%\Google\Chrome SxS\Application\chrome.exe"
+                ),
             ]
         elif self.system == "Darwin":  # macOS
             # Common Chrome/Edge installation paths on macOS
@@ -179,7 +195,9 @@ class ChromeLauncher:
         """
         Wait for browser to be ready.
         """
-        logger.info(f"[BrowserLauncher] Waiting for browser to be ready on port {debug_port}...")
+        logger.info(
+            f"[BrowserLauncher] Waiting for browser to be ready on port {debug_port}..."
+        )
 
         start_time = time.time()
         while time.time() - start_time < timeout:
@@ -188,14 +206,18 @@ class ChromeLauncher:
                     s.settimeout(1)
                     result = s.connect_ex(("localhost", debug_port))
                     if result == 0:
-                        logger.info(f"[BrowserLauncher] Browser is ready on port {debug_port}")
+                        logger.info(
+                            f"[BrowserLauncher] Browser is ready on port {debug_port}"
+                        )
                         return True
             except Exception:
                 pass
 
             time.sleep(0.5)
 
-        logger.error(f"[BrowserLauncher] Browser failed to be ready within {timeout} seconds")
+        logger.error(
+            f"[BrowserLauncher] Browser failed to be ready within {timeout} seconds"
+        )
         return False
 
     def get_browser_info(self, browser_path: str) -> tuple[str, str]:
@@ -239,7 +261,9 @@ class ChromeLauncher:
         process = self.browser_process
 
         if process.poll() is not None:
-            logger.info("[BrowserLauncher] Browser process already exited, no cleanup needed")
+            logger.info(
+                "[BrowserLauncher] Browser process already exited, no cleanup needed"
+            )
             self.browser_process = None
             return
 
@@ -268,14 +292,16 @@ class ChromeLauncher:
                     os.killpg(pgid, signal.SIGTERM)
                 except ProcessLookupError:
                     logger.info(
-                        "[BrowserLauncher] Browser process group does not exist, " "may have exited"
+                        "[BrowserLauncher] Browser process group does not exist, "
+                        "may have exited"
                     )
                 else:
                     try:
                         process.wait(timeout=5)
                     except subprocess.TimeoutExpired:
                         logger.warning(
-                            "[BrowserLauncher] Graceful shutdown timeout, " "sending SIGKILL"
+                            "[BrowserLauncher] Graceful shutdown timeout, "
+                            "sending SIGKILL"
                         )
                         os.killpg(pgid, signal.SIGKILL)
                         process.wait(timeout=5)

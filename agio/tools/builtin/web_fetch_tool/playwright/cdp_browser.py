@@ -54,7 +54,9 @@ class CDPBrowserManager:
             await self._connect_via_cdp(playwright)
 
             # 5. Create browser context
-            browser_context = await self._create_browser_context(playwright_proxy, user_agent)
+            browser_context = await self._create_browser_context(
+                playwright_proxy, user_agent
+            )
 
             self.browser_context = browser_context
             return browser_context
@@ -80,7 +82,9 @@ class CDPBrowserManager:
         browser_path = browser_paths[0]  # Use first found browser
         browser_name, browser_version = self.launcher.get_browser_info(browser_path)
 
-        logger.info(f"[CDPBrowserManager] Detected browser: {browser_name} ({browser_version})")
+        logger.info(
+            f"[CDPBrowserManager] Detected browser: {browser_name} ({browser_version})"
+        )
         logger.info(f"[CDPBrowserManager] Browser path: {browser_path}")
 
         return browser_path
@@ -95,10 +99,14 @@ class CDPBrowserManager:
                 s.settimeout(5)
                 result = s.connect_ex(("localhost", debug_port))
                 if result == 0:
-                    logger.info(f"[CDPBrowserManager] CDP port {debug_port} is accessible")
+                    logger.info(
+                        f"[CDPBrowserManager] CDP port {debug_port} is accessible"
+                    )
                     return True
                 else:
-                    logger.warning(f"[CDPBrowserManager] CDP port {debug_port} is not accessible")
+                    logger.warning(
+                        f"[CDPBrowserManager] CDP port {debug_port} is not accessible"
+                    )
                     return False
         except Exception as e:
             logger.warning(f"[CDPBrowserManager] CDP connection test failed: {e}")
@@ -129,8 +137,12 @@ class CDPBrowserManager:
         )
 
         # Wait for browser to be ready
-        if not self.launcher.wait_for_browser_ready(self.debug_port, browser_launch_timeout):
-            raise RuntimeError(f"Browser failed to start within {browser_launch_timeout} seconds")
+        if not self.launcher.wait_for_browser_ready(
+            self.debug_port, browser_launch_timeout
+        ):
+            raise RuntimeError(
+                f"Browser failed to start within {browser_launch_timeout} seconds"
+            )
 
         # Wait an extra second for CDP service to fully start
         await asyncio.sleep(1)
@@ -155,7 +167,9 @@ class CDPBrowserManager:
                     data = response.json()
                     ws_url = data.get("webSocketDebuggerUrl")
                     if ws_url:
-                        logger.info(f"[CDPBrowserManager] Got browser WebSocket URL: {ws_url}")
+                        logger.info(
+                            f"[CDPBrowserManager] Got browser WebSocket URL: {ws_url}"
+                        )
                         return ws_url
                     else:
                         raise RuntimeError("webSocketDebuggerUrl not found")
@@ -180,7 +194,8 @@ class CDPBrowserManager:
             if self.browser.is_connected():
                 logger.info("[CDPBrowserManager] Successfully connected to browser")
                 logger.info(
-                    f"[CDPBrowserManager] Browser context count: " f"{len(self.browser.contexts)}"
+                    f"[CDPBrowserManager] Browser context count: "
+                    f"{len(self.browser.contexts)}"
                 )
             else:
                 raise RuntimeError("CDP connection failed")
@@ -236,9 +251,13 @@ class CDPBrowserManager:
         if self.browser_context and os.path.exists(script_path):
             try:
                 await self.browser_context.add_init_script(path=script_path)
-                logger.info(f"[CDPBrowserManager] Added anti-detection script: {script_path}")
+                logger.info(
+                    f"[CDPBrowserManager] Added anti-detection script: {script_path}"
+                )
             except Exception as e:
-                logger.warning(f"[CDPBrowserManager] Failed to add anti-detection script: {e}")
+                logger.warning(
+                    f"[CDPBrowserManager] Failed to add anti-detection script: {e}"
+                )
 
     async def add_cookies(self, cookies: list):
         """
@@ -276,7 +295,8 @@ class CDPBrowserManager:
                     logger.info("[CDPBrowserManager] Browser context closed")
                 except Exception as context_error:
                     logger.warning(
-                        f"[CDPBrowserManager] Failed to close browser context: " f"{context_error}"
+                        f"[CDPBrowserManager] Failed to close browser context: "
+                        f"{context_error}"
                     )
                 finally:
                     self.browser_context = None
@@ -294,7 +314,7 @@ class CDPBrowserManager:
                     self.browser = None
 
             # Close browser process (if configured to auto-close)
-            if self._settings.tool.web_fetch_auto_close_browser:
+            if self._config.auto_close_browser:
                 self.launcher.cleanup()
             else:
                 logger.info(

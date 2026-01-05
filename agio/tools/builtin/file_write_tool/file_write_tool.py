@@ -130,7 +130,8 @@ Notes:
                 "file_path": {
                     "type": "string",
                     "description": (
-                        "Absolute path to file to write " "(must be absolute path, not relative)"
+                        "Absolute path to file to write "
+                        "(must be absolute path, not relative)"
                     ),
                 },
                 "content": {"type": "string", "description": "要写入文件的内容"},
@@ -203,7 +204,9 @@ Notes:
         file_exists = os.path.exists(full_path)
 
         if not file_exists:
-            return FileStatus(exists=False, old_content=None, encoding="utf-8", line_endings="LF")
+            return FileStatus(
+                exists=False, old_content=None, encoding="utf-8", line_endings="LF"
+            )
 
         # Get file information
         old_content = self._read_file_content(full_path)
@@ -249,7 +252,9 @@ Notes:
         if directory:
             os.makedirs(directory, exist_ok=True)
 
-    def _generate_patch(self, file_path: str, old_content: str, new_content: str) -> list[Hunk]:
+    def _generate_patch(
+        self, file_path: str, old_content: str, new_content: str
+    ) -> list[Hunk]:
         """Generate diff patch."""
         try:
             # Generate unified diff format
@@ -278,9 +283,13 @@ Notes:
                         new_info = parts[2]
 
                         old_start = int(old_info.split(",")[0][1:])
-                        old_count = int(old_info.split(",")[1]) if "," in old_info else 1
+                        old_count = (
+                            int(old_info.split(",")[1]) if "," in old_info else 1
+                        )
                         new_start = int(new_info.split(",")[0][1:])
-                        new_count = int(new_info.split(",")[1]) if "," in new_info else 1
+                        new_count = (
+                            int(new_info.split(",")[1]) if "," in new_info else 1
+                        )
 
                         current_hunk = Hunk(
                             old_start=old_start,
@@ -320,7 +329,9 @@ Notes:
             # Validate input
             validation = self._validate_input(file_path, content)
             if not validation["valid"]:
-                return self._create_error_result(parameters, validation["message"], start_time)
+                return self._create_error_result(
+                    parameters, validation["message"], start_time
+                )
 
             full_file_path = os.path.abspath(file_path)
 
@@ -383,4 +394,6 @@ Notes:
             )
 
         except Exception as e:
-            return self._create_error_result(parameters, f"File write failed: {e!s}", start_time)
+            return self._create_error_result(
+                parameters, f"File write failed: {e!s}", start_time
+            )

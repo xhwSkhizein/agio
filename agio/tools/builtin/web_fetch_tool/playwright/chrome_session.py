@@ -78,7 +78,9 @@ class ChromeSessionManager:
     ) -> BrowserContext:
         """Launch browser and create browser context"""
         if self._config.save_login_state:
-            user_data_dir = os.path.join(os.getcwd(), "browser_data", self._config.user_data_dir)
+            user_data_dir = os.path.join(
+                os.getcwd(), "browser_data", self._config.user_data_dir
+            )
             browser_context: BrowserContext = await chromium.launch_persistent_context(
                 user_data_dir=user_data_dir,
                 accept_downloads=True,
@@ -121,7 +123,9 @@ class ChromeSessionManager:
             return self.context
 
         except Exception as e:
-            self.logger.error(f"CDP mode launch failed, falling back to standard mode: {e}")
+            self.logger.error(
+                f"CDP mode launch failed, falling back to standard mode: {e}"
+            )
             # Fall back to standard mode
             chromium = playwright.chromium
             self.context: BrowserContext = await self.launch_browser(

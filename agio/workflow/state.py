@@ -100,7 +100,9 @@ class WorkflowState:
         key = self._make_key(node_id, iteration)
         return self._outputs.get(key)
 
-    def set_output(self, node_id: str, content: str, iteration: int | None = None) -> None:
+    def set_output(
+        self, node_id: str, content: str, iteration: int | None = None
+    ) -> None:
         """
         Update cached output for a node.
 

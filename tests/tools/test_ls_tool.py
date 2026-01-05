@@ -20,7 +20,10 @@ class TestLSTool:
         """创建执行上下文"""
         from agio.runtime.protocol import ExecutionContext
         from agio.runtime import Wire
-        return ExecutionContext(run_id="test_run", session_id="test_session", wire=Wire())
+
+        return ExecutionContext(
+            run_id="test_run", session_id="test_session", wire=Wire()
+        )
 
     @pytest.fixture
     def temp_dir(self):
@@ -29,37 +32,41 @@ class TestLSTool:
         project_root = Path.cwd()
         test_dir = project_root / "tests" / "_temp_test_ls"
         test_dir.mkdir(exist_ok=True)
-        
+
         try:
             # 创建测试文件结构
             # 创建文件
             (test_dir / "file1.txt").write_text("content1")
             (test_dir / "file2.py").write_text("content2")
-            
+
             # 创建子目录和文件
             subdir = test_dir / "subdir"
             subdir.mkdir(exist_ok=True)
             (subdir / "file3.txt").write_text("content3")
-            
+
             # 创建嵌套目录
             nested = subdir / "nested"
             nested.mkdir(exist_ok=True)
             (nested / "file4.txt").write_text("content4")
-            
+
             yield test_dir
         finally:
             # 清理
             import shutil
+
             if test_dir.exists():
                 shutil.rmtree(test_dir)
 
     @pytest.mark.asyncio
     async def test_basic_execution(self, tool, temp_dir, context):
         """测试基本执行"""
-        result = await tool.execute({
-            "tool_call_id": "test_123",
-            "path": str(temp_dir),
-        }, context=context)
+        result = await tool.execute(
+            {
+                "tool_call_id": "test_123",
+                "path": str(temp_dir),
+            },
+            context=context,
+        )
 
         assert result.is_success
         assert result.tool_name == tool.name
@@ -73,10 +80,13 @@ class TestLSTool:
     @pytest.mark.asyncio
     async def test_list_current_directory(self, tool, context):
         """测试列出当前目录"""
-        result = await tool.execute({
-            "tool_call_id": "test_current",
-            "path": ".",
-        }, context=context)
+        result = await tool.execute(
+            {
+                "tool_call_id": "test_current",
+                "path": ".",
+            },
+            context=context,
+        )
 
         assert result.is_success
         assert result.output is not None
@@ -85,10 +95,13 @@ class TestLSTool:
     @pytest.mark.asyncio
     async def test_nonexistent_directory(self, tool, context):
         """测试不存在的目录"""
-        result = await tool.execute({
-            "tool_call_id": "test_456",
-            "path": "/nonexistent/path/that/does/not/exist",
-        }, context=context)
+        result = await tool.execute(
+            {
+                "tool_call_id": "test_456",
+                "path": "/nonexistent/path/that/does/not/exist",
+            },
+            context=context,
+        )
 
         assert not result.is_success
         assert result.error
@@ -98,10 +111,13 @@ class TestLSTool:
     async def test_relative_path(self, tool, temp_dir, context):
         """测试相对路径"""
         # 使用相对于项目根的路径
-        result = await tool.execute({
-            "tool_call_id": "test_relative",
-            "path": "tests/_temp_test_ls/subdir",
-        }, context=context)
+        result = await tool.execute(
+            {
+                "tool_call_id": "test_relative",
+                "path": "tests/_temp_test_ls/subdir",
+            },
+            context=context,
+        )
 
         assert result.is_success
         assert "file3.txt" in result.content
@@ -128,20 +144,23 @@ class TestLSTool:
     @pytest.mark.asyncio
     async def test_output_structure(self, tool, temp_dir, context):
         """测试输出结构"""
-        result = await tool.execute({
-            "tool_call_id": "test_output",
-            "path": str(temp_dir),
-        }, context=context)
+        result = await tool.execute(
+            {
+                "tool_call_id": "test_output",
+                "path": str(temp_dir),
+            },
+            context=context,
+        )
 
         assert result.is_success
         assert result.output is not None
-        
+
         # 检查输出字段
         assert "directory_path" in result.output
         assert "items" in result.output
         assert "total_items" in result.output
         assert "is_truncated" in result.output
-        
+
         # 检查类型
         assert isinstance(result.output["items"], list)
         assert isinstance(result.output["total_items"], int)
@@ -150,10 +169,13 @@ class TestLSTool:
     @pytest.mark.asyncio
     async def test_tree_output_format(self, tool, temp_dir, context):
         """测试树形输出格式"""
-        result = await tool.execute({
-            "tool_call_id": "test_tree",
-            "path": str(temp_dir),
-        }, context=context)
+        result = await tool.execute(
+            {
+                "tool_call_id": "test_tree",
+                "path": str(temp_dir),
+            },
+            context=context,
+        )
 
         assert result.is_success
         # 树形输出应该包含文件名
@@ -168,12 +190,15 @@ class TestLSTool:
         project_root = Path.cwd()
         empty_dir = project_root / "tests" / "_temp_empty"
         empty_dir.mkdir(exist_ok=True)
-        
+
         try:
-            result = await tool.execute({
-                "tool_call_id": "test_empty",
-                "path": str(empty_dir),
-            }, context=context)
+            result = await tool.execute(
+                {
+                    "tool_call_id": "test_empty",
+                    "path": str(empty_dir),
+                },
+                context=context,
+            )
 
             assert result.is_success
             assert result.output["total_items"] == 0
@@ -187,16 +212,19 @@ class TestLSTool:
         project_root = Path.cwd()
         test_dir = project_root / "tests" / "_temp_hidden"
         test_dir.mkdir(exist_ok=True)
-        
+
         try:
             # 创建普通文件和隐藏文件
             (test_dir / "visible.txt").write_text("visible")
             (test_dir / ".hidden").write_text("hidden")
-            
-            result = await tool.execute({
-                "tool_call_id": "test_hidden",
-                "path": str(test_dir),
-            }, context=context)
+
+            result = await tool.execute(
+                {
+                    "tool_call_id": "test_hidden",
+                    "path": str(test_dir),
+                },
+                context=context,
+            )
 
             assert result.is_success
             # 隐藏文件应该被排除
@@ -204,6 +232,7 @@ class TestLSTool:
             assert "visible.txt" in result.content
         finally:
             import shutil
+
             if test_dir.exists():
                 shutil.rmtree(test_dir)
 
@@ -213,20 +242,23 @@ class TestLSTool:
         project_root = Path.cwd()
         test_dir = project_root / "tests" / "_temp_pycache"
         test_dir.mkdir(exist_ok=True)
-        
+
         try:
             # 创建 __pycache__ 目录
             pycache = test_dir / "__pycache__"
             pycache.mkdir(exist_ok=True)
             (pycache / "module.pyc").write_text("bytecode")
-            
+
             # 创建普通文件
             (test_dir / "module.py").write_text("code")
-            
-            result = await tool.execute({
-                "tool_call_id": "test_pycache",
-                "path": str(test_dir),
-            }, context=context)
+
+            result = await tool.execute(
+                {
+                    "tool_call_id": "test_pycache",
+                    "path": str(test_dir),
+                },
+                context=context,
+            )
 
             assert result.is_success
             # __pycache__ 应该被排除
@@ -234,16 +266,20 @@ class TestLSTool:
             assert "module.py" in result.content
         finally:
             import shutil
+
             if test_dir.exists():
                 shutil.rmtree(test_dir)
 
     @pytest.mark.asyncio
     async def test_timing_information(self, tool, temp_dir, context):
         """测试时间信息"""
-        result = await tool.execute({
-            "tool_call_id": "test_timing",
-            "path": str(temp_dir),
-        }, context=context)
+        result = await tool.execute(
+            {
+                "tool_call_id": "test_timing",
+                "path": str(temp_dir),
+            },
+            context=context,
+        )
 
         assert result.is_success
         assert result.start_time > 0
@@ -253,10 +289,13 @@ class TestLSTool:
     @pytest.mark.asyncio
     async def test_invalid_path_type(self, tool, context):
         """测试无效的路径类型"""
-        result = await tool.execute({
-            "tool_call_id": "test_invalid",
-            "path": 12345,  # 数字而不是字符串
-        }, context=context)
+        result = await tool.execute(
+            {
+                "tool_call_id": "test_invalid",
+                "path": 12345,  # 数字而不是字符串
+            },
+            context=context,
+        )
 
         # 应该处理类型错误
         assert not result.is_success or result.is_success  # 取决于实现

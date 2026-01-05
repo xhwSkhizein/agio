@@ -269,22 +269,30 @@ class FileReadTool(FileOperationBaseTool, ConfigurableToolMixin):
                             if width <= self.max_width and height <= self.max_height:
                                 # Image meets all requirements, return directly
                                 return {
-                                    "base64": base64.b64encode(image_data).decode("utf-8"),
+                                    "base64": base64.b64encode(image_data).decode(
+                                        "utf-8"
+                                    ),
                                     "media_type": (
-                                        f"image/{ext[1:]}" if ext != ".jpg" else "image/jpeg"
+                                        f"image/{ext[1:]}"
+                                        if ext != ".jpg"
+                                        else "image/jpeg"
                                     ),
                                 }
                     except Exception:
                         # If PIL cannot process, return raw data
                         return {
                             "base64": base64.b64encode(image_data).decode("utf-8"),
-                            "media_type": (f"image/{ext[1:]}" if ext != ".jpg" else "image/jpeg"),
+                            "media_type": (
+                                f"image/{ext[1:]}" if ext != ".jpg" else "image/jpeg"
+                            ),
                         }
                 else:
                     # PIL not available, return raw data
                     return {
                         "base64": base64.b64encode(image_data).decode("utf-8"),
-                        "media_type": (f"image/{ext[1:]}" if ext != ".jpg" else "image/jpeg"),
+                        "media_type": (
+                            f"image/{ext[1:]}" if ext != ".jpg" else "image/jpeg"
+                        ),
                     }
 
             # Need to resize or compress
@@ -445,7 +453,9 @@ class FileReadTool(FileOperationBaseTool, ConfigurableToolMixin):
             )
 
         except Exception as e:
-            return self._create_error_result(parameters, f"File read failed: {e!s}", start_time)
+            return self._create_error_result(
+                parameters, f"File read failed: {e!s}", start_time
+            )
 
     def get_read_timestamp(self, file_path: str) -> float | None:
         """Get file read timestamp."""

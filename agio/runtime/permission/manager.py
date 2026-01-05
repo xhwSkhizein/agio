@@ -124,7 +124,9 @@ class PermissionManager:
 
         # 2. Check tool configuration
         tool_config = self._get_tool_config(tool_name)
-        requires_consent = tool_config.get("requires_consent", False) if tool_config else False
+        requires_consent = (
+            tool_config.get("requires_consent", False) if tool_config else False
+        )
 
         if not requires_consent:
             result = ConsentResult(allowed=True, reason="Tool does not require consent")
@@ -203,7 +205,9 @@ class PermissionManager:
             )
         except asyncio.TimeoutError:
             # Timeout treated as deny
-            result = ConsentResult(allowed=False, reason="User consent request timed out")
+            result = ConsentResult(
+                allowed=False, reason="User consent request timed out"
+            )
             await self._send_auth_denied_event(
                 tool_call_id=tool_call_id,
                 tool_name=tool_name,
@@ -244,7 +248,9 @@ class PermissionManager:
             await self._set_cache(cache_key, result)
         return result
 
-    def _make_cache_key(self, user_id: str, tool_name: str, tool_args: dict[str, Any]) -> str:
+    def _make_cache_key(
+        self, user_id: str, tool_name: str, tool_args: dict[str, Any]
+    ) -> str:
         """Generate cache key"""
         # Serialize arguments (exclude tool_call_id)
         args_copy = {k: v for k, v in tool_args.items() if k != "tool_call_id"}
@@ -284,7 +290,9 @@ class PermissionManager:
 
             self._cache[cache_key] = (result, time.time())
 
-    async def _invalidate_cache(self, user_id: str, tool_name: str | None = None) -> None:
+    async def _invalidate_cache(
+        self, user_id: str, tool_name: str | None = None
+    ) -> None:
         """Invalidate cache (called after consent record update)"""
         async with self._cache_lock:
             keys_to_delete = []
@@ -303,7 +311,10 @@ class PermissionManager:
 
             configs = self.config_system.list_configs(ComponentType.TOOL)
             for config in configs:
-                if config.get("name") == tool_name or config.get("tool_name") == tool_name:
+                if (
+                    config.get("name") == tool_name
+                    or config.get("tool_name") == tool_name
+                ):
                     return config
             return None
         except Exception as e:
@@ -341,7 +352,9 @@ class PermissionManager:
                 "tool_name": tool_name,
                 "args_preview": args_preview,
                 "suggested_patterns": (
-                    permission_decision.suggested_patterns if permission_decision else None
+                    permission_decision.suggested_patterns
+                    if permission_decision
+                    else None
                 ),
                 "reason": (
                     permission_decision.reason

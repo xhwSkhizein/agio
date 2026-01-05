@@ -33,10 +33,7 @@ class TestToolConfigs:
 
     def test_file_read_config_custom(self):
         """测试 FileReadConfig 自定义值"""
-        config = FileReadConfig(
-            max_output_size_mb=5.0,
-            timeout_seconds=60
-        )
+        config = FileReadConfig(max_output_size_mb=5.0, timeout_seconds=60)
         assert config.max_output_size_mb == 5.0
         assert config.timeout_seconds == 60
         assert config.max_image_size_mb == 5.0  # 默认值
@@ -53,11 +50,7 @@ class TestToolConfigs:
 
     def test_web_fetch_config_custom(self):
         """测试 WebFetchConfig 自定义值"""
-        config = WebFetchConfig(
-            headless=False,
-            timeout_seconds=60,
-            max_retries=3
-        )
+        config = WebFetchConfig(headless=False, timeout_seconds=60, max_retries=3)
         assert config.headless is False
         assert config.timeout_seconds == 60
         assert config.max_retries == 3
@@ -139,7 +132,7 @@ class TestToolConstruction:
         assert len(tools) == 9
         for tool in tools:
             assert tool is not None
-            assert hasattr(tool, 'timeout_seconds') or hasattr(tool, '_config')
+            assert hasattr(tool, "timeout_seconds") or hasattr(tool, "_config")
 
 
 class TestToolConfigEnvironmentVariables:
@@ -149,7 +142,7 @@ class TestToolConfigEnvironmentVariables:
         """测试 FileReadConfig 环境变量"""
         monkeypatch.setenv("AGIO_FILE_READ_MAX_SIZE_MB", "15.0")
         monkeypatch.setenv("AGIO_FILE_READ_TIMEOUT", "45")
-        
+
         config = FileReadConfig()
         assert config.max_output_size_mb == 15.0
         assert config.timeout_seconds == 45
@@ -158,7 +151,7 @@ class TestToolConfigEnvironmentVariables:
         """测试 WebFetchConfig 环境变量"""
         monkeypatch.setenv("AGIO_WEB_FETCH_HEADLESS", "false")
         monkeypatch.setenv("AGIO_WEB_FETCH_TIMEOUT", "60")
-        
+
         config = WebFetchConfig()
         assert config.headless is False
         assert config.timeout_seconds == 60
@@ -166,7 +159,6 @@ class TestToolConfigEnvironmentVariables:
     def test_env_var_override_by_kwargs(self, monkeypatch):
         """测试 kwargs 覆盖环境变量"""
         monkeypatch.setenv("AGIO_FILE_READ_MAX_SIZE_MB", "15.0")
-        
+
         tool = FileReadTool(max_output_size_mb=20.0)
         assert tool._config.max_output_size_mb == 20.0  # kwargs 优先级最高
-

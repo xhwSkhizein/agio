@@ -35,10 +35,12 @@ app = FastAPI(title="My Application")
 # 挂载 Agio API
 app.include_router(create_router(prefix="/agio"))
 
+
 # 你的其他路由
 @app.get("/")
 async def root():
     return {"message": "Hello from my app"}
+
 
 @app.get("/api/custom")
 async def custom():
@@ -60,6 +62,7 @@ app.include_router(create_router(prefix="/agio"))
 
 # 2. 然后挂载前端（SPA 路由会注册在最后）
 mount_frontend(app, path="/", api_prefix="/agio")
+
 
 # 3. 你的其他路由
 @app.get("/api/custom2")
@@ -102,13 +105,14 @@ async def main():
     config_system = get_config_system()
     await config_system.load_from_directory("./configs")
     await config_system.build_all()
-    
+
     # 获取 Agent
     agent = await config_system.get_agent("my-agent")
-    
+
     # 运行 Agent
     result = await agent.run("Hello, Agio!")
     print(result)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -84,7 +84,9 @@ Example:
             session_id = context.session_id
 
             if not tool_call_id:
-                return self._create_error_result(parameters, "tool_call_id is required", start_time)
+                return self._create_error_result(
+                    parameters, "tool_call_id is required", start_time
+                )
 
             if not self._session_store:
                 return self._create_error_result(
@@ -92,10 +94,14 @@ Example:
                 )
 
             if not session_id:
-                return self._create_error_result(parameters, "Session ID not available", start_time)
+                return self._create_error_result(
+                    parameters, "Session ID not available", start_time
+                )
 
             # Query the Tool Step by tool_call_id
-            step = await self._session_store.get_step_by_tool_call_id(session_id, tool_call_id)
+            step = await self._session_store.get_step_by_tool_call_id(
+                session_id, tool_call_id
+            )
 
             if not step:
                 return self._create_error_result(

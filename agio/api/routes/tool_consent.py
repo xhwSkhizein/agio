@@ -98,7 +98,8 @@ async def submit_tool_consent(
 
             # Clear related cache
             await permission_manager._invalidate_cache(
-                request.user_id, tool_name=None  # Clear all tools for user
+                request.user_id,
+                tool_name=None,  # Clear all tools for user
             )
 
             logger.info(

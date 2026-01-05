@@ -24,7 +24,9 @@ class SuccessTool(BaseTool):
     def is_concurrency_safe(self) -> bool:
         return True
 
-    async def execute(self, parameters: dict, context: ExecutionContext, abort_signal=None) -> ToolResult:
+    async def execute(
+        self, parameters: dict, context: ExecutionContext, abort_signal=None
+    ) -> ToolResult:
         start_time = time.time()
         return ToolResult(
             tool_name=self.name,
@@ -54,7 +56,9 @@ class FailureTool(BaseTool):
     def is_concurrency_safe(self) -> bool:
         return True
 
-    async def execute(self, parameters: dict, context: ExecutionContext, abort_signal=None) -> ToolResult:
+    async def execute(
+        self, parameters: dict, context: ExecutionContext, abort_signal=None
+    ) -> ToolResult:
         raise ValueError("Intentional failure")
 
 
@@ -69,7 +73,10 @@ async def test_tool_executor_success(mock_context):
     tools = [SuccessTool()]
     executor = ToolExecutor(tools)
 
-    tool_call = {"id": "call_123", "function": {"name": "success_tool", "arguments": "{}"}}
+    tool_call = {
+        "id": "call_123",
+        "function": {"name": "success_tool", "arguments": "{}"},
+    }
 
     result = await executor.execute(tool_call, context=mock_context)
 
@@ -87,7 +94,10 @@ async def test_tool_executor_failure(mock_context):
     tools = [FailureTool()]
     executor = ToolExecutor(tools)
 
-    tool_call = {"id": "call_456", "function": {"name": "failure_tool", "arguments": "{}"}}
+    tool_call = {
+        "id": "call_456",
+        "function": {"name": "failure_tool", "arguments": "{}"},
+    }
 
     result = await executor.execute(tool_call, context=mock_context)
 
@@ -104,7 +114,10 @@ async def test_tool_executor_not_found(mock_context):
     tools = [SuccessTool()]
     executor = ToolExecutor(tools)
 
-    tool_call = {"id": "call_789", "function": {"name": "nonexistent_tool", "arguments": "{}"}}
+    tool_call = {
+        "id": "call_789",
+        "function": {"name": "nonexistent_tool", "arguments": "{}"},
+    }
 
     result = await executor.execute(tool_call, context=mock_context)
 

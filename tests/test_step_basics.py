@@ -2,7 +2,6 @@
 Basic tests for Step model and session_store operations.
 """
 
-
 import pytest
 
 from agio.storage.session import InMemorySessionStore

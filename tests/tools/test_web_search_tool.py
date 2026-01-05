@@ -22,7 +22,9 @@ class TestWebSearchTool:
     @pytest.fixture
     def context(self):
         """创建执行上下文"""
-        return ExecutionContext(run_id="test_run", session_id="test_session", wire=Wire())
+        return ExecutionContext(
+            run_id="test_run", session_id="test_session", wire=Wire()
+        )
 
     @pytest.mark.asyncio
     async def test_tool_creation(self, tool):
@@ -38,17 +40,20 @@ class TestWebSearchTool:
         original_key = os.environ.get("SERPER_API_KEY")
         if "SERPER_API_KEY" in os.environ:
             del os.environ["SERPER_API_KEY"]
-        
+
         tool.serper_api_key = ""
-        
-        result = await tool.execute({
-            "tool_call_id": "test_no_key",
-            "query": "test query",
-        }, context=context)
+
+        result = await tool.execute(
+            {
+                "tool_call_id": "test_no_key",
+                "query": "test query",
+            },
+            context=context,
+        )
 
         # 应该返回错误或提示需要 API key
         assert not result.is_success or "SERPER_API_KEY" in result.content
-        
+
         # 恢复 API key
         if original_key:
             os.environ["SERPER_API_KEY"] = original_key
@@ -56,10 +61,13 @@ class TestWebSearchTool:
     @pytest.mark.asyncio
     async def test_empty_query(self, tool, context):
         """测试空查询"""
-        result = await tool.execute({
-            "tool_call_id": "test_empty",
-            "query": "",
-        }, context=context)
+        result = await tool.execute(
+            {
+                "tool_call_id": "test_empty",
+                "query": "",
+            },
+            context=context,
+        )
 
         assert not result.is_success or "query" in result.content.lower()
 
@@ -105,7 +113,7 @@ class TestWebSearchTool:
         """测试中断信号"""
         abort_signal = AbortSignal()
         abort_signal.abort("Test cancellation")
-        
+
         result = await tool.execute(
             {
                 "tool_call_id": "test_abort",
@@ -147,4 +155,3 @@ class TestWebSearchTool:
                 assert result.start_time > 0
                 assert result.end_time >= result.start_time
                 assert result.duration >= 0
-

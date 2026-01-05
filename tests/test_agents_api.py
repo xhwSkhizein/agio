@@ -19,24 +19,25 @@ def client():
 def config_system(tmp_path, monkeypatch):
     """Create a test ConfigSystem with temp directory."""
     from pathlib import Path
-    
+
     config_dir = tmp_path / "configs"
     config_dir.mkdir()
     monkeypatch.setenv("AGIO_CONFIG_PATH", str(config_dir))
-    
+
     # Create fresh ConfigSystem instance
     config_sys = ConfigSystem()
     config_sys.config_path = Path(config_dir)
-    
+
     # Override the dependency
     from agio.api import deps
+
     def override_get_config_sys():
         return config_sys
-    
+
     app.dependency_overrides[deps.get_config_sys] = override_get_config_sys
-    
+
     yield config_sys
-    
+
     # Clean up
     app.dependency_overrides.clear()
 
@@ -46,7 +47,7 @@ def test_list_agents_with_tool_configs(client, config_system):
     # Create test config directory
     config_dir = config_system.config_path / "agents"
     config_dir.mkdir(parents=True)
-    
+
     # Agent with string tools (legacy format)
     agent1_config = """
 type: agent
@@ -59,7 +60,7 @@ tags:
   - test
 """
     (config_dir / "test_agent_1.yaml").write_text(agent1_config)
-    
+
     # Agent with dict tools (new format)
     agent2_config = """
 type: agent
@@ -77,7 +78,7 @@ tags:
   - test
 """
     (config_dir / "test_agent_2.yaml").write_text(agent2_config)
-    
+
     # Agent with mixed tools
     agent3_config = """
 type: agent
@@ -90,19 +91,20 @@ tools:
     description: Coding expert
 """
     (config_dir / "test_agent_3.yaml").write_text(agent3_config)
-    
+
     # Load configs
     import asyncio
+
     asyncio.run(config_system.load_from_directory(config_system.config_path))
-    
+
     # Test list agents
     response = client.get("/agio/agents")
     assert response.status_code == 200
-    
+
     data = response.json()
     assert data["total"] == 3
     assert len(data["items"]) == 3
-    
+
     # Verify agent 1 (string tools)
     agent1 = next(a for a in data["items"] if a["name"] == "test_agent_1")
     assert len(agent1["tools"]) == 2
@@ -110,7 +112,7 @@ tools:
     assert agent1["tools"][0]["name"] == "web_search"
     assert agent1["tools"][1]["type"] == "function"
     assert agent1["tools"][1]["name"] == "file_read"
-    
+
     # Verify agent 2 (dict tools)
     agent2 = next(a for a in data["items"] if a["name"] == "test_agent_2")
     assert len(agent2["tools"]) == 3
@@ -121,7 +123,7 @@ tools:
     assert agent2["tools"][1]["description"] == "Research expert"
     assert agent2["tools"][2]["type"] == "workflow_tool"
     assert agent2["tools"][2]["workflow"] == "analysis_pipeline"
-    
+
     # Verify agent 3 (mixed tools)
     agent3 = next(a for a in data["items"] if a["name"] == "test_agent_3")
     assert len(agent3["tools"]) == 2
@@ -136,7 +138,7 @@ def test_get_agent_with_tool_configs(client, config_system):
     # Create test config directory
     config_dir = config_system.config_path / "agents"
     config_dir.mkdir(parents=True)
-    
+
     # Agent with complex tool config
     agent_config = """
 type: agent
@@ -161,34 +163,35 @@ tags:
   - multi-agent
 """
     (config_dir / "orchestra.yaml").write_text(agent_config)
-    
+
     # Load configs
     import asyncio
+
     asyncio.run(config_system.load_from_directory(config_system.config_path))
-    
+
     # Test get agent
     response = client.get("/agio/agents/orchestra")
     assert response.status_code == 200
-    
+
     data = response.json()
     assert data["name"] == "orchestra"
     assert data["model"] == "gpt-4o"
     assert data["memory"] == "conversation_memory"
     assert data["knowledge"] == "product_docs"
     assert len(data["tools"]) == 4
-    
+
     # Verify string tool
     assert data["tools"][0]["type"] == "function"
     assert data["tools"][0]["name"] == "web_search"
-    
+
     # Verify agent tools
     assert data["tools"][1]["type"] == "agent_tool"
     assert data["tools"][1]["agent"] == "researcher"
     assert data["tools"][1]["description"] == "Research expert"
-    
+
     assert data["tools"][2]["type"] == "agent_tool"
     assert data["tools"][2]["agent"] == "code_assistant"
-    
+
     # Verify workflow tool
     assert data["tools"][3]["type"] == "workflow_tool"
     assert data["tools"][3]["workflow"] == "analysis_pipeline"
@@ -206,13 +209,14 @@ def test_list_agents_empty(client, config_system):
     # Create empty config directory
     config_dir = config_system.config_path / "agents"
     config_dir.mkdir(parents=True)
-    
+
     import asyncio
+
     asyncio.run(config_system.load_from_directory(config_system.config_path))
-    
+
     response = client.get("/agio/agents")
     assert response.status_code == 200
-    
+
     data = response.json()
     assert data["total"] == 0
     assert len(data["items"]) == 0
@@ -223,7 +227,7 @@ def test_list_agents_pagination(client, config_system):
     # Create test config directory
     config_dir = config_system.config_path / "agents"
     config_dir.mkdir(parents=True)
-    
+
     # Create 5 test agents
     for i in range(5):
         agent_config = f"""
@@ -235,10 +239,11 @@ tools:
   - file_read
 """
         (config_dir / f"test_agent_{i}.yaml").write_text(agent_config)
-    
+
     import asyncio
+
     asyncio.run(config_system.load_from_directory(config_system.config_path))
-    
+
     # Test pagination
     response = client.get("/agio/agents?limit=2&offset=0")
     assert response.status_code == 200
@@ -247,7 +252,7 @@ tools:
     assert len(data["items"]) == 2
     assert data["limit"] == 2
     assert data["offset"] == 0
-    
+
     # Test second page
     response = client.get("/agio/agents?limit=2&offset=2")
     assert response.status_code == 200

@@ -96,7 +96,9 @@ class ConfigLoader:
                 # Detect duplicate config names
                 config_key = (component_type, config_data["name"])
                 if config_key in seen_configs:
-                    previous_path = seen_configs[config_key].relative_to(self.config_dir)
+                    previous_path = seen_configs[config_key].relative_to(
+                        self.config_dir
+                    )
                     logger.warning(
                         f"Duplicate config found: {component_type.value}/{config_data['name']} "
                         f"at {yaml_file.relative_to(self.config_dir)}, "

@@ -112,7 +112,9 @@ def get_knowledge(
     try:
         return config_sys.get(name)
     except Exception as e:
-        raise HTTPException(status_code=404, detail=f"Knowledge '{name}' not found: {e}")
+        raise HTTPException(
+            status_code=404, detail=f"Knowledge '{name}' not found: {e}"
+        )
 
 
 # Singleton InMemoryTraceStore for fallback

@@ -152,7 +152,9 @@ This tool is optimized for proper permissions and access.
         except asyncio.TimeoutError as error:
             process.kill()
             await process.wait()
-            raise RuntimeError(f"Search timed out after {self.timeout_seconds}s") from error
+            raise RuntimeError(
+                f"Search timed out after {self.timeout_seconds}s"
+            ) from error
         except Exception:
             if process.returncode is None:
                 process.kill()
@@ -244,9 +246,13 @@ This tool is optimized for proper permissions and access.
             # Validate input
             validation = self.validate_input(pattern, path, include)
             if not validation["valid"]:
-                return self._create_error_result(parameters, validation["message"], start_time)
+                return self._create_error_result(
+                    parameters, validation["message"], start_time
+                )
 
-            search_path: Path = validation.get("resolved_path") or self._resolve_search_path(path)
+            search_path: Path = validation.get(
+                "resolved_path"
+            ) or self._resolve_search_path(path)
 
             # Check abort signal again
             if abort_signal and abort_signal.is_aborted():
@@ -266,7 +272,9 @@ This tool is optimized for proper permissions and access.
 
             # Get file statistics and sort
             sorted_paths = self._sort_results(results)
-            formatted_filenames = [self._format_path(path_obj) for path_obj in sorted_paths]
+            formatted_filenames = [
+                self._format_path(path_obj) for path_obj in sorted_paths
+            ]
 
             duration_ms = int((time.time() - start_time) * 1000)
 
@@ -300,4 +308,6 @@ This tool is optimized for proper permissions and access.
             return self._create_abort_result(parameters, start_time)
         except Exception as error:
             self._logger.exception("Error during grep search")
-            return self._create_error_result(parameters, f"Search failed: {error!s}", start_time)
+            return self._create_error_result(
+                parameters, f"Search failed: {error!s}", start_time
+            )

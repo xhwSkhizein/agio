@@ -77,7 +77,9 @@ class BuilderRegistry:
 
         logger.debug("Registered default builders")
 
-    def register(self, component_type: ComponentType, builder: ComponentBuilder) -> None:
+    def register(
+        self, component_type: ComponentType, builder: ComponentBuilder
+    ) -> None:
         """
         Register builder.
 

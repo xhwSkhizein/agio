@@ -41,7 +41,9 @@ class FileOperationBaseTool(BaseTool):
             return False, "File path is not allowed for security reasons"
         return True, None
 
-    def _validate_file_path(self, file_path: str) -> tuple[bool, str | None, Path | None]:
+    def _validate_file_path(
+        self, file_path: str
+    ) -> tuple[bool, str | None, Path | None]:
         """
         验证文件路径。
 
@@ -63,7 +65,9 @@ class FileOperationBaseTool(BaseTool):
         except Exception as e:
             return False, f"Invalid file path: {e}", None
 
-    def _read_file_content(self, file_path: Path) -> tuple[bool, str | None, str | None]:
+    def _read_file_content(
+        self, file_path: Path
+    ) -> tuple[bool, str | None, str | None]:
         """
         读取文件内容。
 

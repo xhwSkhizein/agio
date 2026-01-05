@@ -157,4 +157,3 @@ class SkillManager:
                         logger.debug("skill_dir_not_found", path=str(resolved))
 
         return dirs
-

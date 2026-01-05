@@ -99,7 +99,9 @@ class LoopWorkflow(BaseWorkflow):
         input_tokens = 0
         output_tokens = 0
         nodes_executed = 0
-        last_iteration_outputs: dict[str, str] = {}  # Track outputs from previous iteration
+        last_iteration_outputs: dict[
+            str, str
+        ] = {}  # Track outputs from previous iteration
 
         try:
             # Get nodes
@@ -136,7 +138,9 @@ class LoopWorkflow(BaseWorkflow):
 
                     # Check condition
                     if node.condition:
-                        if not ConditionEvaluator.evaluate(node.condition, outputs_dict):
+                        if not ConditionEvaluator.evaluate(
+                            node.condition, outputs_dict
+                        ):
                             await wire.write(
                                 ef.node_skipped(
                                     node_id=node_id,
@@ -204,7 +208,9 @@ class LoopWorkflow(BaseWorkflow):
                     break
 
             duration = time.time() - start_time
-            termination_reason = "max_iterations" if iteration >= self.max_iterations else None
+            termination_reason = (
+                "max_iterations" if iteration >= self.max_iterations else None
+            )
 
             # Generate termination summary if configured
             if termination_reason and self.enable_termination_summary:
@@ -251,7 +257,9 @@ class LoopWorkflow(BaseWorkflow):
         """
         # If no summary model configured, generate simple text summary
         if not self.summary_model:
-            return self._generate_simple_summary(state, termination_reason, iteration, input)
+            return self._generate_simple_summary(
+                state, termination_reason, iteration, input
+            )
 
         # Build messages from state outputs
         messages = self._build_messages_from_state(state, input)
@@ -264,7 +272,9 @@ class LoopWorkflow(BaseWorkflow):
         )
         from agio.config.template import renderer
 
-        prompt_template = self.termination_summary_prompt or DEFAULT_TERMINATION_USER_PROMPT
+        prompt_template = (
+            self.termination_summary_prompt or DEFAULT_TERMINATION_USER_PROMPT
+        )
         user_prompt = renderer.render(
             prompt_template,
             termination_reason=_format_termination_reason(termination_reason),
@@ -278,7 +288,9 @@ class LoopWorkflow(BaseWorkflow):
             return response.content if response.content else ""
         except Exception:
             # Fallback to simple summary
-            return self._generate_simple_summary(state, termination_reason, iteration, input)
+            return self._generate_simple_summary(
+                state, termination_reason, iteration, input
+            )
 
     def _generate_simple_summary(
         self,
@@ -307,7 +319,9 @@ class LoopWorkflow(BaseWorkflow):
 
         return "\n".join(summary_parts)
 
-    def _build_messages_from_state(self, state: WorkflowState | None, input: str) -> list[dict]:
+    def _build_messages_from_state(
+        self, state: WorkflowState | None, input: str
+    ) -> list[dict]:
         """Build OpenAI format messages from state for summarizer."""
         messages = []
 
@@ -318,6 +332,8 @@ class LoopWorkflow(BaseWorkflow):
         if state:
             outputs = state.to_dict()
             for node_id, value in outputs.items():
-                messages.append({"role": "assistant", "content": f"[Node {node_id}]: {value}"})
+                messages.append(
+                    {"role": "assistant", "content": f"[Node {node_id}]: {value}"}
+                )
 
         return messages

@@ -136,7 +136,9 @@ class HotReloadManager:
                 logger.error(f"Hot reload callback error: {e}")
 
     async def handle_skill_change(
-        self, skill_name: str | None = None, rebuild_func: Callable[[str], Any] | None = None
+        self,
+        skill_name: str | None = None,
+        rebuild_func: Callable[[str], Any] | None = None,
     ) -> None:
         """
         Handle skill file change (SKILL.md modified).

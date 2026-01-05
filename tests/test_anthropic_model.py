@@ -75,7 +75,10 @@ async def test_arun_stream(mock_anthropic):
     mock_stream.__aiter__.side_effect = stream_generator
 
     model = AnthropicModel(
-        id="anthropic/claude-3-opus", name="claude-3-opus", provider="anthropic", api_key="sk-test"
+        id="anthropic/claude-3-opus",
+        name="claude-3-opus",
+        provider="anthropic",
+        api_key="sk-test",
     )
 
     chunks = []

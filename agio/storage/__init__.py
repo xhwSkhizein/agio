@@ -8,7 +8,12 @@ This module contains all storage implementations:
 """
 
 from .citation import InMemoryCitationStore, MongoCitationStore, SQLiteCitationStore
-from .session import InMemorySessionStore, MongoSessionStore, SessionStore, SQLiteSessionStore
+from .session import (
+    InMemorySessionStore,
+    MongoSessionStore,
+    SessionStore,
+    SQLiteSessionStore,
+)
 from .trace.sqlite_store import SQLiteTraceStore
 from .trace.store import TraceQuery, TraceStore
 

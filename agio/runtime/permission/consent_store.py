@@ -145,7 +145,9 @@ class MongoConsentStore(ConsentStore):
             self.consents_collection = self.db["consents"]
 
             # Create indexes
-            await self.consents_collection.create_index([("user_id", 1), ("tool_name", 1)])
+            await self.consents_collection.create_index(
+                [("user_id", 1), ("tool_name", 1)]
+            )
             await self.consents_collection.create_index(
                 "expires_at", expireAfterSeconds=0
             )  # TTL index
@@ -241,7 +243,9 @@ class MongoConsentStore(ConsentStore):
                         "$set": {
                             "patterns": patterns,
                             "deny_patterns": deny_patterns,
-                            "expires_at": expires_at.isoformat() if expires_at else None,
+                            "expires_at": expires_at.isoformat()
+                            if expires_at
+                            else None,
                             "updated_at": now.isoformat(),
                         }
                     },

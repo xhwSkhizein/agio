@@ -128,7 +128,9 @@ class FileEditTool(FileOperationBaseTool, ConfigurableToolMixin):
         """Check if tool supports concurrency."""
         return False
 
-    def validate_input(self, file_path: str, old_string: str, new_string: str) -> dict[str, Any]:
+    def validate_input(
+        self, file_path: str, old_string: str, new_string: str
+    ) -> dict[str, Any]:
         """Validate input parameters."""
 
         is_absolute, message = self._require_absolute_path(file_path)
@@ -170,7 +172,8 @@ class FileEditTool(FileOperationBaseTool, ConfigurableToolMixin):
             return {
                 "valid": False,
                 "message": (
-                    "File is a Jupyter Notebook. " "Use the NotebookEditTool to edit this file."
+                    "File is a Jupyter Notebook. "
+                    "Use the NotebookEditTool to edit this file."
                 ),
             }
 
@@ -221,7 +224,9 @@ class FileEditTool(FileOperationBaseTool, ConfigurableToolMixin):
             pass
         return None
 
-    def _apply_edit(self, file_path: str, old_string: str, new_string: str) -> dict[str, Any]:
+    def _apply_edit(
+        self, file_path: str, old_string: str, new_string: str
+    ) -> dict[str, Any]:
         """Apply edit and generate patch."""
         full_file_path = self._normalize_path(file_path)
 
@@ -331,7 +336,9 @@ class FileEditTool(FileOperationBaseTool, ConfigurableToolMixin):
                 return self._create_abort_result(parameters, start_time)
 
             # Write file
-            Path(normalized_path).write_text(edit_result["updated_content"], encoding="utf-8")
+            Path(normalized_path).write_text(
+                edit_result["updated_content"], encoding="utf-8"
+            )
 
             snippet_info = self._get_snippet(
                 edit_result["original_content"], old_string, new_string
@@ -362,7 +369,9 @@ class FileEditTool(FileOperationBaseTool, ConfigurableToolMixin):
             )
 
         except Exception as e:
-            return self._create_error_result(parameters, f"File edit failed: {e!s}", start_time)
+            return self._create_error_result(
+                parameters, f"File edit failed: {e!s}", start_time
+            )
 
     def update_read_timestamp(self, file_path: str, timestamp: float | None = None):
         """Update file read timestamp (simplified implementation, no longer tracked)."""

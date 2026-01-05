@@ -234,7 +234,7 @@ async def test_retry_deletes_and_regenerates(mock_agent, session_store, session)
     steps_after_delete = await session_store.get_steps("session_123")
     assert len(steps_after_delete) == 1  # Only user step remains
     assert steps_after_delete[0].role == MessageRole.USER
-    
+
     # Test passed - delete_steps works correctly
     # Note: Resume functionality is now handled by unified ResumeExecutor
     # and is tested separately in dedicated Resume tests
@@ -276,7 +276,7 @@ async def test_fork_creates_new_session(session_store):
         original_session_id="original_session",
         sequence=2,
         session_store=session_store,
-        exclude_last=False
+        exclude_last=False,
     )
 
     # Check new session has copied steps

@@ -3,7 +3,7 @@ Unified Structured Logging Module for Agio
 
 This module provides a structured logging framework using structlog with:
 - Structured JSON output for production
-- Human-readable console output for development  
+- Human-readable console output for development
 - Request ID and context tracking
 - Sensitive data filtering
 - Performance monitoring
@@ -11,7 +11,7 @@ This module provides a structured logging framework using structlog with:
 
 Usage:
     from agio.utils.logging import get_logger
-    
+
     logger = get_logger(__name__)
     logger.info("user_authenticated", user_id=user_id, session_id=session_id)
     logger.error("api_call_failed", error=str(e), status_code=500)
@@ -45,7 +45,9 @@ SENSITIVE_KEYS = {
 }
 
 
-def filter_sensitive_data(logger: FilteringBoundLogger, method_name: str, event_dict: dict) -> dict:
+def filter_sensitive_data(
+    logger: FilteringBoundLogger, method_name: str, event_dict: dict
+) -> dict:
     """Filter out sensitive information from logs."""
     for key in list(event_dict.keys()):
         if any(sensitive in key.lower() for sensitive in SENSITIVE_KEYS):
@@ -53,7 +55,9 @@ def filter_sensitive_data(logger: FilteringBoundLogger, method_name: str, event_
     return event_dict
 
 
-def add_context(logger: FilteringBoundLogger, method_name: str, event_dict: dict) -> dict:
+def add_context(
+    logger: FilteringBoundLogger, method_name: str, event_dict: dict
+) -> dict:
     """Add contextual information to log entries."""
     # Add request tracking context
     if request_id := request_id_var.get():

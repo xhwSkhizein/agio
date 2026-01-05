@@ -84,4 +84,3 @@ async def test_execution_context_unified_session():
     assert child_ctx.session_id == "session_123"
     assert child_ctx.run_id == "child_run"
     assert child_ctx.parent_run_id == "parent_run"
-
