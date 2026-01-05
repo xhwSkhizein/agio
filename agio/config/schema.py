@@ -42,7 +42,7 @@ class ExecutionConfig(BaseModel):
     memory_update_async: bool = Field(default=True, description="Async memory updates")
 
     # Timeout configuration
-    tool_timeout: float | None = Field(default=None, description="Tool execution timeout (seconds)")
+    tool_timeout: float | None = Field(default=30.0, description="Tool execution timeout (seconds)")
     run_timeout: float | None = Field(default=None, description="Overall run timeout (seconds)")
 
     # Concurrency configuration

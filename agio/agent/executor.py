@@ -301,7 +301,11 @@ class AgentExecutor:
         self.session_store = session_store
         self.sequence_manager = sequence_manager
         self.config = config or ExecutionConfig()
-        self.tool_executor = ToolExecutor(tools, permission_manager=permission_manager)
+        self.tool_executor = ToolExecutor(
+            tools,
+            permission_manager=permission_manager,
+            default_timeout=config.tool_timeout,
+        )
         self._tool_schemas = [t.to_openai_schema() for t in tools] if tools else None
 
     # ───────────────────────────────────────────────────────────────────

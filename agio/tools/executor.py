@@ -3,6 +3,7 @@ Unified tool executor.
 """
 
 import asyncio
+import contextlib
 import json
 import time
 from typing import Any
@@ -26,6 +27,7 @@ class ToolExecutor:
         tools: list["BaseTool"],
         cache: "ToolResultCache | None" = None,
         permission_manager: "PermissionManager | None" = None,
+        default_timeout: float | None = None,
     ) -> None:
         """
         Initialize tool executor.
@@ -34,10 +36,12 @@ class ToolExecutor:
             tools: List of tools (BaseTool only)
             cache: Optional cache for expensive tool results
             permission_manager: Optional PermissionManager for permission checking
+            default_timeout: Optional default timeout in seconds for tool execution
         """
         self.tools_map = {t.name: t for t in tools}
         self._cache = cache or get_tool_cache()
         self._permission_manager = permission_manager
+        self._default_timeout = default_timeout
 
     async def execute(
         self,
@@ -148,11 +152,19 @@ class ToolExecutor:
                     is_success=cached.is_success,
                 )
 
+        timeout_seconds = self._default_timeout or getattr(tool, "timeout_seconds", None)
+
         try:
             logger.debug("executing_tool", tool_name=fn_name, tool_call_id=call_id)
-            result: ToolResult = await tool.execute(
-                args, context=context, abort_signal=abort_signal
+            execute_task = asyncio.create_task(
+                tool.execute(args, context=context, abort_signal=abort_signal)
             )
+            if timeout_seconds:
+                result: ToolResult = await asyncio.wait_for(
+                    execute_task, timeout=timeout_seconds
+                )
+            else:
+                result = await execute_task
             logger.debug(
                 "tool_execution_completed",
                 tool_name=fn_name,
@@ -166,6 +178,22 @@ class ToolExecutor:
 
             return result
 
+        except asyncio.TimeoutError:
+            execute_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await execute_task
+            logger.error(
+                "tool_execution_timeout",
+                tool_name=fn_name,
+                timeout_seconds=timeout_seconds,
+                tool_call_id=call_id,
+            )
+            return self._create_error_result(
+                call_id=call_id,
+                tool_name=fn_name,
+                error=f"Tool execution timed out after {timeout_seconds} seconds",
+                start_time=start_time,
+            )
         except asyncio.CancelledError:
             logger.info("tool_execution_cancelled", tool_name=fn_name)
             return self._create_error_result(
@@ -206,11 +234,54 @@ class ToolExecutor:
         Returns:
             list[ToolResult]: List of tool execution results
         """
-        tasks = [
-            self.execute(tc, context=context, abort_signal=abort_signal)
-            for tc in tool_calls
-        ]
-        return await asyncio.gather(*tasks)
+        async def _run_single(tc: dict[str, Any]) -> ToolResult:
+            try:
+                return await self.execute(tc, context=context, abort_signal=abort_signal)
+            except Exception as e:  # Defensive: should not propagate
+                fn = tc.get("function", {}) if isinstance(tc, dict) else {}
+                tool_name = fn.get("name", "unknown")
+                call_id = tc.get("id", "") if isinstance(tc, dict) else ""
+                logger.error(
+                    "tool_batch_execute_error",
+                    tool_name=tool_name,
+                    tool_call_id=call_id,
+                    error=str(e),
+                    exc_info=True,
+                )
+                return self._create_error_result(
+                    call_id=call_id,
+                    tool_name=tool_name,
+                    error=f"Tool execution failed: {e}",
+                    start_time=time.time(),
+                )
+
+        tasks = [asyncio.create_task(_run_single(tc)) for tc in tool_calls]
+        done, _ = await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED)
+
+        results: list[ToolResult] = []
+        for task in tasks:
+            try:
+                results.append(task.result())
+            except asyncio.CancelledError:
+                results.append(
+                    self._create_error_result(
+                        call_id="",
+                        tool_name="unknown",
+                        error="Tool execution was cancelled",
+                        start_time=time.time(),
+                    )
+                )
+            except Exception as e:
+                results.append(
+                    self._create_error_result(
+                        call_id="",
+                        tool_name="unknown",
+                        error=f"Tool execution failed: {e}",
+                        start_time=time.time(),
+                    )
+                )
+
+        return results
 
     def _create_error_result(
         self,
