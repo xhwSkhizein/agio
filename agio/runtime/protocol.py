@@ -2,7 +2,7 @@
 Runnable protocol and RunOutput for unified execution interface.
 
 This module defines the core abstractions for executable units:
-- Runnable: protocol for Agent and Workflow
+- Runnable: protocol for Agent
 - RunOutput: execution result with response and metrics
 - ExecutionContext: Unified execution context abstraction
 """
@@ -19,7 +19,6 @@ class RunnableType(str, Enum):
     """Runnable type enumeration."""
 
     AGENT = "agent"
-    WORKFLOW = "workflow"
 
 
 @dataclass
@@ -36,7 +35,6 @@ class RunOutput:
     metrics: "RunMetrics | None" = None
 
     # Additional context
-    workflow_id: str | None = None
     termination_reason: str | None = None  # "max_steps", "max_iterations", etc.
     error: str | None = None
 
@@ -46,10 +44,10 @@ class Runnable(Protocol):
     """
     Unified protocol for executable units.
 
-    Both Agent and Workflow implement this interface, enabling:
+    Agent implements this interface, enabling:
     1. Unified API invocation
-    2. Mutual nesting and composition
-    3. Use as Tool (AgentAsTool, WorkflowAsTool)
+    2. Nesting and composition
+    3. Use as Tool (RunnableAsTool)
 
     Wire-based execution:
     - run() requires context.wire
@@ -68,7 +66,6 @@ class Runnable(Protocol):
         Return the type of this Runnable.
 
         - Agent returns RunnableType.AGENT
-        - Workflow returns RunnableType.WORKFLOW
 
         Used by RunnableExecutor to determine run type without
         instanceof checks on concrete classes.
@@ -107,14 +104,12 @@ class ExecutionContext:
         session_id: Session identifier
         wire: Event streaming channel
         user_id: User identifier (optional)
-        workflow_id: Workflow identifier (optional)
         depth: Nesting depth (0 = top-level)
         parent_run_id: Parent run ID for nested executions
         nested_runnable_id: ID of the nested Runnable being executed
-        runnable_type: Type of Runnable ("agent" | "workflow")
+        runnable_type: Type of Runnable ("agent")
         runnable_id: Runnable configuration ID
-        nesting_type: How this execution was triggered ("tool_call" | "workflow_node" | None)
-        node_id: Current WorkflowNode.id being executed
+        nesting_type: How this execution was triggered ("tool_call" | None)
         trace_id: Distributed tracing ID
         span_id: Current span ID
         metadata: Additional metadata
@@ -127,9 +122,8 @@ class ExecutionContext:
     # Session-level resources
     wire: Wire
 
-    # User & Workflow Context
+    # User Context
     user_id: str | None = None
-    workflow_id: str | None = None
 
     # Hierarchy information
     depth: int = 0
@@ -139,14 +133,15 @@ class ExecutionContext:
     # Runnable identity (for unified display)
     runnable_type: RunnableType = RunnableType.AGENT
     runnable_id: str | None = None  # Runnable config ID
-    nesting_type: str | None = None  # "tool_call" | "workflow_node" | None
-
-    node_id: str | None = None  # Current WorkflowNode.id being executed
+    nesting_type: str | None = None  # "tool_call" | None
 
     # Observability
     trace_id: str | None = None
     span_id: str | None = None
     parent_span_id: str | None = None
+
+    # Timeout control
+    timeout_at: float | None = None
 
     # Metadata
     metadata: dict = field(default_factory=dict)
@@ -186,17 +181,16 @@ class ExecutionContext:
             session_id=session_id or self.session_id,
             wire=self.wire,
             user_id=overrides.get("user_id", self.user_id),
-            workflow_id=overrides.get("workflow_id", self.workflow_id),
             depth=self.depth + 1,
             parent_run_id=self.run_id,
             nested_runnable_id=nested_runnable_id,
             runnable_type=overrides.get("runnable_type", RunnableType.AGENT),
             runnable_id=overrides.get("runnable_id"),
             nesting_type=overrides.get("nesting_type"),
-            node_id=overrides.get("node_id", None),
             trace_id=self.trace_id,
-            span_id=None,  # New span for child
+            span_id=None,
             parent_span_id=self.span_id,
+            timeout_at=overrides.get("timeout_at", self.timeout_at),
             metadata=metadata,
         )
 
@@ -220,17 +214,16 @@ class ExecutionContext:
             session_id=self.session_id,
             wire=self.wire,
             user_id=self.user_id,
-            workflow_id=self.workflow_id,
             depth=self.depth,
             parent_run_id=self.parent_run_id,
             nested_runnable_id=self.nested_runnable_id,
             runnable_type=self.runnable_type,
             runnable_id=self.runnable_id,
             nesting_type=self.nesting_type,
-            node_id=self.node_id,
             trace_id=self.trace_id,
             span_id=self.span_id,
             parent_span_id=self.parent_span_id,
+            timeout_at=self.timeout_at,
             metadata=new_metadata,
         )
 

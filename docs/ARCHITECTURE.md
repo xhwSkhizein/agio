@@ -13,7 +13,7 @@ API Entry Point
     │
     ├─► Wire (事件通道)
     │
-    ├─► Agent.run() / Workflow.run()
+    ├─► Agent.run()
     │   └─► 写入 StepEvent 到 Wire
     │
     └─► API Layer 消费 Wire.read()
@@ -21,13 +21,13 @@ API Entry Point
 ```
 
 **优势**：
-- 统一的执行接口：Agent 和 Workflow 都实现 `Runnable` 协议
+- 统一的执行接口：Agent 实现 `Runnable` 协议
 - 实时事件流：支持 SSE 流式传输，前端可实时展示执行过程
 - 嵌套执行支持：所有嵌套执行共享同一个 Wire，事件统一管理
 
 ### 2. Runnable 协议统一抽象
 
-`Runnable` 协议是核心抽象，Agent 和 Workflow 都实现此协议：
+`Runnable` 协议是核心抽象，Agent 实现此协议：
 
 ```python
 from agio.runtime.protocol import RunnableType
@@ -49,8 +49,8 @@ class Runnable(Protocol):
 
 **能力**：
 - 统一 API 调用：通过 `/runnables/{id}/run` 执行任何 Runnable
-- 相互嵌套：Agent 可以作为 Workflow 的节点，Workflow 也可以嵌套 Workflow
-- 作为工具使用：通过 `RunnableTool` 将 Agent/Workflow 包装为 Tool
+- 相互嵌套：Agent 可以嵌套调用其他 Agent
+- 作为工具使用：通过 `RunnableAsTool` 将 Agent 包装为 Tool
 
 ### 3. 配置驱动架构
 
@@ -61,7 +61,6 @@ configs/
 ├── models/          # LLM 模型配置
 ├── tools/           # 工具配置
 ├── agents/          # Agent 配置
-├── workflows/       # Workflow 配置
 └── storages/        # 存储配置
 ```
 
@@ -94,8 +93,8 @@ configs/
         ┌──────────────┼──────────────┐
         ▼              ▼              ▼
 ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-│    Agent     │ │  Workflow    │ │    Tools     │
-│   System     │ │ Orchestration│ │   System     │
+│    Agent     │ │    Tools     │ │   Storage    │
+│   System     │ │   System     │ │   System     │
 └──────────────┘ └──────────────┘ └──────────────┘
         │              │              │
         └──────────────┼──────────────┘
@@ -149,38 +148,18 @@ configs/
 
 详见：[Agent 系统文档](./AGENT_SYSTEM.md)
 
-### 3. Workflow 编排
+### 3. Runnable 协议
 
 **职责**：
-- Pipeline（顺序执行）
-- Loop（循环执行）
-- Parallel（并行执行）
-- 节点输出缓存和幂等性
-
-**关键组件**：
-- `BaseWorkflow`: 工作流基类
-- `PipelineWorkflow`: 顺序工作流
-- `LoopWorkflow`: 循环工作流
-- `ParallelWorkflow`: 并行工作流
-- `WorkflowState`: 状态管理
-- `ContextResolver`: 模板变量解析
-
-详见：[Workflow 编排文档](./WORKFLOW_ORCHESTRATION.md)
-
-### 4. Runnable 协议
-
-**职责**：
-- 统一 Agent 和 Workflow 的执行接口
+- 统一 Agent 的执行接口
 - 支持相互嵌套
 - 支持作为工具使用
 
 **关键组件**：
 - `Runnable`: 协议定义
 - `RunnableExecutor`: 统一执行引擎
-- `RunnableTool`: Agent/Workflow 作为工具
+- `RunnableAsTool`: Agent 作为工具
 - `ExecutionContext`: 执行上下文
-
-详见：[Runnable 协议文档](./RUNNABLE_PROTOCOL.md)
 
 ### 5. 可观测性
 
@@ -228,7 +207,6 @@ configs/
 **关键路由**：
 - `/runnables`: 统一 Runnable 执行接口
 - `/agents`: Agent 管理
-- `/workflows`: Workflow 管理
 - `/sessions`: 会话管理
 - `/traces`: 追踪查询
 - `/config`: 配置管理
@@ -261,29 +239,6 @@ configs/
        └─► SSE 流式响应
 ```
 
-### Workflow 执行流程
-
-```
-1. API Entry Point
-   └─► 创建 Wire + ExecutionContext
-   
-2. RunnableExecutor.execute()
-   └─► 创建 Run 记录
-   └─► 调用 Workflow.run()
-   
-3. Workflow.run()
-   └─► Pipeline/Loop/Parallel._execute()
-       ├─► 解析节点输入模板
-       ├─► 检查节点条件
-       ├─► 执行节点 Runnable
-       │   └─► 递归调用 RunnableExecutor
-       └─► 写入 StepEvent 到 Wire
-   
-4. API Layer
-   └─► 消费 Wire.read()
-       └─► SSE 流式响应
-```
-
 ## 数据流
 
 ### StepEvent 事件流
@@ -301,12 +256,13 @@ class StepEvent:
 
 **事件类型**：
 - `RUN_STARTED`: Run 开始
-- `STEP_CREATED`: Step 创建
-- `STEP_UPDATED`: Step 更新
+- `STEP_DELTA`: Step 增量更新
+- `STEP_COMPLETED`: Step 完成
 - `RUN_COMPLETED`: Run 完成
 - `RUN_FAILED`: Run 失败
-- `NODE_STARTED`: Workflow 节点开始
-- `NODE_COMPLETED`: Workflow 节点完成
+- `ERROR`: 错误事件
+- `TOOL_AUTH_REQUIRED`: 工具授权请求
+- `TOOL_AUTH_DENIED`: 工具授权拒绝
 
 ### 存储层
 
@@ -338,7 +294,6 @@ class StepEvent:
 
 - [配置系统](./CONFIG_SYSTEM_V2.md)
 - [Agent 系统](./AGENT_SYSTEM.md)
-- [Workflow 编排](./WORKFLOW_ORCHESTRATION.md)
-- [Runnable 协议](./RUNNABLE_PROTOCOL.md)
 - [可观测性](./OBSERVABILITY.md)
 - [API Control Panel](./API_CONTROL_PANEL.md)
+- [工具配置](./TOOL_CONFIGURATION.md)

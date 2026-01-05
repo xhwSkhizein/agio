@@ -34,12 +34,11 @@ from agio.config.schema import (
     SessionStoreConfig,
     ToolConfig,
     TraceStoreConfig,
-    WorkflowConfig,
 )
 from agio.config.tool_reference import parse_tool_reference
+from agio.runtime import as_tool
 from agio.tools import get_tool_registry
 from agio.utils.logging import get_logger
-from agio.workflow import as_tool
 
 logger = get_logger(__name__)
 
@@ -63,7 +62,6 @@ class ConfigSystem:
         ComponentType.TRACE_STORE: TraceStoreConfig,
         ComponentType.CITATION_STORE: CitationStoreConfig,
         ComponentType.AGENT: AgentConfig,
-        ComponentType.WORKFLOW: WorkflowConfig,
     }
 
     def __init__(self) -> None:
@@ -341,10 +339,13 @@ class ConfigSystem:
 
         instance = await builder.build(config, dependencies)
 
+        # Record logical dependency names (not param keys)
+        dependency_names = self.dependency_resolver.extract_dependencies(config)
+
         metadata = ComponentMetadata(
             component_type=component_type,
             config=config,
-            dependencies=list(dependencies.keys()),
+            dependencies=list(dependency_names),
         )
         container.register(config.name, instance, metadata)
 
@@ -359,6 +360,57 @@ class ConfigSystem:
 
         raise ConfigNotFoundError(f"Config for component '{name}' not found")
 
+    def _find_dependency_config(self, dep_name: str) -> ComponentConfig | None:
+        """
+        Find dependency config by name, searching all component types.
+        
+        Args:
+            dep_name: Dependency component name
+            
+        Returns:
+            Component config if found, None otherwise
+        """
+        for component_type in ComponentType:
+            config = self.registry.get(component_type, dep_name)
+            if config:
+                return config
+        return None
+
+    async def _ensure_dependency_built(
+        self,
+        dep_name: str,
+        container: ComponentContainer,
+        context: str = "component",
+    ) -> Any:
+        """
+        Ensure dependency is built and return its instance.
+        
+        Unified method to handle dependency resolution:
+        1. Check if already built in container
+        2. Find config from registry
+        3. Build if necessary
+        4. Return instance
+        
+        Args:
+            dep_name: Dependency component name
+            container: Target container
+            context: Context for error messages (e.g., "agent 'xxx'")
+            
+        Returns:
+            Component instance
+            
+        Raises:
+            ComponentNotFoundError: If dependency config not found
+        """
+        if not container.has(dep_name):
+            dep_config = self._find_dependency_config(dep_name)
+            if not dep_config:
+                raise ComponentNotFoundError(
+                    f"Dependency '{dep_name}' not found for {context}"
+                )
+            await self._build_component(dep_config, container)
+        return container.get(dep_name)
+
     async def _resolve_dependencies(
         self, config: ComponentConfig, container: ComponentContainer
     ) -> dict[str, Any]:
@@ -367,8 +419,6 @@ class ConfigSystem:
             return await self._resolve_agent_dependencies(config, container)
         elif isinstance(config, ToolConfig):
             return await self._resolve_tool_dependencies(config, container)
-        elif isinstance(config, WorkflowConfig):
-            return await self._resolve_workflow_dependencies(config, container)
         return {}
 
     async def _resolve_agent_dependencies(
@@ -376,9 +426,20 @@ class ConfigSystem:
     ) -> dict[str, Any]:
         """Resolve Agent dependencies."""
         dependencies = {}
+        context = f"agent '{config.name}'"
 
-        dependencies["model"] = container.get(config.model)
+        # Ensure model is built
+        dependencies["model"] = await self._ensure_dependency_built(
+            config.model, container, context
+        )
 
+        # Ensure session_store is built first (if needed)
+        if config.session_store:
+            dependencies["session_store"] = await self._ensure_dependency_built(
+                config.session_store, container, context
+            )
+
+        # Resolve tools
         tools = []
         for tool_ref in config.tools:
             tool = await self._resolve_tool_reference(
@@ -390,15 +451,6 @@ class ConfigSystem:
             tools.append(tool)
         dependencies["tools"] = tools
 
-        if config.memory:
-            dependencies["memory"] = container.get(config.memory)
-
-        if config.knowledge:
-            dependencies["knowledge"] = container.get(config.knowledge)
-
-        if config.session_store:
-            dependencies["session_store"] = container.get(config.session_store)
-
         return dependencies
 
     async def _resolve_tool_dependencies(
@@ -406,21 +458,12 @@ class ConfigSystem:
     ) -> dict[str, Any]:
         """Resolve Tool dependencies."""
         dependencies = {}
+        context = f"tool '{config.name}'"
+        
         for param_name, dep_name in config.effective_dependencies.items():
-            dependencies[param_name] = container.get(dep_name)
-        return dependencies
-
-    async def _resolve_workflow_dependencies(
-        self, config: WorkflowConfig, container: ComponentContainer
-    ) -> dict[str, Any]:
-        """Resolve Workflow dependencies."""
-        dependencies = {}
-
-        dependencies["_all_instances"] = container.get_all_instances()
-
-        if config.session_store:
-            dependencies["session_store"] = container.get(config.session_store)
-
+            dependencies[param_name] = await self._ensure_dependency_built(
+                dep_name, container, context
+            )
         return dependencies
 
     async def _resolve_tool_reference(
@@ -442,29 +485,28 @@ class ConfigSystem:
         else:
             raise ComponentBuildError(f"Invalid tool reference type: {type(tool_ref)}")
 
-        if parsed.type in ("agent_tool", "workflow_tool"):
+        if parsed.tool_type == "agent_tool":
             return await self._create_runnable_tool(
-                parsed.type, parsed.raw, current_component, session_store_name
+                parsed.tool_type, parsed.raw, current_component, session_store_name
             )
 
         raise ComponentBuildError(
             f"Unknown tool reference format: {tool_ref}. "
-            f"Expected string or dict with type='agent_tool'/'workflow_tool'"
+            f"Expected string or dict with type='agent_tool'"
         )
 
     async def _create_runnable_tool(
         self,
         tool_type: str,
         config: dict,
-        current_component: str | None = None,
+        current_component: str,
         session_store_name: str | None = None,
         container: ComponentContainer | None = None,
     ) -> Any:
-        """Create RunnableTool."""
-        id_field = "agent" if tool_type == "agent_tool" else "workflow"
-        runnable_id = config.get(id_field)
+        """Create RunnableTool for agent_tool."""
+        runnable_id = config.get("agent")
         if not runnable_id:
-            raise ComponentBuildError(f"{tool_type} config missing '{id_field}' field")
+            raise ComponentBuildError(f"{tool_type} config missing 'agent' field")
 
         if current_component and runnable_id == current_component:
             raise ComponentBuildError(
@@ -480,6 +522,18 @@ class ConfigSystem:
         )
 
         target_container = container or self._active_container
+        
+        # Ensure the referenced agent is built first
+        if not target_container.has(runnable_id):
+            agent_config = self.registry.get(ComponentType.AGENT, runnable_id)
+            if not agent_config:
+                raise ComponentNotFoundError(
+                    f"Agent '{runnable_id}' not found in registry. "
+                    f"Referenced by {current_component or 'unknown component'}"
+                )
+            # Build the agent first
+            await self._build_component(agent_config, target_container)
+        
         runnable = target_container.get(runnable_id)
         tool = as_tool(
             runnable,

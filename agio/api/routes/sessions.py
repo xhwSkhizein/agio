@@ -38,7 +38,7 @@ class StepResponse(BaseModel):
 
     Different roles have different fields populated:
     - user: content only
-    - assistant: content and/or tool_calls, reasoning_content
+    - assistant: content and/or tool_calls, reasoning_content, metrics
     - tool: name, tool_call_id, and content (tool result)
     """
 
@@ -60,12 +60,11 @@ class StepResponse(BaseModel):
     # Hierarchy fields for building execution tree
     run_id: str | None = None
     parent_run_id: str | None = None
-    workflow_id: str | None = None
-    node_id: str | None = None
-    branch_key: str | None = None  # Branch identifier for parallel execution
     runnable_id: str | None = None
-    runnable_type: str | None = None  # "agent" or "workflow"
+    runnable_type: str | None = None  # "agent"
     depth: int = 0
+    # Metrics (for assistant and tool steps)
+    metrics: dict | None = None
 
 
 class SessionResponse(BaseModel):
@@ -91,7 +90,6 @@ class SessionSummary(BaseModel):
     session_id: str
     agent_id: str | None
     user_id: str | None
-    workflow_id: str | None  # Workflow ID (for grouping sessions of the same Workflow)
     run_count: int
     step_count: int
     last_message: str | None
@@ -146,8 +144,6 @@ async def list_session_summaries(
                 "session_id": sid,
                 "agent_id": run.runnable_id if run.runnable_type == "agent" else None,
                 "user_id": run.user_id,
-                "workflow_id": run.workflow_id
-                or (run.runnable_id if run.runnable_type == "workflow" else None),
                 "runs": [],
                 "last_activity": run.created_at,
                 "status": run.status.value,
@@ -176,7 +172,6 @@ async def list_session_summaries(
                 session_id=sid,
                 agent_id=data["agent_id"],
                 user_id=data["user_id"],
-                workflow_id=data["workflow_id"],
                 run_count=len(data["runs"]),
                 step_count=step_count,
                 last_message=last_message[:100] if last_message else None,
@@ -337,12 +332,10 @@ async def get_session_steps(
             created_at=step.created_at.isoformat() if step.created_at else "",
             run_id=step.run_id,
             parent_run_id=step.parent_run_id,
-            workflow_id=step.workflow_id,
-            node_id=step.node_id,
-            branch_key=step.branch_key,
             runnable_id=step.runnable_id,
             runnable_type=step.runnable_type,
             depth=step.depth,
+            metrics=step.metrics.model_dump(exclude_none=True) if step.metrics else None,
         ).model_dump(exclude_none=True)
         for step in steps
     ]
@@ -431,7 +424,7 @@ async def fork_session_endpoint(
 
 
 # ============================================================================
-# Resume Session (Unified for Agent and Workflow)
+# Resume Session
 # ============================================================================
 
 
@@ -451,12 +444,10 @@ async def resume_session_endpoint(
     config_sys: ConfigSystem = Depends(get_config_sys),
 ):
     """
-    Resume a session with unified logic for Agent and Workflow.
+    Resume a session.
 
     Automatically infers runnable_id from Steps if not provided.
-    Handles both:
-    - Agent: continues from pending tool_calls
-    - Workflow: idempotent re-execution (skips completed nodes)
+    Continues from pending tool_calls.
 
     Args:
         session_id: Session ID to resume

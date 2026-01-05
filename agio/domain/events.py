@@ -27,14 +27,6 @@ class StepEventType(str, Enum):
     RUN_COMPLETED = "run_completed"
     RUN_FAILED = "run_failed"
 
-    # Workflow events
-    NODE_STARTED = "node_started"
-    NODE_COMPLETED = "node_completed"
-    NODE_SKIPPED = "node_skipped"  # Condition not met
-    ITERATION_STARTED = "iteration_started"  # Loop only
-    BRANCH_STARTED = "branch_started"  # Parallel only
-    BRANCH_COMPLETED = "branch_completed"  # Parallel only
-
     # Error events
     ERROR = "error"
 
@@ -65,8 +57,9 @@ class StepEvent(BaseModel):
     1. Build up Steps incrementally (via delta)
     2. Finalize Steps (via snapshot)
     3. Track run status
-    4. Build hierarchical workflow display
     """
+
+    model_config = {"extra": "allow"}
 
     type: StepEventType
     run_id: str
@@ -84,32 +77,24 @@ class StepEvent(BaseModel):
     # For RUN_* and ERROR events
     data: dict | None = None
 
-    # Workflow context - for hierarchical display
-    node_id: str | None = None  # Node ID
-    branch_id: str | None = None
-    iteration: int | None = None
-
-    # Workflow hierarchy info (for frontend to build tree structure)
-    workflow_type: str | None = None  # "pipeline" | "parallel" | "loop"
-    workflow_id: str | None = None  # ID of the workflow
+    # Nesting context
     parent_run_id: str | None = None  # Parent run ID for nesting
-    node_name: str | None = None  # Human-readable node name
-    node_index: int | None = None  # 0-based index in sequence
-    total_nodes: int | None = None  # Total number of nodes
 
-    # Observability reserved
-    trace_id: str | None = None
+    # Nesting depth (0 = top-level)
     span_id: str | None = None
     parent_span_id: str | None = None
     depth: int = 0
 
     # Nested execution context
-    nested_runnable_id: str | None = None  # ID of nested Agent/Workflow
+    nested_runnable_id: str | None = None  # ID of nested Agent
 
     # Runnable identity (for unified display)
-    runnable_type: str | None = None  # "agent" | "workflow"
-    runnable_id: str | None = None  # Agent/Workflow config ID
-    nesting_type: str | None = None  # "tool_call" | "workflow_node" | None
+    runnable_type: str | None = None  # "agent"
+    runnable_id: str | None = None  # Agent config ID
+    nesting_type: str | None = None  # "tool_call" | None
+    
+    # Observability fields (injected by TraceCollector)
+    trace_id: str | None = None
 
     def to_sse(self) -> str:
         """

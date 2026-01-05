@@ -12,8 +12,8 @@ export function getToolDisplayName(tool: string | ToolInfo): string {
     return tool
   }
   
-  // For ToolInfo objects, prefer name, then agent, then workflow
-  return tool.name || tool.agent || tool.workflow || 'unknown'
+  // For ToolInfo objects, prefer name, then agent
+  return tool.name || tool.agent || 'unknown'
 }
 
 /**
@@ -57,8 +57,6 @@ export function getToolTypeLabel(tool: string | ToolInfo): string {
   switch (tool.type) {
     case 'agent_tool':
       return 'Agent'
-    case 'workflow_tool':
-      return 'Workflow'
     case 'function':
       return 'Function'
     default:

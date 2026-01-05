@@ -19,7 +19,10 @@ except ImportError:
     raise ImportError("Please install openai package: pip install openai")
 
 from agio.llm.base import Model, StreamChunk
+from agio.utils.logging import get_logger
 from agio.utils.retry import retry_async
+
+logger = get_logger(__name__)
 
 # Retryable exceptions for OpenAI
 OPENAI_RETRYABLE = (
@@ -111,7 +114,28 @@ class OpenAIModel(Model):
         if tools:
             params["tools"] = tools
 
-        stream = await self.client.chat.completions.create(**params)
+        logger.debug(
+            "llm_request",
+            model=actual_model,
+            messages_count=len(messages),
+            tools_count=len(tools) if tools else 0,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+        )
+
+        try:
+            stream = await self.client.chat.completions.create(**params)
+        except Exception as e:
+            logger.error(
+                "llm_request_failed",
+                model=actual_model,
+                error=str(e),
+                error_type=type(e).__name__,
+                messages_count=len(messages),
+                tools_count=len(tools) if tools else 0,
+                exc_info=True,
+            )
+            raise
 
         async for chunk in stream:
             stream_chunk = StreamChunk()

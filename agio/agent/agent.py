@@ -24,13 +24,16 @@ from agio.runtime.protocol import ExecutionContext, RunnableType, RunOutput
 from agio.runtime.step_factory import StepFactory
 from agio.storage.session.base import SessionStore
 from agio.tools import BaseTool
+from agio.runtime.permission.manager import PermissionManager
+from agio.skills.manager import SkillManager
+from agio.runtime.sequence_manager import SequenceManager
 
 
 class Agent:
     """
     Agent Configuration Container.
 
-    Holds the configuration for Model, Tools, Memory, etc.
+    Holds the configuration for Model and Tools.
     Delegates execution to AgentRunner.
 
     Implements the Runnable protocol for multi-agent orchestration:
@@ -41,11 +44,9 @@ class Agent:
         self,
         model: Model,
         tools: list[BaseTool] | None = None,
-        memory=None,
-        knowledge=None,
-        session_store=None,
-        permission_manager=None,
-        skill_manager=None,
+        session_store: SessionStore | None = None,
+        permission_manager: PermissionManager | None = None,
+        skill_manager: SkillManager | None = None,
         name: str = "agio_agent",
         user_id: str | None = None,
         system_prompt: str | None = None,
@@ -56,17 +57,15 @@ class Agent:
         self._id = name
         self.model = model
         self.tools: list[BaseTool] = tools or []
-        self.memory = memory
-        self.knowledge = knowledge
-        self.session_store: SessionStore = session_store
-        self.permission_manager = permission_manager
-        self.skill_manager = skill_manager
-        self.user_id = user_id
-        self.system_prompt = system_prompt
-        self.max_steps = max_steps
-        self.enable_termination_summary = enable_termination_summary
-        self.termination_summary_prompt = termination_summary_prompt
-        self._sequence_manager = None
+        self.session_store: SessionStore | None = session_store
+        self.permission_manager: PermissionManager | None = permission_manager
+        self.skill_manager: SkillManager | None = skill_manager
+        self.user_id: str | None = user_id
+        self.system_prompt: str | None = system_prompt
+        self.max_steps: int = max_steps
+        self.enable_termination_summary: bool = enable_termination_summary
+        self.termination_summary_prompt: str | None = termination_summary_prompt
+        self._sequence_manager: SequenceManager | None = None
 
     @property
     def id(self) -> str:
@@ -84,8 +83,6 @@ class Agent:
             return None
 
         if self._sequence_manager is None:
-            from agio.runtime.sequence_manager import SequenceManager
-
             self._sequence_manager = SequenceManager(self.session_store)
 
         return self._sequence_manager

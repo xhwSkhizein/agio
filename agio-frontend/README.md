@@ -5,9 +5,8 @@
 ## ✨ 特性
 
 - 📊 Dashboard：系统指标总览、运行态状态
-- 🤖 Agents & Workflows：列表、状态与跳转测试
+- 🤖 Agents：列表、状态与跳转测试
 - 💬 Chat：SSE 流式对话，支持 session 继续 / 分叉
-- 🧠 Memory & Knowledge：数据检索与预览
 - 📈 Metrics & LLM Logs：模型调用日志、统计与流式订阅
 - ⚡ 技术栈：Vite + React 18 + TypeScript + TailwindCSS + TanStack Query
 
@@ -32,7 +31,7 @@ npm run build
 - 前端 API 基址：`/agio`（见 `src/services/api.ts`）
 - 开发代理：在 `vite.config.ts` 将 `/agio` 转发到 `http://localhost:8900`
 
-确保后端启动且 `AGIO_CONFIG_DIR=./configs` 已加载所需 Agent/Workflow。
+确保后端启动且 `AGIO_CONFIG_DIR=./configs` 已加载所需 Agent。  
 
 ## 🗂️ 目录速览
 
@@ -40,7 +39,7 @@ npm run build
 agio-frontend/
 ├── src/
 │   ├── components/      # 布局与通用组件
-│   ├── pages/           # Dashboard/Chat/Config/Knowledge/Memory/Metrics/LLMLogs/Sessions
+│   ├── pages/           # Dashboard/Chat/Config/Sessions/Traces
 │   ├── services/        # API 封装（axios，基址 /agio）
 │   ├── hooks/           # 数据/状态 hooks
 │   ├── stores/          # Zustand 全局状态
@@ -55,9 +54,8 @@ agio-frontend/
 - Dashboard：系统概览与关键指标
 - Chat：流式对话，支持 sessionId 续聊与 fork
 - Config：读取/编辑配置（通过后端 ConfigSystem）
-- Knowledge / Memory：查询与检索
-- Metrics / LLM Logs：指标与日志列表，LLM 日志支持 SSE 订阅
 - Sessions：会话/运行历史与步骤明细
+- Traces：LLM 调用日志与统计
 
 ## 🧪 开发与校验
 

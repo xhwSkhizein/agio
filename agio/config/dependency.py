@@ -14,8 +14,9 @@ from agio.config.schema import (
     AgentConfig,
     ComponentConfig,
     ComponentType,
+    SessionStoreConfig,
     ToolConfig,
-    WorkflowConfig,
+    TraceStoreConfig,
 )
 from agio.utils.logging import get_logger
 
@@ -60,8 +61,6 @@ class DependencyResolver:
             deps.update(self._extract_agent_deps(config))
         elif isinstance(config, ToolConfig):
             deps.update(self._extract_tool_deps(config))
-        elif isinstance(config, WorkflowConfig):
-            deps.update(self._extract_workflow_deps(config))
 
         if available_names:
             deps = deps & available_names
@@ -77,17 +76,11 @@ class DependencyResolver:
 
             parsed = parse_tool_reference(tool_ref)
 
-            if parsed.type == "function" and parsed.name:
-                deps.add(parsed.name)
-            elif parsed.type == "agent_tool" and parsed.agent:
-                deps.add(parsed.agent)
-            elif parsed.type == "workflow_tool" and parsed.workflow:
-                deps.add(parsed.workflow)
+            if parsed.tool_type == "regular_tool" and parsed.tool_name:
+                deps.add(parsed.tool_name)
+            elif parsed.tool_type == "agent_tool" and parsed.agent_name:
+                deps.add(parsed.agent_name)
 
-        if config.memory:
-            deps.add(config.memory)
-        if config.knowledge:
-            deps.add(config.knowledge)
         if config.session_store:
             deps.add(config.session_store)
 
@@ -97,30 +90,21 @@ class DependencyResolver:
         """Extract Tool dependencies."""
         return set(config.effective_dependencies.values())
 
-    def _extract_workflow_deps(self, config: WorkflowConfig) -> set[str]:
-        """Extract Workflow dependencies (recursively handle nesting)."""
+    def _extract_tool_reference_dependencies(self, stage: dict) -> set[str]:
+        """Extract Tool reference dependencies."""
         deps = set()
 
-        if config.session_store:
-            deps.add(config.session_store)
+        if "runnable" in stage:
+            runnable = stage["runnable"]
+        else:
+            return deps
 
-        def extract_from_stages(stages: list) -> None:
-            for stage in stages:
-                if hasattr(stage, "runnable"):
-                    runnable = stage.runnable
-                elif isinstance(stage, dict):
-                    runnable = stage.get("runnable")
-                else:
-                    continue
-
-                if isinstance(runnable, str):
-                    deps.add(runnable)
-                elif isinstance(runnable, dict):
-                    nested_stages = runnable.get("stages", [])
-                    extract_from_stages(nested_stages)
-
-        if hasattr(config, "stages") and config.stages:
-            extract_from_stages(config.stages)
+        if isinstance(runnable, str):
+            deps.add(runnable)
+        elif isinstance(runnable, dict):
+            nested_stages = runnable.get("stages", [])
+            for stage in nested_stages:
+                deps.update(self._extract_tool_reference_dependencies(stage))
 
         return deps
 

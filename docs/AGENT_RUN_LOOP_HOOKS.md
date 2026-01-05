@@ -8,7 +8,7 @@
 |------|---------|---------|
 | 动态更新 System Prompt | 历史 steps、工具结果 | messages |
 | 注入工具上下文 | tools、当前状态 | messages (临时) |
-| 保存到 Memory | 完整执行历史、output | 外部存储 |
+| 保存到外部存储 | 完整执行历史、output | 外部存储 |
 | 动态工具选择 | 当前迭代、历史 | tool_schemas |
 
 **关键洞察**：Hook 需要区分 **持久修改**（影响后续所有调用）和 **临时注入**（仅本次 LLM 调用）
@@ -278,7 +278,7 @@ class AgentHook(ABC):
         Use cases:
         - Initialize ctx.store with custom state
         - Set up initial system prompt based on session history
-        - Load context from external memory
+        - Load context from external store
         """
         pass
 
@@ -357,7 +357,7 @@ class AgentHook(ABC):
             Modified output (or original if no changes needed)
         
         Use cases:
-        - Save execution to memory/database
+        - Save execution to database
         - Post-process response content
         - Add custom metadata to output
         """
@@ -674,35 +674,30 @@ class ContextInjectionHook(AgentHook):
         )
 ```
 
-### 用例 3: Memory 持久化
+### 用例 3: 运行结果持久化
 
 ```python
-class MemoryPersistenceHook(AgentHook):
-    """将执行结果保存到 Memory"""
+class PersistenceHook(AgentHook):
+    """将执行结果保存到持久化存储"""
     
-    def __init__(self, memory_store: "MemoryStore"):
-        self.memory_store = memory_store
+    def __init__(self, store):
+        self.store = store
     
     async def on_run_start(self, ctx: HookContext) -> None:
         # 加载历史上下文
-        history = await self.memory_store.load(ctx.session_id)
+        history = await self.store.load(ctx.session_id)
         if history:
             ctx.append_to_system_prompt(f"## 历史上下文\n{history}")
     
     async def on_run_end(self, ctx: HookContext, output: RunOutput) -> RunOutput:
         # 保存本次执行摘要
         summary = self._build_summary(ctx)
-        await self.memory_store.save(
+        await self.store.save(
             session_id=ctx.session_id,
             run_id=ctx.run_id,
             summary=summary,
-            steps=ctx.steps,
-            output=output,
         )
         return output
-    
-    def _build_summary(self, ctx: HookContext) -> str:
-        tool_names = [s.name for s in ctx.get_tool_steps()]
         return f"Used tools: {tool_names}, Tokens: {ctx.total_tokens}"
 ```
 

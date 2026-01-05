@@ -5,7 +5,6 @@ import { Waterfall } from '../components/Waterfall';
 
 interface TraceDetail {
   trace_id: string;
-  workflow_id: string | null;
   agent_id: string | null;
   session_id: string | null;
   user_id: string | null;
@@ -103,7 +102,7 @@ export default function TraceDetail() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-white">
-              {trace.workflow_id || trace.agent_id || 'Trace'}
+              {trace.agent_id || 'Trace'}
             </h1>
             <p className="text-sm text-gray-400 font-mono mt-1">
               {trace.trace_id}

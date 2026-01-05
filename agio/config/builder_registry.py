@@ -56,24 +56,18 @@ class BuilderRegistry:
         from agio.config.builders import (
             AgentBuilder,
             CitationStoreBuilder,
-            KnowledgeBuilder,
-            MemoryBuilder,
             ModelBuilder,
             SessionStoreBuilder,
             ToolBuilder,
             TraceStoreBuilder,
-            WorkflowBuilder,
         )
 
         self.register(ComponentType.MODEL, ModelBuilder())
         self.register(ComponentType.TOOL, ToolBuilder())
-        self.register(ComponentType.MEMORY, MemoryBuilder())
-        self.register(ComponentType.KNOWLEDGE, KnowledgeBuilder())
         self.register(ComponentType.SESSION_STORE, SessionStoreBuilder())
         self.register(ComponentType.TRACE_STORE, TraceStoreBuilder())
         self.register(ComponentType.CITATION_STORE, CitationStoreBuilder())
         self.register(ComponentType.AGENT, AgentBuilder())
-        self.register(ComponentType.WORKFLOW, WorkflowBuilder())
 
         logger.debug("Registered default builders")
 

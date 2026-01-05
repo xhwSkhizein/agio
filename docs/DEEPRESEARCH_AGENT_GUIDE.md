@@ -12,7 +12,6 @@
 2. [环境准备](#环境准备)
 3. [配置系统初始化](#配置系统初始化)
 4. [创建 DeepResearch Agent](#创建-deepresearch-agent)
-5. [创建多阶段研究 Workflow（可选）](#创建多阶段研究-workflow可选)
 6. [使用示例](#使用示例)
 7. [最佳实践和优化建议](#最佳实践和优化建议)
 8. [故障排查](#故障排查)
@@ -99,7 +98,6 @@ deepresearch-project/
 │   ├── models/                # 模型配置
 │   ├── tools/                 # 工具配置
 │   ├── agents/               # Agent 配置
-│   ├── workflows/            # Workflow 配置（可选）
 │   └── storages/             # 存储配置
 │       ├── session_stores/
 │       └── citation_stores/
@@ -527,114 +525,6 @@ enable_skills: false
 
 ---
 
-## 创建多阶段研究 Workflow（可选）
-
-对于更复杂的研究场景，可以使用 Workflow 来编排多阶段研究流程。
-
-### Pipeline Workflow 示例
-
-创建 `configs/workflows/deepresearch_pipeline.yaml`：
-
-```yaml
-type: workflow
-name: deepresearch_pipeline
-description: "Multi-stage deep research pipeline"
-workflow_type: pipeline
-enabled: true
-tags:
-  - research
-  - pipeline
-  - multi-stage
-
-stages:
-  # Stage 1: Initial Research
-  - id: initial_research
-    runnable: collector
-    input: |
-      MISSION: Conduct initial research on {{ input }}
-      FOCUS: Find authoritative sources and recent developments
-      AVOID: Marketing pages and low-quality sources
-
-  # Stage 2: Deep Dive
-  - id: deep_dive
-    runnable: collector
-    input: |
-      MISSION: Deep dive into specific aspects mentioned in the initial research
-      CONTEXT: {{ nodes.initial_research.output }}
-      FOCUS: Technical details, implementation, and case studies
-
-  # Stage 3: Synthesis
-  - id: synthesis
-    runnable: master_orchestrator
-    input: |
-      Synthesize the following research findings into a comprehensive report:
-      
-      Initial Research:
-      {{ nodes.initial_research.output }}
-      
-      Deep Dive:
-      {{ nodes.deep_dive.output }}
-      
-      Generate a final research report with all findings, analysis, and sources.
-
-session_store: mongodb_session_store
-```
-
-### Parallel Workflow 示例
-
-创建 `configs/workflows/parallel_research.yaml`：
-
-```yaml
-type: workflow
-name: parallel_research
-description: "Parallel research from multiple angles"
-workflow_type: parallel
-enabled: true
-tags:
-  - research
-  - parallel
-  - multi-angle
-
-stages:
-  # Parallel research from different angles
-  - id: academic_research
-    runnable: collector
-    input: |
-      MISSION: Search for academic papers and research articles on {{ input }}
-      FOCUS: Peer-reviewed sources, academic databases
-
-  - id: industry_research
-    runnable: collector
-    input: |
-      MISSION: Search for industry reports and news on {{ input }}
-      FOCUS: Industry publications, news articles, official announcements
-
-  - id: technical_research
-    runnable: collector
-    input: |
-      MISSION: Search for technical documentation and implementation guides on {{ input }}
-      FOCUS: Official documentation, technical blogs, GitHub repositories
-
-merge_template: |
-  # Research Report: {{ input }}
-
-  ## Academic Research
-  {{ nodes.academic_research.output }}
-
-  ## Industry Research
-  {{ nodes.industry_research.output }}
-
-  ## Technical Research
-  {{ nodes.technical_research.output }}
-
-  ## Synthesis
-  [Master Orchestrator will synthesize these findings]
-
-session_store: mongodb_session_store
-```
-
----
-
 ## 使用示例
 
 ### 方式一：使用 Python API
@@ -852,7 +742,7 @@ ConfigError: Circular dependency detected
 **解决方案**:
 - 检查配置中的依赖关系
 - 移除循环依赖
-- 使用 `agent_tool` 或 `workflow_tool` 替代直接依赖
+- 使用 `agent_tool` 替代直接依赖
 
 ### 调试技巧
 
@@ -893,15 +783,13 @@ ConfigError: Circular dependency detected
 1. **配置驱动**：通过 YAML 配置文件定义所有组件
 2. **工具系统**：利用内置工具（web_search、web_fetch）进行信息收集
 3. **灵活架构**：支持单 Agent 和多 Agent 架构
-4. **工作流编排**：使用 Workflow 实现复杂的研究流程
-5. **可观测性**：完整的执行追踪和事件流
+4. **可观测性**：完整的执行追踪和事件流
 
 **下一步**：
 
 - 根据实际需求调整系统提示词
 - 优化工具使用策略
 - 探索多 Agent 协作模式
-- 使用 Workflow 实现更复杂的研究流程
 
 ---
 

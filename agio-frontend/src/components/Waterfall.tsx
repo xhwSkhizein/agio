@@ -31,16 +31,12 @@ const MIN_BAR_WIDTH = 4;
 const TIMELINE_MIN_WIDTH = 600;
 
 const KIND_COLORS: Record<string, string> = {
-  workflow: 'bg-purple-500',
-  stage: 'bg-blue-500',
   agent: 'bg-green-500',
   llm_call: 'bg-amber-500',
-  tool_call: 'bg-cyan-500',
+  tool_call: 'bg-orange-500',
 };
 
 const KIND_ICONS: Record<string, string> = {
-  workflow: '⚙️',
-  stage: '📋',
   agent: '🤖',
   llm_call: '💬',
   tool_call: '🔧',

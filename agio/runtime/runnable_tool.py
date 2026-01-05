@@ -1,5 +1,5 @@
 """
-RunnableTool - Adapter to convert Runnable (Agent/Workflow) into Tool.
+RunnableTool - Adapter to convert Runnable (Agent) into Tool.
 
 This module provides:
 - RunnableTool: Adapter class that wraps a Runnable as a Tool
@@ -20,7 +20,6 @@ from typing import Any
 from uuid import uuid4
 
 from agio.domain import ToolResult
-from agio.runtime import RunnableExecutor
 from agio.runtime.control import AbortSignal
 from agio.runtime.protocol import ExecutionContext, Runnable
 from agio.storage.session.base import SessionStore
@@ -44,7 +43,7 @@ class MaxDepthExceededError(Exception):
 
 class RunnableTool(BaseTool):
     """
-    Adapter that converts a Runnable (Agent/Workflow) into a Tool.
+    Adapter that converts a Runnable (Agent) into a Tool.
 
     Features:
     1. Supports event callback for streaming nested execution events
@@ -74,7 +73,7 @@ class RunnableTool(BaseTool):
         Initialize RunnableTool.
 
         Args:
-            runnable: The Runnable instance to wrap (Agent or Workflow)
+            runnable: The Runnable instance to wrap (Agent)
             description: Tool description for LLM
             name: Tool name, defaults to call_{runnable.id}
             max_depth: Maximum nesting depth allowed (default: 5)
@@ -99,7 +98,7 @@ class RunnableTool(BaseTool):
             "properties": {
                 "task": {
                     "type": "string",
-                    "description": "The task to delegate to this agent/workflow",
+                    "description": "The task to delegate to this agent",
                 },
                 "context": {
                     "type": "string",
@@ -169,23 +168,21 @@ class RunnableTool(BaseTool):
         child_context = context.child(
             run_id=run_id,
             nested_runnable_id=self.runnable.id,
-            # session_id will be inherited from parent context
             runnable_type=self.runnable.runnable_type,
             runnable_id=self.runnable.id,
             nesting_type="tool_call",
             metadata={
-                "_call_stack": call_stack,  # Pass call stack for nested detection
+                "_call_stack": call_stack,
             },
         )
 
         # Execute nested Runnable via RunnableExecutor
-        # This ensures RUN_STARTED/COMPLETED events are emitted
+        from agio.runtime import RunnableExecutor
 
         output = ""
         error = None
 
         try:
-            # Use RunnableExecutor to handle Run lifecycle events
             executor = RunnableExecutor(store=self.session_store)
             result = await executor.execute(self.runnable, input_text, child_context)
             output = result.response or ""
@@ -215,6 +212,24 @@ class RunnableTool(BaseTool):
             is_success=error is None,
         )
 
+    def _create_error_result(
+        self, parameters: dict[str, Any], error_msg: str, start_time: float
+    ) -> ToolResult:
+        """Create error ToolResult."""
+        end_time = time.time()
+        return ToolResult(
+            tool_name=self.get_name(),
+            tool_call_id=parameters.get("tool_call_id", ""),
+            input_args=parameters,
+            content=error_msg,
+            output=error_msg,
+            error=error_msg,
+            start_time=start_time,
+            end_time=end_time,
+            duration=end_time - start_time,
+            is_success=False,
+        )
+
 
 def as_tool(
     runnable: Runnable,
@@ -224,7 +239,7 @@ def as_tool(
     session_store: "SessionStore | None" = None,
 ) -> RunnableTool:
     """
-    Convert a Runnable (Agent/Workflow) to a Tool.
+    Convert a Runnable (Agent) to a Tool.
 
     This is a convenience factory function.
 
@@ -233,7 +248,7 @@ def as_tool(
         orchestra = Agent(model=gpt4, tools=[research_tool])
 
     Args:
-        runnable: Agent or Workflow instance
+        runnable: Agent instance
         description: Tool description for LLM reference
         name: Tool name, defaults to call_{runnable.id}
         max_depth: Maximum nesting depth allowed (default: 5)

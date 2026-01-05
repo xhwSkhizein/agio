@@ -203,32 +203,6 @@ function testParseBlockCRLF(): void {
   console.log('✓ testParseBlockCRLF passed')
 }
 
-/**
- * Test: Real-world workflow SSE data with CRLF
- */
-function testRealWorldWorkflowCRLF(): void {
-  // Simulate actual SSE data from workflow API
-  const buffer = 
-    'event: run_started\r\n' +
-    'data: {"type":"run_started","run_id":"abc-123","step_id":null,"delta":null}\r\n\r\n' +
-    'event: stage_started\r\n' +
-    'data: {"type":"stage_started","stage_id":"research"}\r\n\r\n' +
-    'event: step_delta\r\n' +
-    'data: {"type":"step_delta","step_id":"step-1","delta":{"content":"Hello"}}\r\n\r\n'
-  
-  const result = parseSSEBuffer(buffer)
-  
-  assertEqual(result.events.length, 3, 'Should have 3 events')
-  assertEqual(result.events[0].event, 'run_started', 'First event')
-  assertEqual(result.events[1].event, 'stage_started', 'Second event')
-  assertEqual(result.events[2].event, 'step_delta', 'Third event')
-  
-  // Verify data can be parsed as JSON
-  const deltaData = JSON.parse(result.events[2].data)
-  assertEqual(deltaData.delta.content, 'Hello', 'Delta content should be parseable')
-  
-  console.log('✓ testRealWorldWorkflowCRLF passed')
-}
 
 /**
  * Test: Streaming simulation - data arrives in chunks
@@ -293,7 +267,6 @@ export function testAll(): void {
     testParseBlockCRLF()
     
     // Real-world scenarios
-    testRealWorldWorkflowCRLF()
     testStreamingChunks()
     
     console.log('\n✅ All SSE Parser tests passed!')

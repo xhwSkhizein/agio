@@ -10,13 +10,10 @@ from agio.config.exceptions import ComponentBuildError
 from agio.config.schema import (
     AgentConfig,
     CitationStoreConfig,
-    KnowledgeConfig,
-    MemoryConfig,
     ModelConfig,
     SessionStoreConfig,
     ToolConfig,
     TraceStoreConfig,
-    WorkflowConfig,
 )
 
 
@@ -240,30 +237,6 @@ class ToolBuilder(ComponentBuilder):
         return valid_params
 
 
-class MemoryBuilder(ComponentBuilder):
-    """Builder for memory components."""
-
-    async def build(self, config: MemoryConfig, dependencies: dict[str, Any]) -> Any:
-        """Build memory instance."""
-        # Memory components are not yet implemented
-        raise ComponentBuildError(
-            f"Memory components are not yet implemented. "
-            f"Failed to build memory {config.name}"
-        )
-
-
-class KnowledgeBuilder(ComponentBuilder):
-    """Builder for knowledge components."""
-
-    async def build(self, config: KnowledgeConfig, dependencies: dict[str, Any]) -> Any:
-        """Build knowledge instance."""
-        # Knowledge components are not yet implemented
-        raise ComponentBuildError(
-            f"Knowledge components are not yet implemented. "
-            f"Failed to build knowledge {config.name}"
-        )
-
-
 class SessionStoreBuilder(ComponentBuilder):
     """Builder for session store components (stores Run and Step data)."""
 
@@ -341,13 +314,6 @@ class AgentBuilder(ComponentBuilder):
                 "termination_summary_prompt": config.termination_summary_prompt,
             }
 
-            # Add optional dependencies
-            if "memory" in dependencies:
-                kwargs["memory"] = dependencies["memory"]
-
-            if "knowledge" in dependencies:
-                kwargs["knowledge"] = dependencies["knowledge"]
-
             if "session_store" in dependencies:
                 kwargs["session_store"] = dependencies["session_store"]
 
@@ -381,98 +347,6 @@ class AgentBuilder(ComponentBuilder):
 
         except Exception as e:
             raise ComponentBuildError(f"Failed to build agent {config.name}: {e}")
-
-
-class WorkflowBuilder(ComponentBuilder):
-    """Builder for workflow components."""
-
-    async def build(self, config: WorkflowConfig, dependencies: dict[str, Any]) -> Any:
-        """
-        Build workflow instance.
-
-        Dependencies:
-            - _all_instances: dict of all component instances (agents, etc.)
-        """
-        try:
-            from agio.workflow import (
-                LoopWorkflow,
-                ParallelWorkflow,
-                PipelineWorkflow,
-            )
-            from agio.workflow.node import WorkflowNode
-
-            # Get all instances as registry (passed from ConfigSystem)
-            registry = dependencies.get("_all_instances", {})
-
-            # Get session_store from dependencies (resolved by ConfigSystem)
-            session_store = dependencies.get("session_store")
-
-            # Build stages
-            stages = []
-            for stage_config in config.stages:
-                # Handle inline workflow config
-                runnable_ref = stage_config.runnable
-                if isinstance(runnable_ref, dict):
-                    # Recursively build nested workflow
-                    # Inherit session_store from parent if not specified
-                    nested_config_dict = dict(runnable_ref)
-                    if (
-                        "session_store" not in nested_config_dict
-                        and config.session_store
-                    ):
-                        nested_config_dict["session_store"] = config.session_store
-
-                    nested_config = WorkflowConfig(
-                        name=nested_config_dict.get("id", f"{config.name}_nested"),
-                        **nested_config_dict,
-                    )
-                    nested_workflow = await self.build(nested_config, dependencies)
-                    registry[nested_workflow.id] = nested_workflow
-                    runnable_ref = nested_workflow.id
-
-                stages.append(
-                    WorkflowNode(
-                        id=stage_config.id,
-                        runnable=runnable_ref,
-                        input_template=stage_config.input,
-                        condition=stage_config.condition,
-                    )
-                )
-
-            # Build workflow based on type
-            if config.workflow_type == "pipeline":
-                workflow = PipelineWorkflow(
-                    id=config.name,
-                    stages=stages,
-                    session_store=session_store,
-                )
-            elif config.workflow_type == "loop":
-                workflow = LoopWorkflow(
-                    id=config.name,
-                    stages=stages,
-                    condition=config.condition or "true",
-                    max_iterations=config.max_iterations,
-                    session_store=session_store,
-                )
-            elif config.workflow_type == "parallel":
-                workflow = ParallelWorkflow(
-                    id=config.name,
-                    stages=stages,
-                    merge_template=config.merge_template,
-                    session_store=session_store,
-                )
-            else:
-                raise ComponentBuildError(
-                    f"Unknown workflow type: {config.workflow_type}"
-                )
-
-            # Set registry so workflow can resolve runnable references
-            workflow.set_registry(registry)
-
-            return workflow
-
-        except Exception as e:
-            raise ComponentBuildError(f"Failed to build workflow {config.name}: {e}")
 
 
 class TraceStoreBuilder(ComponentBuilder):

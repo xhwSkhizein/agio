@@ -231,9 +231,6 @@ class MongoSessionStore(SessionStore):
         start_seq: int | None = None,
         end_seq: int | None = None,
         run_id: str | None = None,
-        workflow_id: str | None = None,
-        node_id: str | None = None,
-        branch_key: str | None = None,
         runnable_id: str | None = None,
         limit: int = 1000,
     ) -> list[Step]:
@@ -252,12 +249,6 @@ class MongoSessionStore(SessionStore):
 
             if run_id is not None:
                 query["run_id"] = run_id
-            if workflow_id is not None:
-                query["workflow_id"] = workflow_id
-            if node_id is not None:
-                query["node_id"] = node_id
-            if branch_key is not None:
-                query["branch_key"] = branch_key
             if runnable_id is not None:
                 query["runnable_id"] = runnable_id
 

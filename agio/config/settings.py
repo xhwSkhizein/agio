@@ -62,7 +62,7 @@ class AgioSettings(BaseSettings):
 
     # Skills configuration
     skills_dirs: list[str] = Field(
-        default_factory=lambda: ["skills", "~/.agio/skills"],
+        default_factory=lambda: ["examples/skills", "~/.agio/skills"],
         description="Skill directories to scan",
     )
 

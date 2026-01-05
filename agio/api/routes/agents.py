@@ -18,7 +18,6 @@ class ToolInfo(BaseModel):
     type: str
     name: str | None = None
     agent: str | None = None
-    workflow: str | None = None
     description: str | None = None
 
 
@@ -26,8 +25,6 @@ class AgentResponse(BaseModel):
     name: str
     model: str
     tools: list[ToolInfo] = []
-    memory: str | None = None
-    knowledge: str | None = None
     system_prompt: str | None = None
     tags: list[str] = []
 
@@ -62,10 +59,9 @@ async def list_agents(
         parsed_tools = parse_tool_references(tools_config)
         tools = [
             ToolInfo(
-                type=t.type,
-                name=t.name,
-                agent=t.agent,
-                workflow=t.workflow,
+                type=t.tool_type,
+                name=t.tool_name,
+                agent=t.agent_name,
                 description=t.description,
             )
             for t in parsed_tools
@@ -76,8 +72,6 @@ async def list_agents(
                 name=config.get("name"),
                 model=config.get("model"),
                 tools=tools,
-                memory=config.get("memory"),
-                knowledge=config.get("knowledge"),
                 system_prompt=config.get("system_prompt"),
                 tags=config.get("tags", []),
             )
@@ -107,10 +101,9 @@ async def get_agent(
     parsed_tools = parse_tool_references(tools_config)
     tools = [
         ToolInfo(
-            type=t.type,
-            name=t.name,
-            agent=t.agent,
-            workflow=t.workflow,
+            type=t.tool_type,
+            name=t.tool_name,
+            agent=t.agent_name,
             description=t.description,
         )
         for t in parsed_tools
@@ -120,8 +113,6 @@ async def get_agent(
         name=config.get("name"),
         model=config.get("model"),
         tools=tools,
-        memory=config.get("memory"),
-        knowledge=config.get("knowledge"),
         system_prompt=config.get("system_prompt"),
         tags=config.get("tags", []),
     )

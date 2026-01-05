@@ -128,7 +128,6 @@ async def build_context_from_steps(
     session_store: SessionStore,
     system_prompt: str | None = None,
     run_id: str | None = None,
-    workflow_id: str | None = None,
     node_id: str | None = None,
     runnable_id: str | None = None,
 ) -> list[dict]:
@@ -139,7 +138,7 @@ async def build_context_from_steps(
 
 1. **查询 Steps**：
    - 从 SessionStore 查询历史 Steps
-   - 支持过滤条件（run_id, workflow_id, node_id, runnable_id）
+   - 支持过滤条件（run_id, node_id, runnable_id）
 
 2. **转换为消息**：
    - 使用 `StepAdapter.steps_to_messages()` 转换
@@ -150,7 +149,6 @@ async def build_context_from_steps(
 
 **过滤选项**：
 - `run_id`: 仅包含特定 Run 的 Steps（用于隔离 Agent 上下文）
-- `workflow_id`: 仅包含特定 Workflow 的 Steps
 - `node_id`: 仅包含特定节点的 Steps
 - `runnable_id`: 仅包含特定 Runnable 的 Steps
 

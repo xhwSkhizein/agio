@@ -59,18 +59,6 @@ function testGetToolDisplayName() {
     'Should return agent name for agent_tool'
   )
   
-  // ToolInfo with workflow (workflow_tool)
-  const workflowTool: ToolInfo = {
-    type: 'workflow_tool',
-    workflow: 'data_pipeline',
-    description: 'Data processing workflow'
-  }
-  assertEquals(
-    getToolDisplayName(workflowTool),
-    'data_pipeline',
-    'Should return workflow name for workflow_tool'
-  )
-  
   // ToolInfo with no identifiers
   const unknownTool: ToolInfo = {
     type: 'custom',
@@ -141,12 +129,11 @@ function testToolsToString() {
   // ToolInfo objects only
   const tools: ToolInfo[] = [
     { type: 'function', name: 'grep' },
-    { type: 'agent_tool', agent: 'researcher' },
-    { type: 'workflow_tool', workflow: 'pipeline' }
+    { type: 'agent_tool', agent: 'researcher' }
   ]
   assertEquals(
     toolsToString(tools),
-    'grep, researcher, pipeline',
+    'grep, researcher',
     'Should extract names from ToolInfo objects'
   )
   
@@ -154,12 +141,11 @@ function testToolsToString() {
   const mixedTools: (string | ToolInfo)[] = [
     'web_search',
     { type: 'agent_tool', agent: 'analyst' },
-    'file_read',
-    { type: 'workflow_tool', workflow: 'etl' }
+    'file_read'
   ]
   assertEquals(
     toolsToString(mixedTools),
-    'web_search, analyst, file_read, etl',
+    'web_search, analyst, file_read',
     'Should handle mixed array of strings and ToolInfo'
   )
   
@@ -246,17 +232,6 @@ function testGetToolTypeLabel() {
     'Should return "Agent" for agent_tool type'
   )
   
-  // Workflow tool
-  const workflowTool: ToolInfo = {
-    type: 'workflow_tool',
-    workflow: 'pipeline'
-  }
-  assertEquals(
-    getToolTypeLabel(workflowTool),
-    'Workflow',
-    'Should return "Workflow" for workflow_tool type'
-  )
-  
   // Unknown type
   const customTool: ToolInfo = {
     type: 'custom_type',
@@ -314,8 +289,7 @@ function testEdgeCases() {
   const toolWithNulls: ToolInfo = {
     type: 'function',
     name: null,
-    agent: null,
-    workflow: null
+    agent: null
   }
   assertEquals(
     getToolDisplayName(toolWithNulls),

@@ -16,8 +16,6 @@ async def build_context_from_steps(
     session_store: "SessionStore",
     system_prompt: str | None = None,
     run_id: str | None = None,
-    workflow_id: str | None = None,
-    node_id: str | None = None,
     runnable_id: str | None = None,
 ) -> list[dict]:
     """
@@ -28,8 +26,6 @@ async def build_context_from_steps(
         session_store: Repository to fetch steps from
         system_prompt: Optional system prompt to prepend
         run_id: Filter by run_id (optional, for isolating agent context)
-        workflow_id: Filter by workflow_id (optional)
-        node_id: Filter by node_id (optional)
         runnable_id: Filter by runnable_id (optional, for isolating agent steps)
 
     Returns:
@@ -39,8 +35,6 @@ async def build_context_from_steps(
         "building_context",
         session_id=session_id,
         run_id=run_id,
-        workflow_id=workflow_id,
-        node_id=node_id,
         runnable_id=runnable_id,
     )
 
@@ -48,8 +42,6 @@ async def build_context_from_steps(
     steps = await session_store.get_steps(
         session_id=session_id,
         run_id=run_id,
-        workflow_id=workflow_id,
-        node_id=node_id,
         runnable_id=runnable_id,
     )
 
@@ -74,8 +66,6 @@ async def build_context_from_sequence_range(
     end_seq: int | None = None,
     system_prompt: str | None = None,
     run_id: str | None = None,
-    workflow_id: str | None = None,
-    node_id: str | None = None,
     runnable_id: str | None = None,
 ) -> list[dict]:
     """
@@ -88,8 +78,6 @@ async def build_context_from_sequence_range(
         end_seq: End sequence (inclusive), None = to end
         system_prompt: Optional system prompt
         run_id: Filter by run_id (optional)
-        workflow_id: Filter by workflow_id (optional)
-        node_id: Filter by node_id (optional)
         runnable_id: Filter by runnable_id (optional)
 
     Returns:
@@ -100,8 +88,6 @@ async def build_context_from_sequence_range(
         start_seq=start_seq,
         end_seq=end_seq,
         run_id=run_id,
-        workflow_id=workflow_id,
-        node_id=node_id,
         runnable_id=runnable_id,
     )
     messages = StepAdapter.steps_to_messages(steps)

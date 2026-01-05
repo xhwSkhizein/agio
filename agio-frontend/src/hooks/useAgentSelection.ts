@@ -1,5 +1,5 @@
 /**
- * Hook for managing agent/workflow selection
+ * Hook for managing agent selection
  */
 
 import { useState, useEffect } from 'react'

@@ -120,7 +120,7 @@ class StepMetrics(BaseModel):
 
 class RunMetrics(BaseModel):
     """
-    Metrics for a single Run (Agent or Workflow).
+    Metrics for a single Run (Agent).
 
     Supports merge for aggregating metrics from child runs.
     """
@@ -138,11 +138,6 @@ class RunMetrics(BaseModel):
     steps_count: int = 0
     tool_calls_count: int = 0
     tool_errors_count: int = 0
-
-    # Workflow-specific
-    nodes_executed: int = 0
-    branches_executed: int = 0  # ParallelWorkflow
-    iterations: int = 0  # LoopWorkflow
 
     # Latency
     first_token_latency: float | None = None
@@ -217,8 +212,8 @@ class Step(BaseModel):
     sequence: int  # Global sequence within session (1, 2, 3, ...)
 
     # --- Runnable Binding (for unified Fork/Resume) ---
-    runnable_id: str | None = None  # Agent ID or Workflow ID that created this step
-    runnable_type: str | None = None  # "agent" or "workflow"
+    runnable_id: str | None = None  # Agent ID that created this step
+    runnable_type: str | None = None  # "agent"
 
     # --- Core Content (Standard LLM Message) ---
     role: MessageRole
@@ -241,20 +236,14 @@ class Step(BaseModel):
     metrics: StepMetrics | None = None
     created_at: datetime = Field(default_factory=datetime.now)
 
-    # --- Multi-Agent Context (new) ---
-    workflow_id: str | None = None  # Parent workflow ID
-
-    # --- Workflow Node Tracking (new) ---
-    node_id: str | None = None  # Corresponding WorkflowNode.id
+    # --- Multi-Agent Context ---
     parent_run_id: str | None = None  # Parent run ID for nested executions
-    branch_key: str | None = None  # Branch identifier for parallel execution
-    iteration: int | None = None  # Loop iteration number (1-based)
 
     # --- Observability (new) ---
     trace_id: str | None = None  # Trace ID for distributed tracing
     span_id: str | None = None  # Span ID
     parent_span_id: str | None = None  # Parent span ID
-    depth: int = 0  # Nesting depth in workflow
+    depth: int = 0  # Nesting depth
 
     # --- LLM Call Context (for assistant steps) ---
     llm_messages: list[dict[str, Any]] | None = (
@@ -306,7 +295,7 @@ class AgentRunSummary(BaseModel):
 
 class Run(BaseModel):
     """
-    Unified Run metadata for Agent and Workflow.
+    Unified Run metadata for Agent.
 
     Run 是轻量级的元数据记录，主要用于：
     1. 快速查询历史记录
@@ -317,8 +306,8 @@ class Run(BaseModel):
     """
 
     id: str = Field(default_factory=lambda: str(uuid4()))
-    runnable_id: str  # Agent or Workflow ID
-    runnable_type: str = "agent"  # "agent" or "workflow"
+    runnable_id: str  # Agent ID
+    runnable_type: str = "agent"  # "agent"
     session_id: str  # Associated Steps' session_id
     user_id: str | None = None
 
@@ -333,7 +322,6 @@ class Run(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.now)
 
     # --- Multi-Agent Context ---
-    workflow_id: str | None = None  # Parent workflow ID
     parent_run_id: str | None = None  # Parent run ID for nested executions
 
     # --- Observability ---

@@ -24,7 +24,6 @@ class TraceSummary(BaseModel):
     """Trace summary for list display"""
 
     trace_id: str
-    workflow_id: str | None
     agent_id: str | None
     session_id: str | None
     start_time: datetime
@@ -61,7 +60,6 @@ class TraceDetail(BaseModel):
     """Trace detail with full information"""
 
     trace_id: str
-    workflow_id: str | None
     agent_id: str | None
     session_id: str | None
     user_id: str | None
@@ -138,7 +136,6 @@ class LLMCallSummary(BaseModel):
 
 @router.get("/", response_model=list[TraceSummary])
 async def list_traces(
-    workflow_id: str | None = None,
     agent_id: str | None = None,
     session_id: str | None = None,
     status: str | None = None,
@@ -158,7 +155,6 @@ async def list_traces(
     """
     store = get_trace_store(config_sys=config_system)
     query = TraceQuery(
-        workflow_id=workflow_id,
         agent_id=agent_id,
         session_id=session_id,
         status=SpanStatus(status) if status else None,
@@ -296,7 +292,6 @@ def _to_summary(trace: Trace) -> TraceSummary:
     """Convert Trace to TraceSummary"""
     return TraceSummary(
         trace_id=trace.trace_id,
-        workflow_id=trace.workflow_id,
         agent_id=trace.agent_id,
         session_id=trace.session_id,
         start_time=trace.start_time,
@@ -315,7 +310,6 @@ def _to_detail(trace: Trace) -> TraceDetail:
     """Convert Trace to TraceDetail"""
     return TraceDetail(
         trace_id=trace.trace_id,
-        workflow_id=trace.workflow_id,
         agent_id=trace.agent_id,
         session_id=trace.session_id,
         user_id=trace.user_id,

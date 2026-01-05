@@ -73,8 +73,6 @@ class StepFactory:
                 overrides.get("runnable_type", self._ctx.runnable_type)
             ),
             # Extract metadata from ExecutionContext
-            workflow_id=overrides.get("workflow_id", self._ctx.workflow_id),
-            node_id=overrides.get("node_id", self._ctx.node_id),
             parent_run_id=overrides.get("parent_run_id", self._ctx.parent_run_id),
             branch_key=overrides.get(
                 "branch_key", self._ctx.metadata.get("branch_key")
@@ -115,8 +113,6 @@ class StepFactory:
                 overrides.get("runnable_type", self._ctx.runnable_type)
             ),
             # Extract metadata from ExecutionContext
-            workflow_id=overrides.get("workflow_id", self._ctx.workflow_id),
-            node_id=overrides.get("node_id", self._ctx.node_id),
             parent_run_id=overrides.get("parent_run_id", self._ctx.parent_run_id),
             branch_key=overrides.get(
                 "branch_key", self._ctx.metadata.get("branch_key")
@@ -162,8 +158,6 @@ class StepFactory:
                 overrides.get("runnable_type", self._ctx.runnable_type)
             ),
             # Extract metadata from ExecutionContext
-            workflow_id=overrides.get("workflow_id", self._ctx.workflow_id),
-            node_id=overrides.get("node_id", self._ctx.node_id),
             parent_run_id=overrides.get("parent_run_id", self._ctx.parent_run_id),
             branch_key=overrides.get(
                 "branch_key", self._ctx.metadata.get("branch_key")

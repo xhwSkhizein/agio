@@ -124,30 +124,6 @@ export function AgentConfigModal({ agent, isOpen, onClose }: AgentConfigModalPro
             />
           </div>
 
-          {/* Memory */}
-          <div>
-            <label className="block text-sm font-medium text-gray-400 mb-1">Memory</label>
-            <input
-              type="text"
-              value={config.memory || ''}
-              onChange={(e) => setConfig({ ...config, memory: e.target.value || null })}
-              className="w-full px-3 py-2 bg-background border border-border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500"
-              placeholder="Optional memory component name"
-            />
-          </div>
-
-          {/* Knowledge */}
-          <div>
-            <label className="block text-sm font-medium text-gray-400 mb-1">Knowledge</label>
-            <input
-              type="text"
-              value={config.knowledge || ''}
-              onChange={(e) => setConfig({ ...config, knowledge: e.target.value || null })}
-              className="w-full px-3 py-2 bg-background border border-border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500"
-              placeholder="Optional knowledge base name"
-            />
-          </div>
-
           {/* Tags */}
           <div>
             <label className="block text-sm font-medium text-gray-400 mb-1">

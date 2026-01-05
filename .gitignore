@@ -49,6 +49,8 @@ htmlcov/
 *.cover
 .hypothesis/
 
+.ruff_cache
+
 # mypy
 .mypy_cache/
 .dmypy.json

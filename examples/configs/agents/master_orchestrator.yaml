@@ -102,6 +102,7 @@ hooks:
 max_steps: 10
 max_tokens: 8196
 enable_memory_update: true
+enable_skills: true
 enabled: true
 tags:
   - orchestrator

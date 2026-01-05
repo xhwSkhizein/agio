@@ -681,6 +681,181 @@ class TestConfigLoaderRefactor:
             )
 
 
+class TestConfigSystemDeepDependencies:
+    """Test deep dependency resolution scenarios."""
+
+    @pytest.mark.asyncio
+    async def test_agent_tool_with_nested_dependencies(self, config_system):
+        """Test agent_tool that uses tools with unbuilt dependencies (e.g., citation_store)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            
+            # 1. Create a citation_store (will be built last in topological order)
+            citation_store_config = {
+                "type": "citation_store",
+                "name": "test_citation_store",
+                "backend": {
+                    "type": "inmemory",
+                },
+                "auto_cleanup": False,
+            }
+            with open(tmpdir / "citation_store.yaml", "w") as f:
+                yaml.dump(citation_store_config, f)
+            
+            # 2. Create a tool that depends on citation_store
+            tool_config = {
+                "type": "tool",
+                "name": "web_fetch_test",
+                "tool_name": "bash",  # Use built-in tool as base
+                "dependencies": {
+                    "citation_source_store": "test_citation_store",
+                },
+            }
+            with open(tmpdir / "web_fetch.yaml", "w") as f:
+                yaml.dump(tool_config, f)
+            
+            # 3. Create a model for agents
+            model_config = {
+                "type": "model",
+                "name": "test_model",
+                "provider": "openai",
+                "model_name": "gpt-4",
+                "api_key": "test-key",
+            }
+            with open(tmpdir / "model.yaml", "w") as f:
+                yaml.dump(model_config, f)
+            
+            # 4. Create collector agent that uses the tool
+            collector_config = {
+                "type": "agent",
+                "name": "collector_test",
+                "model": "test_model",
+                "tools": ["web_fetch_test"],
+                "system_prompt": "You are a collector.",
+            }
+            with open(tmpdir / "collector.yaml", "w") as f:
+                yaml.dump(collector_config, f)
+            
+            # 5. Create master agent that uses collector as agent_tool
+            master_config = {
+                "type": "agent",
+                "name": "master_test",
+                "model": "test_model",
+                "tools": [
+                    {
+                        "type": "agent_tool",
+                        "agent": "collector_test",
+                        "description": "Collector agent tool",
+                    }
+                ],
+                "system_prompt": "You are a master.",
+            }
+            with open(tmpdir / "master.yaml", "w") as f:
+                yaml.dump(master_config, f)
+            
+            # Load and build all
+            await config_system.load_from_directory(tmpdir)
+            stats = await config_system.build_all()
+            
+            # All components should build successfully
+            assert stats["failed"] == 0
+            assert stats["built"] >= 5  # citation_store, tool, model, collector, master
+            
+            # Verify all components are accessible
+            assert config_system.get_or_none("test_citation_store") is not None
+            assert config_system.get_or_none("web_fetch_test") is not None
+            assert config_system.get_or_none("test_model") is not None
+            assert config_system.get_or_none("collector_test") is not None
+            assert config_system.get_or_none("master_test") is not None
+
+    @pytest.mark.asyncio
+    async def test_missing_dependency_in_agent_tool_chain(self, config_system):
+        """Test error handling when a dependency in agent_tool chain is missing."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            
+            # 1. Create a tool that depends on non-existent component
+            tool_config = {
+                "type": "tool",
+                "name": "tool_with_missing_dep",
+                "tool_name": "bash",
+                "dependencies": {
+                    "missing_store": "nonexistent_store",
+                },
+            }
+            with open(tmpdir / "tool.yaml", "w") as f:
+                yaml.dump(tool_config, f)
+            
+            # 2. Create a model
+            model_config = {
+                "type": "model",
+                "name": "test_model",
+                "provider": "openai",
+                "model_name": "gpt-4",
+                "api_key": "test-key",
+            }
+            with open(tmpdir / "model.yaml", "w") as f:
+                yaml.dump(model_config, f)
+            
+            # 3. Create agent that uses the tool
+            agent_config = {
+                "type": "agent",
+                "name": "agent_with_bad_tool",
+                "model": "test_model",
+                "tools": ["tool_with_missing_dep"],
+            }
+            with open(tmpdir / "agent.yaml", "w") as f:
+                yaml.dump(agent_config, f)
+            
+            # Load configs
+            await config_system.load_from_directory(tmpdir)
+            
+            # Build should fail for agent due to missing dependency
+            stats = await config_system.build_all()
+            assert stats["failed"] >= 1  # agent should fail
+
+    @pytest.mark.asyncio
+    async def test_tool_dependency_auto_build(self, config_system):
+        """Test that tool dependencies are automatically built when needed."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            
+            # Create session_store
+            session_store_config = {
+                "type": "session_store",
+                "name": "auto_session_store",
+                "backend": {
+                    "type": "inmemory",
+                },
+            }
+            with open(tmpdir / "session_store.yaml", "w") as f:
+                yaml.dump(session_store_config, f)
+            
+            # Create tool that depends on session_store
+            tool_config = {
+                "type": "tool",
+                "name": "tool_auto_build",
+                "tool_name": "bash",
+                "dependencies": {
+                    "store": "auto_session_store",
+                },
+            }
+            with open(tmpdir / "tool.yaml", "w") as f:
+                yaml.dump(tool_config, f)
+            
+            # Load configs
+            await config_system.load_from_directory(tmpdir)
+            
+            # Build should succeed with auto-building of dependencies
+            stats = await config_system.build_all()
+            assert stats["failed"] == 0
+            assert stats["built"] == 2  # session_store + tool
+            
+            # Both should be accessible
+            assert config_system.get_or_none("auto_session_store") is not None
+            assert config_system.get_or_none("tool_auto_build") is not None
+
+
 class TestConfigSystemConcurrency:
     """Concurrency regression tests."""
 

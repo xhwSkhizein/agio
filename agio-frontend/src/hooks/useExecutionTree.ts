@@ -55,27 +55,14 @@ function buildExecutionTreeFromSteps(steps: BackendStep[]): ExecutionTree {
     const lastTimestamp = new Date(lastStep.created_at).getTime()
     
     // Determine runnable type
-    const runnableType = (firstStep.runnable_type === 'workflow' ? 'workflow' : 'agent') as 'agent' | 'workflow'
-    
-    // Determine workflow type
-    let workflowType: 'pipeline' | 'parallel' | 'loop' | undefined = undefined
-    if (runnableType === 'workflow' && firstStep.workflow_id) {
-      // Try to infer workflow type from branch_key or node_id patterns
-      // This is a heuristic - ideally workflow_type should be stored in Run metadata
-      if (firstStep.branch_key) {
-        workflowType = 'parallel'
-      } else if (firstStep.node_id) {
-        // Could be pipeline or loop - default to pipeline
-        workflowType = 'pipeline'
-      }
-    }
+    const runnableType = 'agent' as const
     
     // Determine nesting type
-    let nestingType: 'tool_call' | 'workflow_node' | undefined = undefined
+    let nestingType: 'tool_call' | undefined = undefined
     if (firstStep.parent_run_id) {
       // Check if this is a tool_call nested execution
       // We'll determine this when linking parent-child relationships
-      nestingType = 'workflow_node' // Default for now
+      nestingType = 'tool_call'
     }
     
     const exec: RunnableExecution = {
@@ -85,9 +72,6 @@ function buildExecutionTreeFromSteps(steps: BackendStep[]): ExecutionTree {
       nestingType,
       parentRunId: firstStep.parent_run_id || undefined,
       depth: firstStep.depth || 0,
-      workflowType,
-      nodeId: firstStep.node_id || undefined,
-      branchId: firstStep.branch_key || undefined,
       status: 'completed',
       steps: [],
       children: [],
@@ -124,8 +108,7 @@ function buildExecutionTreeFromSteps(steps: BackendStep[]): ExecutionTree {
             stepId: step.id,
             content: step.content || '',
             reasoning_content: step.reasoning_content || undefined,
-            // Note: metrics not available in BackendStep currently
-            // Can be added later if needed from backend API
+            metrics: step.metrics,
           })
         }
         
@@ -170,9 +153,11 @@ function buildExecutionTreeFromSteps(steps: BackendStep[]): ExecutionTree {
       parent.children.push(exec)
       
       // Determine nesting type based on tool calls
-      // If parent has a tool_call that matches this execution's runnableId, it's a tool_call nesting
+      // Find the first tool_call that matches this execution's runnableId AND doesn't have a childRunId yet
+      // This prevents matching the same tool_call multiple times when there are sequential calls to the same agent
       const matchingToolCall = parent.steps.find(
         step => step.type === 'tool_call' && 
+        !step.childRunId &&  // Only match tool_calls that haven't been linked yet
         (step.toolName.startsWith('call_') 
           ? step.toolName.slice(5) === exec.runnableId
           : step.toolName === exec.runnableId)
@@ -181,8 +166,6 @@ function buildExecutionTreeFromSteps(steps: BackendStep[]): ExecutionTree {
       if (matchingToolCall) {
         exec.nestingType = 'tool_call'
         matchingToolCall.childRunId = exec.id
-      } else {
-        exec.nestingType = 'workflow_node'
       }
     } else {
       // Root execution

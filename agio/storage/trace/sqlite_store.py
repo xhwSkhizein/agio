@@ -66,7 +66,6 @@ class SQLiteTraceStore:
             """
             CREATE TABLE IF NOT EXISTS traces (
                 trace_id TEXT PRIMARY KEY,
-                workflow_id TEXT,
                 agent_id TEXT,
                 session_id TEXT,
                 user_id TEXT,
@@ -89,9 +88,6 @@ class SQLiteTraceStore:
         # Create indexes
         await self._connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_traces_start_time ON traces(start_time)"
-        )
-        await self._connection.execute(
-            "CREATE INDEX IF NOT EXISTS idx_traces_workflow_id ON traces(workflow_id)"
         )
         await self._connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_traces_agent_id ON traces(agent_id)"
@@ -211,9 +207,6 @@ class SQLiteTraceStore:
             sql_query = "SELECT * FROM traces WHERE 1=1"
             params: list[str | int | float] = []
 
-            if query.workflow_id:
-                sql_query += " AND workflow_id = ?"
-                params.append(query.workflow_id)
             if query.agent_id:
                 sql_query += " AND agent_id = ?"
                 params.append(query.agent_id)
@@ -263,8 +256,6 @@ class SQLiteTraceStore:
         """Query from in-memory buffer"""
         results = []
         for trace in reversed(self._buffer):
-            if query.workflow_id and trace.workflow_id != query.workflow_id:
-                continue
             if query.agent_id and trace.agent_id != query.agent_id:
                 continue
             if query.session_id and trace.session_id != query.session_id:

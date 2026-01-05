@@ -164,6 +164,10 @@ class RunState:
 
         if self.config.run_timeout and self.elapsed > self.config.run_timeout:
             return "timeout"
+        
+        # Check context-level timeout (from parent tool executor)
+        if self.context.timeout_at and time.time() >= self.context.timeout_at:
+            return "timeout"
 
         if (
             self.config.max_total_tokens
@@ -326,11 +330,21 @@ class AgentExecutor:
             await self._run_loop(state, pending_tool_calls, abort_signal)
         except asyncio.CancelledError:
             state.termination_reason = "cancelled"
-        except Exception:
+            logger.info("agent_execution_cancelled", run_id=state.context.run_id)
+        except Exception as e:
             state.termination_reason = (
                 "error_with_context"
                 if state.tracker.assistant_steps_count > 0
                 else "error"
+            )
+            logger.error(
+                "agent_execution_failed",
+                run_id=state.context.run_id,
+                error=str(e),
+                error_type=type(e).__name__,
+                steps_completed=state.tracker.steps_count,
+                termination_reason=state.termination_reason,
+                exc_info=True,
             )
         finally:
             await self._maybe_generate_summary(state, abort_signal)

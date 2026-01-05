@@ -64,13 +64,10 @@ ConfigSystem (门面)
 - `ComponentConfig`: 组件配置基类
 - `ModelConfig`: 模型配置
 - `ToolConfig`: 工具配置
-- `MemoryConfig`: 内存组件配置
-- `KnowledgeConfig`: 知识库配置
 - `SessionStoreConfig`: 会话存储配置
 - `TraceStoreConfig`: 追踪存储配置
 - `CitationStoreConfig`: 引用存储配置
 - `AgentConfig`: Agent 配置
-- `WorkflowConfig`: 工作流配置
 - `StageConfig`: 工作流阶段配置
 
 **特点**:
@@ -129,9 +126,9 @@ ConfigSystem (门面)
 - `BuilderRegistry`: 构建器注册表
 
 **默认构建器**:
-- `ModelBuilder`, `ToolBuilder`, `MemoryBuilder`, `KnowledgeBuilder`
+- `ModelBuilder`, `ToolBuilder`
 - `SessionStoreBuilder`, `TraceStoreBuilder`, `CitationStoreBuilder`
-- `AgentBuilder`, `WorkflowBuilder`
+- `AgentBuilder`
 
 ---
 
@@ -150,13 +147,10 @@ ConfigSystem (门面)
   - 支持自定义工具（通过 `module` + `class_name`）
   - 处理工具配置对象（如 `FileReadConfig`）
   - 依赖注入
-- `MemoryBuilder`: 构建内存组件（Redis/InMemory）
-- `KnowledgeBuilder`: 构建知识库组件（Chroma/Pinecone）
 - `SessionStoreBuilder`: 构建会话存储（MongoDB/SQLite/InMemory）
 - `TraceStoreBuilder`: 构建追踪存储
 - `CitationStoreBuilder`: 构建引用存储
 - `AgentBuilder`: 构建 Agent 实例
-- `WorkflowBuilder`: 构建工作流实例（Pipeline/Loop/Parallel）
 
 ---
 
@@ -183,7 +177,7 @@ ConfigSystem (门面)
 **职责**: 处理组件依赖关系和拓扑排序
 
 **功能**:
-- 提取配置的依赖关系（Agent/Tool/Workflow）
+- 提取配置的依赖关系（Agent/Tool）
 - 拓扑排序（Kahn's algorithm）
 - 循环依赖检测（fail fast）
 - 获取受影响的组件列表（BFS）
@@ -213,8 +207,6 @@ ConfigSystem (门面)
 
 **Union Types**:
 - `StorageBackend`: 存储后端（用于 Session/Trace/Citation stores）
-- `CacheBackend`: 缓存后端（用于 Memory 组件）
-- `VectorBackend`: 向量数据库后端（用于 Knowledge 组件）
 
 ---
 
@@ -225,7 +217,7 @@ ConfigSystem (门面)
 - 协调 `ConfigRegistry`, `ComponentContainer`, `DependencyResolver`, `BuilderRegistry`, `HotReloadManager`
 - 提供配置加载、构建、查询的统一接口
 - 处理组件构建流程
-- 解析工具引用（字符串、Agent Tool、Workflow Tool）
+- 解析工具引用（字符串、Agent Tool）
 
 **关键类**:
 - `ConfigSystem`: 配置系统门面
@@ -270,16 +262,15 @@ ConfigSystem (门面)
 **职责**: 统一处理工具引用的解析
 
 **功能**:
-- 解析工具引用（字符串、Agent Tool、Workflow Tool）
+- 解析工具引用（字符串、Agent Tool）
 - 标准化工具引用结构
 
 **关键类**:
 - `ParsedToolReference`: 解析后的工具引用
 
 **工具引用类型**:
-- `function`: 内置或自定义工具（字符串）
+- `regular_tool`: 内置或自定义工具（字符串）
 - `agent_tool`: Agent 作为工具
-- `workflow_tool`: Workflow 作为工具
 
 **函数**:
 - `parse_tool_reference()`: 解析单个工具引用

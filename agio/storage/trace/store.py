@@ -21,7 +21,6 @@ logger = get_logger(__name__)
 class TraceQuery(BaseModel):
     """Trace query parameters"""
 
-    workflow_id: str | None = None
     agent_id: str | None = None
     session_id: str | None = None
     user_id: str | None = None
@@ -91,7 +90,6 @@ class TraceStore:
                 # Create indexes
                 await self._collection.create_index("trace_id", unique=True)
                 await self._collection.create_index("start_time")
-                await self._collection.create_index("workflow_id")
                 await self._collection.create_index("agent_id")
                 await self._collection.create_index("session_id")
                 await self._collection.create_index("status")
@@ -158,8 +156,6 @@ class TraceStore:
         """Query traces"""
         mongo_query: dict[str, Any] = {}
 
-        if query.workflow_id:
-            mongo_query["workflow_id"] = query.workflow_id
         if query.agent_id:
             mongo_query["agent_id"] = query.agent_id
         if query.session_id:
@@ -206,8 +202,6 @@ class TraceStore:
         """Query from in-memory buffer"""
         results = []
         for trace in reversed(self._buffer):
-            if query.workflow_id and trace.workflow_id != query.workflow_id:
-                continue
             if query.agent_id and trace.agent_id != query.agent_id:
                 continue
             if query.session_id and trace.session_id != query.session_id:

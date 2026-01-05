@@ -53,10 +53,10 @@ class ExecutionConfig(BaseModel):
 
     # Timeout configuration
     tool_timeout: float | None = Field(
-        default=30.0, description="Tool execution timeout (seconds)"
+        default=300.0, description="Tool execution timeout (seconds)"
     )
     run_timeout: float | None = Field(
-        default=None, description="Overall run timeout (seconds)"
+        default=600.0, description="Overall run timeout (seconds)"
     )
 
     # Concurrency configuration
@@ -87,11 +87,8 @@ class ComponentType(str, Enum):
 
     MODEL = "model"
     TOOL = "tool"
-    MEMORY = "memory"
-    KNOWLEDGE = "knowledge"
     AGENT = "agent"
     SESSION_STORE = "session_store"
-    WORKFLOW = "workflow"
     TRACE_STORE = "trace_store"
     CITATION_STORE = "citation_store"
 
@@ -176,49 +173,6 @@ class ToolConfig(ComponentConfig):
         return self.dependencies or {}
 
 
-class MemoryConfig(ComponentConfig):
-    """Configuration for memory components"""
-
-    type: Literal["memory"] = "memory"
-
-    # Backend configuration (future: migrate to BackendConfig structure)
-    backend: str = Field(..., description="Backend type: redis, inmemory")
-
-    # Memory-specific configuration
-    ttl: int | None = Field(
-        default=None, ge=1, description="Time-to-live in seconds (optional)"
-    )
-    max_size: int | None = Field(
-        default=None, ge=1, description="Maximum cache size (optional)"
-    )
-
-    # Legacy params field for backward compatibility
-    params: dict = Field(
-        default_factory=dict, description="Additional backend parameters"
-    )
-
-
-class KnowledgeConfig(ComponentConfig):
-    """Configuration for knowledge base components"""
-
-    type: Literal["knowledge"] = "knowledge"
-
-    # Backend configuration (future: migrate to BackendConfig structure)
-    backend: str = Field(..., description="Backend type: chroma, pinecone")
-
-    # Knowledge-specific configuration
-    embedding_model: str | None = Field(
-        default=None, description="Embedding model name (optional)"
-    )
-    chunk_size: int = Field(default=512, ge=1, description="Text chunk size")
-    chunk_overlap: int = Field(default=50, ge=0, description="Chunk overlap size")
-
-    # Legacy params field for backward compatibility
-    params: dict = Field(
-        default_factory=dict, description="Additional backend parameters"
-    )
-
-
 class SessionStoreConfig(ComponentConfig):
     """Configuration for session store components (stores Run and Step data)"""
 
@@ -266,16 +220,15 @@ class CitationStoreConfig(ComponentConfig):
 
 
 class RunnableToolConfig(BaseModel):
-    """Configuration for Runnable (Agent/Workflow) as Tool."""
+    """Configuration for Runnable (Agent) as Tool."""
 
-    type: Literal["agent_tool", "workflow_tool"]
-    agent: str | None = None  # For agent_tool: reference to agent name
-    workflow: str | None = None  # For workflow_tool: reference to workflow name
+    type: Literal["agent_tool"] = "agent_tool"
+    agent: str  # Reference to agent name
     description: str | None = None  # Tool description for LLM
     name: str | None = None  # Optional custom tool name
 
 
-# Tool reference can be string (tool name) or dict (agent_tool/workflow_tool config)
+# Tool reference can be string (tool name) or dict (agent_tool config)
 ToolReference = str | RunnableToolConfig | dict
 
 
@@ -285,8 +238,6 @@ class AgentConfig(ComponentConfig):
     type: Literal["agent"] = "agent"
     model: str  # Reference to model config name
     tools: list[ToolReference] = Field(default_factory=list)
-    memory: str | None = None
-    knowledge: str | None = None
     session_store: str | None = None
 
     system_prompt: str | None = None
@@ -318,37 +269,6 @@ class AgentConfig(ComponentConfig):
     )
 
 
-class StageConfig(BaseModel):
-    """Configuration for a workflow stage"""
-
-    id: str
-    runnable: str | dict  # Agent/Workflow ID or inline workflow config
-    input: str = "{query}"  # Input template
-    condition: str | None = None  # Condition expression
-
-
-class WorkflowConfig(ComponentConfig):
-    """Configuration for workflow components"""
-
-    type: Literal["workflow"] = "workflow"
-    workflow_type: Literal["pipeline", "loop", "parallel"] = "pipeline"
-
-    # Stages (for pipeline and loop)
-    stages: list[StageConfig] = Field(default_factory=list)
-
-    # Loop specific
-    condition: str | None = None  # Continue condition for loop
-    max_iterations: int = 10
-
-    # Parallel specific
-    merge_template: str | None = None  # Template for merging branch outputs
-
-    # Storage
-    session_store: str | None = None  # Reference to SessionStore for state management
-
-    tags: list[str] = Field(default_factory=list)
-
-
 __all__ = [
     "ExecutionConfig",
     "ComponentType",
@@ -357,14 +277,10 @@ __all__ = [
     "ToolConfig",
     "RunnableToolConfig",
     "ToolReference",
-    "MemoryConfig",
-    "KnowledgeConfig",
     "SessionStoreConfig",
     "TraceStoreConfig",
     "CitationStoreConfig",
     "AgentConfig",
-    "StageConfig",
-    "WorkflowConfig",
 ]
 
 

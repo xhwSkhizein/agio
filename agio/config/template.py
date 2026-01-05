@@ -1,7 +1,7 @@
 """Unified Jinja2 template renderer for Agio configuration system.
 
 This module provides a single, simple interface for rendering templates
-across all components: config loading, workflow execution, and agent prompts.
+across all components: config loading, agent execution, and agent prompts.
 """
 
 from jinja2 import Template, Undefined

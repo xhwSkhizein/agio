@@ -31,22 +31,10 @@ const TYPE_META: Record<string, { icon: typeof Bot; label: string; color: string
     color: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30',
     description: 'Data persistence for agent runs'
   },
-  memory: { 
-    icon: Brain, 
-    label: 'Memory', 
-    color: 'text-green-400 bg-green-500/10 border-green-500/30',
-    description: 'Conversation memory backends'
-  },
-  knowledge: { 
-    icon: BookOpen, 
-    label: 'Knowledge', 
-    color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30',
-    description: 'Knowledge bases and RAG sources'
-  },
 }
 
 // Order for display
-const TYPE_ORDER = ['agent', 'model', 'tool', 'repository', 'memory', 'knowledge']
+const TYPE_ORDER = ['agent', 'model', 'tool', 'repository']
 
 export default function ConfigList() {
   const queryClient = useQueryClient()

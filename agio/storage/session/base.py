@@ -61,9 +61,6 @@ class SessionStore(ABC):
         start_seq: int | None = None,
         end_seq: int | None = None,
         run_id: str | None = None,
-        workflow_id: str | None = None,
-        node_id: str | None = None,
-        branch_key: str | None = None,
         runnable_id: str | None = None,
         limit: int = 1000,
     ) -> list[Step]:
@@ -75,9 +72,6 @@ class SessionStore(ABC):
             start_seq: Start sequence (inclusive), None = from beginning
             end_seq: End sequence (inclusive), None = to end
             run_id: Filter by run_id (optional)
-            workflow_id: Filter by workflow_id (optional)
-            node_id: Filter by node_id (optional)
-            branch_key: Filter by branch_key (optional)
             runnable_id: Filter by runnable_id (optional)
             limit: Maximum return count
         """
@@ -127,34 +121,6 @@ class SessionStore(ABC):
         """
         pass
 
-    async def get_last_assistant_content(
-        self,
-        session_id: str,
-        node_id: str,
-        workflow_id: str | None = None,
-    ) -> str | None:
-        """
-        Get the last assistant step content for a specific node.
-
-        Args:
-            session_id: Session ID
-            node_id: Node ID to filter by
-            workflow_id: Workflow ID for isolation (persists across run_id changes)
-
-        Returns:
-            Content of the last assistant step for the node, or None if not found
-        """
-        steps = await self.get_steps(
-            session_id=session_id,
-            workflow_id=workflow_id,
-            node_id=node_id,
-            limit=1000,
-        )
-        # Find last assistant step
-        for step in reversed(steps):
-            if step.role.value == "assistant" and step.content:
-                return step.content
-        return None
 
     # --- Tool Result Query (for cross-agent reference) ---
 
@@ -261,9 +227,6 @@ class InMemorySessionStore(SessionStore):
         start_seq: int | None = None,
         end_seq: int | None = None,
         run_id: str | None = None,
-        workflow_id: str | None = None,
-        node_id: str | None = None,
-        branch_key: str | None = None,
         runnable_id: str | None = None,
         limit: int = 1000,
     ) -> list[Step]:
@@ -275,12 +238,6 @@ class InMemorySessionStore(SessionStore):
             steps = [s for s in steps if s.sequence <= end_seq]
         if run_id is not None:
             steps = [s for s in steps if s.run_id == run_id]
-        if workflow_id is not None:
-            steps = [s for s in steps if s.workflow_id == workflow_id]
-        if node_id is not None:
-            steps = [s for s in steps if s.node_id == node_id]
-        if branch_key is not None:
-            steps = [s for s in steps if s.branch_key == branch_key]
         if runnable_id is not None:
             steps = [s for s in steps if s.runnable_id == runnable_id]
 

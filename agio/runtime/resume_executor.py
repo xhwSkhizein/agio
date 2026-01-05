@@ -1,7 +1,7 @@
 """
 ResumeExecutor - Unified Session Resume mechanism.
 
-This module provides unified Resume functionality for both Agent and Workflow:
+This module provides unified Resume functionality:
 - Automatically infers runnable_id from Steps
 - Analyzes execution state (completed, pending tools, etc.)
 - Resumes execution with idempotency
@@ -48,7 +48,7 @@ class ResumeExecutor:
     """
     Unified Session Resume executor.
 
-    Provides unified Resume functionality for both Agent and Workflow:
+    Provides unified Resume functionality:
     1. Loads Steps from session
     2. Infers runnable_id (if not provided)
     3. Analyzes execution state
@@ -154,7 +154,7 @@ class ResumeExecutor:
         executor = RunnableExecutor(store=self.store)
 
         # For resume, we don't need new input - just re-run
-        # The Runnable will handle idempotency (Workflow skips completed nodes)
+        # The Runnable will handle idempotency
         input_query = ""  # Empty for resume
         if steps and steps[0].role == MessageRole.USER:
             input_query = steps[0].content or ""

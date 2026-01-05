@@ -68,7 +68,6 @@ class SQLiteSessionStore(SessionStore):
                 metrics TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
-                workflow_id TEXT,
                 parent_run_id TEXT,
                 trace_id TEXT
             )
@@ -93,11 +92,7 @@ class SQLiteSessionStore(SessionStore):
                 name TEXT,
                 metrics TEXT,
                 created_at TEXT NOT NULL,
-                workflow_id TEXT,
-                node_id TEXT,
                 parent_run_id TEXT,
-                branch_key TEXT,
-                iteration INTEGER,
                 trace_id TEXT,
                 span_id TEXT,
                 parent_span_id TEXT,
@@ -141,10 +136,6 @@ class SQLiteSessionStore(SessionStore):
         await self._connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_steps_session_run_seq "
             "ON steps(session_id, run_id, sequence)"
-        )
-        await self._connection.execute(
-            "CREATE INDEX IF NOT EXISTS idx_steps_session_run_node_seq "
-            "ON steps(session_id, run_id, node_id, sequence)"
         )
         await self._connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_steps_session_tool_call_id "
@@ -368,9 +359,6 @@ class SQLiteSessionStore(SessionStore):
         start_seq: int | None = None,
         end_seq: int | None = None,
         run_id: str | None = None,
-        workflow_id: str | None = None,
-        node_id: str | None = None,
-        branch_key: str | None = None,
         runnable_id: str | None = None,
         limit: int = 1000,
     ) -> list[Step]:
@@ -390,15 +378,6 @@ class SQLiteSessionStore(SessionStore):
             if run_id is not None:
                 query += " AND run_id = ?"
                 params.append(run_id)
-            if workflow_id is not None:
-                query += " AND workflow_id = ?"
-                params.append(workflow_id)
-            if node_id is not None:
-                query += " AND node_id = ?"
-                params.append(node_id)
-            if branch_key is not None:
-                query += " AND branch_key = ?"
-                params.append(branch_key)
             if runnable_id is not None:
                 query += " AND runnable_id = ?"
                 params.append(runnable_id)

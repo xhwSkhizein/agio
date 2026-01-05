@@ -4,8 +4,6 @@ import { healthService } from '../services/api'
 import {
   Home,
   MessageSquare,
-  Database,
-  Brain,
   History,
   Settings,
   FileText,
@@ -20,8 +18,6 @@ interface LayoutProps {
 const navItems = [
   { path: '/', label: 'Home', icon: Home },
   { path: '/chat', label: 'Chat', icon: MessageSquare },
-  { path: '/knowledge', label: 'Knowledge', icon: Database },
-  { path: '/memory', label: 'Memory', icon: Brain },
   { path: '/sessions', label: 'Sessions', icon: History },
   { path: '/traces', label: 'Traces', icon: Activity },
 ]

@@ -14,30 +14,16 @@ def create_router(prefix: str = "/agio") -> APIRouter:
 
     Returns:
         Configured APIRouter with all sub-routers included
-
-    Example:
-        # Integrate with existing FastAPI app
-        from fastapi import FastAPI
-        from agio.api import create_router
-
-        app = FastAPI()
-        app.include_router(create_router())
-
-        # Custom prefix
-        app.include_router(create_router(prefix="/admin/agio"))
     """
-    from .routes import (
+    from agio.api.routes import (
         agents,
         config,
         health,
-        knowledge,
-        memory,
         metrics,
         runnables,
         sessions,
         tool_consent,
         traces,
-        workflows,
     )
 
     router = APIRouter(prefix=prefix)
@@ -51,20 +37,11 @@ def create_router(prefix: str = "/agio") -> APIRouter:
     # Agent management
     router.include_router(agents.router, tags=["Agents"])
 
-    # Runnable API (unified Agent/Workflow)
+    # Runnable API (unified Agent)
     router.include_router(runnables.router, tags=["Runnables"])
-
-    # Workflow management
-    router.include_router(workflows.router, tags=["Workflows"])
 
     # Session management
     router.include_router(sessions.router, tags=["Sessions"])
-
-    # Memory data
-    router.include_router(memory.router, tags=["Memory"])
-
-    # Knowledge data
-    router.include_router(knowledge.router, tags=["Knowledge"])
 
     # Metrics
     router.include_router(metrics.router, tags=["Metrics"])

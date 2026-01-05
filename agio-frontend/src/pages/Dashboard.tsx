@@ -3,8 +3,6 @@ import { useQuery } from '@tanstack/react-query'
 import { agentService } from '../services/api'
 import {
   MessageSquare,
-  Database,
-  Brain,
   History,
   ArrowUpRight,
   RefreshCw,
@@ -13,25 +11,13 @@ import {
 const exploreCards = [
   {
     title: 'Chat',
-    description: 'Interact with your agents, teams and workflows.',
+    description: 'Interact with your agents and teams.',
     icon: MessageSquare,
     path: '/chat',
   },
   {
-    title: 'Knowledge',
-    description: 'View and manage your knowledge bases.',
-    icon: Database,
-    path: '/knowledge',
-  },
-  {
-    title: 'Memory',
-    description: 'View and manage user memories and learnings.',
-    icon: Brain,
-    path: '/memory',
-  },
-  {
     title: 'Sessions',
-    description: 'View and manage agents, teams and workflow sessions.',
+    description: 'View and manage agent and team sessions.',
     icon: History,
     path: '/sessions',
   },

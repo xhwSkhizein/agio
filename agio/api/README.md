@@ -89,7 +89,7 @@ mount_frontend(app, path="/admin/agio/panel", api_prefix="/admin/agio")
 Agio 使用环境变量进行配置：
 
 ```bash
-# 配置目录（包含 Agent、Tool、Workflow 等配置）
+# 配置目录（包含 Agent、Tool 等配置）
 export AGIO_CONFIG_DIR=./configs
 
 # LLM API Keys

@@ -80,8 +80,8 @@ export default function Sessions() {
 
   // Continue chat handler
   const handleContinueChat = (session: SessionSummary) => {
-    const agentOrWorkflowId = session.agent_id ?? session.workflow_id ?? undefined
-    navigate(`/chat/${session.session_id}`, { state: { agentId: agentOrWorkflowId } })
+    const agentId = session.agent_id ?? undefined
+    navigate(`/chat/${session.session_id}`, { state: { agentId } })
   }
 
   // Open fork modal

@@ -12,10 +12,10 @@ class SequenceManager:
 
     Manages sequence allocation for all Steps within a Session:
     1. Normal allocation: atomic allocation via SessionStore.allocate_sequence
-    2. Pre-allocation handling: ParallelWorkflow's seq_start mechanism
+    2. Pre-allocation handling: seq_start mechanism for parallel execution
 
     This is a Session-level resource that should be shared across all
-    nested Agent/Workflow executions within the same Session.
+    nested Agent executions within the same Session.
     """
 
     def __init__(self, session_store: SessionStore) -> None:
@@ -33,13 +33,13 @@ class SequenceManager:
             session_id: Session ID
             context: ExecutionContext (optional). If provided and contains
                     seq_start in metadata, uses the pre-allocated sequence
-                    for parallel workflow branches.
+                    for parallel execution branches.
 
         Returns:
             Next sequence number
         """
-        # Handle parallel workflow pre-allocated sequences
-        # ParallelWorkflow pre-allocates sequence ranges before execution,
+        # Handle parallel execution pre-allocated sequences
+        # Pre-allocates sequence ranges before execution,
         # passing them via context.metadata
         if context and "seq_start" in context.metadata:
             seq_start = context.metadata.pop("seq_start")

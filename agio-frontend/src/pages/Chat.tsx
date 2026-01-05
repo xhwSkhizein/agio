@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { agentService, sessionService, runnableService } from '../services/api'
+import { agentService, sessionService } from '../services/api'
 import { parseSSEBuffer } from '../utils/sseParser'
 import { useScrollManagement } from '../hooks/useScrollManagement'
 import { useAgentSelection } from '../hooks/useAgentSelection'
@@ -84,27 +84,11 @@ export default function Chat() {
     queryFn: () => agentService.listAgents(),
   })
 
-  // Fetch all available runnables (agents + workflows)
-  const { data: runnables } = useQuery({
-    queryKey: ['runnables'],
-    queryFn: () => runnableService.listRunnables(),
-  })
-
-  // Check if selected is a workflow
-  const isWorkflow = runnables?.workflows?.some(w => w.id === selectedAgentId) ?? false
-
-  // Current agent details (only for agents, not workflows)
+  // Current agent details
   const { data: agent } = useQuery({
     queryKey: ['agent', selectedAgentId],
     queryFn: () => agentService.getAgent(selectedAgentId),
-    enabled: !!selectedAgentId && !isWorkflow,
-  })
-
-  // Current runnable info (for display)
-  const { data: runnableInfo } = useQuery({
-    queryKey: ['runnable', selectedAgentId],
-    queryFn: () => runnableService.getRunnableInfo(selectedAgentId),
-    enabled: !!selectedAgentId && isWorkflow,
+    enabled: !!selectedAgentId,
   })
 
   // Load existing session steps if sessionId is provided in URL
@@ -144,7 +128,7 @@ export default function Chat() {
     setCurrentSessionId(urlSessionId)
   }, [existingSteps, urlSessionId, treeSessionId, executionTree.executions.length, hydrateFromSteps, resetTree])
 
-  // Preselect agent/workflow when navigating with state (e.g., from Sessions continue)
+  // Preselect agent when navigating with state (e.g., from Sessions continue)
   useEffect(() => {
     if (locationState?.agentId) {
       setSelectedAgentId(locationState.agentId)
@@ -226,7 +210,7 @@ export default function Chat() {
     abortControllerRef.current = new AbortController()
 
     try {
-      // Use unified runnable API for both agents and workflows
+      // Use unified runnable API for agents
       const apiUrl = `/agio/runnables/${selectedAgentId}/run`
 
       const requestBody = {
@@ -370,10 +354,7 @@ export default function Chat() {
         showAgentDropdown={showAgentDropdown}
         setShowAgentDropdown={setShowAgentDropdown}
         agents={agents}
-        runnables={runnables}
         agent={agent}
-        runnableInfo={runnableInfo}
-        isWorkflow={isWorkflow}
         onNewChat={handleNewChat}
         onOpenSettings={() => setShowConfigModal(true)}
       />

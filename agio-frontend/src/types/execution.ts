@@ -1,8 +1,7 @@
 /**
  * Unified execution types for building hierarchical execution tree.
  * 
- * These types replace the scattered TimelineEvent, NestedExecution, WorkflowNode types
- * with a unified recursive structure.
+ * These types support Agent nesting and composition.
  */
 
 import type { Metrics } from '../utils/metricsHelpers'
@@ -40,12 +39,11 @@ export interface BackendStep {
   // Hierarchy fields for building execution tree
   run_id?: string | null
   parent_run_id?: string | null
-  workflow_id?: string | null
-  node_id?: string | null
-  branch_key?: string | null
   runnable_id?: string | null
   runnable_type?: string | null
   depth?: number
+  // Metrics (for assistant and tool steps)
+  metrics?: Metrics
 }
 
 /**
@@ -82,22 +80,17 @@ export type ExecutionStep =
     }
 
 /**
- * Unified execution node - represents any Runnable execution (Agent or Workflow)
+ * Unified execution node - represents any Runnable execution (Agent)
  */
 export interface RunnableExecution {
   id: string                          // run_id
-  runnableId: string                  // Agent/Workflow config ID
-  runnableType: 'agent' | 'workflow'
+  runnableId: string                  // Agent config ID
+  runnableType: 'agent'
   
   // Nesting context
-  nestingType?: 'tool_call' | 'workflow_node'  // How this execution was triggered
+  nestingType?: 'tool_call'  // How this execution was triggered
   parentRunId?: string
   depth: number
-  
-  // Workflow specific
-  workflowType?: 'pipeline' | 'parallel' | 'loop'
-  nodeId?: string
-  branchId?: string
   
   // Execution state
   status: 'running' | 'completed' | 'failed'
@@ -131,7 +124,7 @@ export interface ExecutionTree {
   // Top-level messages (user inputs)
   messages: TimelineMessage[]
   
-  // Root executions (top-level Agent/Workflow runs)
+  // Root executions (top-level Agent runs)
   executions: RunnableExecution[]
   
   // Quick lookup: run_id -> execution

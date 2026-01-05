@@ -45,7 +45,6 @@ class TraceCollector:
         self,
         event_stream: AsyncIterator[StepEvent],
         trace_id: str | None = None,
-        workflow_id: str | None = None,
         agent_id: str | None = None,
         session_id: str | None = None,
         user_id: str | None = None,
@@ -57,8 +56,7 @@ class TraceCollector:
         Args:
             event_stream: Original event stream
             trace_id: Optional trace ID
-            workflow_id: Workflow ID (if workflow execution)
-            agent_id: Agent ID (if single agent execution)
+            agent_id: Agent ID
             session_id: Session ID
             user_id: User ID
             input_query: User input
@@ -69,7 +67,6 @@ class TraceCollector:
         # Initialize trace
         trace = Trace(
             trace_id=trace_id or str(uuid4()),
-            workflow_id=workflow_id,
             agent_id=agent_id,
             session_id=session_id,
             user_id=user_id,
@@ -184,97 +181,25 @@ class TraceCollector:
                 span_stack[event.run_id] = span
                 return span, {}
 
-            # Determine if workflow or agent (top-level)
-            if data.get("workflow_id") or data.get("type") in (
-                "pipeline",
-                "loop",
-                "parallel",
-            ):
-                # Workflow top-level span
-                span = Span(
-                    trace_id=trace.trace_id,
-                    kind=SpanKind.WORKFLOW,
-                    name=data.get("workflow_id", "workflow"),
-                    depth=0,
-                    attributes={
-                        "workflow_id": data.get("workflow_id"),
-                        "workflow_type": data.get("type"),
-                    },
-                    input_preview=(
-                        trace.input_query[: self.PREVIEW_LENGTH]
-                        if trace.input_query
-                        else None
-                    ),
-                )
+            # Agent span (top-level or nested)
+            parent = current_span
+            span = Span(
+                trace_id=trace.trace_id,
+                parent_span_id=parent.span_id if parent else None,
+                kind=SpanKind.AGENT,
+                name=data.get("agent_id", "agent"),
+                depth=(parent.depth + 1) if parent else 0,
+                attributes={
+                    "agent_id": data.get("agent_id"),
+                    "session_id": data.get("session_id"),
+                },
+            )
+            if not trace.root_span_id:
                 trace.root_span_id = span.span_id
-            else:
-                # Agent span (top-level)
-                parent = current_span
-                span = Span(
-                    trace_id=trace.trace_id,
-                    parent_span_id=parent.span_id if parent else None,
-                    kind=SpanKind.AGENT,
-                    name=data.get("agent_id", "agent"),
-                    depth=(parent.depth + 1) if parent else 0,
-                    attributes={
-                        "agent_id": data.get("agent_id"),
-                        "session_id": data.get("session_id"),
-                    },
-                )
-                if not trace.root_span_id:
-                    trace.root_span_id = span.span_id
 
             trace.add_span(span)
             span_stack[event.run_id] = span
             return span, {}
-
-        # === NODE_STARTED ===
-        elif event_type == StepEventType.NODE_STARTED:
-            parent = span_stack.get(event.run_id) or current_span
-            span = Span(
-                trace_id=trace.trace_id,
-                parent_span_id=parent.span_id if parent else None,
-                kind=SpanKind.STAGE,
-                name=event.node_id or "node",
-                depth=(parent.depth + 1) if parent else 1,
-                attributes={
-                    "node_id": event.node_id,
-                    "iteration": event.iteration,
-                },
-            )
-            trace.add_span(span)
-            span_stack[f"node:{event.node_id}"] = span
-            return span, {}
-
-        # === NODE_COMPLETED ===
-        elif event_type == StepEventType.NODE_COMPLETED:
-            span = span_stack.get(f"node:{event.node_id}")
-            if span:
-                output_len = event.data.get("output_length") if event.data else None
-                span.complete(
-                    status=SpanStatus.OK,
-                    output_preview=f"[{output_len} chars]" if output_len else None,
-                )
-            return span_stack.get(event.run_id) or current_span, {}
-
-        # === NODE_SKIPPED ===
-        elif event_type == StepEventType.NODE_SKIPPED:
-            parent = span_stack.get(event.run_id) or current_span
-            span = Span(
-                trace_id=trace.trace_id,
-                parent_span_id=parent.span_id if parent else None,
-                kind=SpanKind.STAGE,
-                name=event.node_id or "node",
-                depth=(parent.depth + 1) if parent else 1,
-                attributes={
-                    "node_id": event.node_id,
-                    "skipped": True,
-                    "condition": event.data.get("condition") if event.data else None,
-                },
-            )
-            span.complete(status=SpanStatus.OK)  # Skipped is still OK
-            trace.add_span(span)
-            return current_span, {}
 
         # === STEP_COMPLETED ===
         elif event_type == StepEventType.STEP_COMPLETED:
@@ -323,12 +248,6 @@ class TraceCollector:
                             parent_span_id = parent_agent_span.span_id
 
                     # Fallback: find parent from span_stack
-                    if not parent_span_id and step.branch_key:
-                        branch_span = span_stack.get(f"branch:{step.branch_key}")
-                        parent_span_id = branch_span.span_id if branch_span else None
-                    if not parent_span_id and step.node_id:
-                        node_span = span_stack.get(f"node:{step.node_id}")
-                        parent_span_id = node_span.span_id if node_span else None
                     if not parent_span_id:
                         # Find Agent Span for this run_id
                         run_span = span_stack.get(step.run_id)
@@ -439,12 +358,6 @@ class TraceCollector:
                             parent_span_id = parent_agent_span.span_id
 
                     # Fallback: find parent from span_stack
-                    if not parent_span_id and step.branch_key:
-                        branch_span = span_stack.get(f"branch:{step.branch_key}")
-                        parent_span_id = branch_span.span_id if branch_span else None
-                    if not parent_span_id and step.node_id:
-                        node_span = span_stack.get(f"node:{step.node_id}")
-                        parent_span_id = node_span.span_id if node_span else None
                     if not parent_span_id:
                         # Find Agent Span for this run_id
                         run_span = span_stack.get(step.run_id)
@@ -464,14 +377,12 @@ class TraceCollector:
                     parent = span_stack.get(step.run_id) or current_span
                 parent_depth = parent.depth if parent else 0
 
-                # Build name with iteration info if available
+                # Build name
                 name = (
                     step.metrics.model_name
                     if step.metrics and step.metrics.model_name
                     else "llm"
                 )
-                if step.iteration is not None:
-                    name = f"{name} (iteration {step.iteration})"
 
                 span = Span(
                     trace_id=trace.trace_id,
@@ -483,7 +394,6 @@ class TraceCollector:
                         "model_name": step.metrics.model_name if step.metrics else None,
                         "provider": step.metrics.provider if step.metrics else None,
                         "has_tool_calls": bool(step.tool_calls),
-                        "iteration": step.iteration,
                     },
                     step_id=step.id,
                     run_id=step.run_id,
@@ -537,39 +447,6 @@ class TraceCollector:
                 error = event.data.get("error") if event.data else "Unknown error"
                 span.complete(status=SpanStatus.ERROR, error_message=error)
             return span_stack.get(event.run_id), {}
-
-        # === ITERATION_STARTED ===
-        elif event_type == StepEventType.ITERATION_STARTED:
-            # Update current workflow span's iteration count
-            span = span_stack.get(event.run_id)
-            if span:
-                span.attributes["current_iteration"] = event.iteration
-            return current_span, {}
-
-        # === BRANCH_STARTED ===
-        elif event_type == StepEventType.BRANCH_STARTED:
-            parent = span_stack.get(event.run_id) or current_span
-            span = Span(
-                trace_id=trace.trace_id,
-                parent_span_id=parent.span_id if parent else None,
-                kind=SpanKind.STAGE,
-                name=f"branch:{event.branch_id}",
-                depth=(parent.depth + 1) if parent else 1,
-                attributes={
-                    "branch_id": event.branch_id,
-                    "parallel": True,
-                },
-            )
-            trace.add_span(span)
-            span_stack[f"branch:{event.branch_id}"] = span
-            return span, {}
-
-        # === BRANCH_COMPLETED ===
-        elif event_type == StepEventType.BRANCH_COMPLETED:
-            span = span_stack.get(f"branch:{event.branch_id}")
-            if span:
-                span.complete(status=SpanStatus.OK)
-            return span_stack.get(event.run_id) or current_span, {}
 
         return current_span, {}
 

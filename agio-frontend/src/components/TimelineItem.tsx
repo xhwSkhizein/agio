@@ -1,7 +1,7 @@
 import React from 'react';
 
 interface TimelineItemProps {
-  type: 'user' | 'assistant' | 'tool' | 'error' | 'nested' | 'workflow' | 'parallel_nested';
+  type: 'user' | 'assistant' | 'tool' | 'error' | 'nested' | 'parallel_nested';
   children: React.ReactNode;
   isLast?: boolean;
   depth?: number;  // For nested events indentation
@@ -20,8 +20,6 @@ export function TimelineItem({ type, children, isLast = false, depth = 0 }: Time
         return 'bg-amber-500 ring-amber-500/30';
       case 'parallel_nested':
         return 'bg-amber-500 ring-amber-500/30';
-      case 'workflow':
-        return 'bg-cyan-500 ring-cyan-500/30';
       case 'error':
         return 'bg-red-500 ring-red-500/30';
       default:

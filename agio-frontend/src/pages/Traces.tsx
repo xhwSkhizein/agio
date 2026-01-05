@@ -4,7 +4,6 @@ import { Activity, Filter, RefreshCw, Clock, Zap, AlertCircle, CheckCircle, Load
 
 interface TraceSummary {
   trace_id: string;
-  workflow_id: string | null;
   agent_id: string | null;
   session_id: string | null;
   start_time: string;
@@ -22,7 +21,6 @@ export default function Traces() {
   const navigate = useNavigate();
   const [traces, setTraces] = useState<TraceSummary[]>([]);
   const [filters, setFilters] = useState({
-    workflow_id: '',
     agent_id: '',
     status: '',
   });
@@ -37,7 +35,6 @@ export default function Traces() {
   const fetchTraces = async () => {
     setLoading(true);
     const params = new URLSearchParams();
-    if (filters.workflow_id) params.set('workflow_id', filters.workflow_id);
     if (filters.agent_id) params.set('agent_id', filters.agent_id);
     if (filters.status) params.set('status', filters.status);
 
@@ -57,7 +54,7 @@ export default function Traces() {
   };
 
   const clearFilters = () => {
-    setFilters({ workflow_id: '', agent_id: '', status: '' });
+    setFilters({ agent_id: '', status: '' });
   };
 
   const hasActiveFilters = Object.values(filters).some((v) => v !== '');
@@ -155,17 +152,7 @@ export default function Traces() {
               </button>
             )}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">Workflow ID</label>
-              <input
-                type="text"
-                placeholder="Filter by workflow..."
-                value={filters.workflow_id}
-                onChange={(e) => setFilters({ ...filters, workflow_id: e.target.value })}
-                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500"
-              />
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-gray-400 mb-1">Agent ID</label>
               <input
@@ -258,7 +245,7 @@ export default function Traces() {
                   <div className="flex items-center gap-4 text-sm">
                     <div className="flex items-center gap-1.5 text-white">
                       <Activity className="w-4 h-4 text-primary-400" />
-                      <span className="font-medium">{trace.workflow_id || trace.agent_id || 'Unknown'}</span>
+                      <span className="font-medium">{trace.agent_id || 'Unknown'}</span>
                     </div>
                     {trace.session_id && (
                       <span className="text-gray-500 font-mono text-xs">

@@ -92,7 +92,6 @@ from typing import Protocol
 
 class RunnableType(Enum):
     AGENT = "agent"
-    WORKFLOW = "workflow"
 
 class Runnable(Protocol):
     @property
@@ -275,7 +274,6 @@ def get_plugin_registry() -> PluginRegistry:
    - `ModelPlugin`
    - `ToolPlugin`
    - `AgentPlugin`
-   - `WorkflowPlugin`
    - `StoragePlugin`
    - `register_builtin_plugins()` 函数
 
@@ -285,8 +283,8 @@ def get_plugin_registry() -> PluginRegistry:
 ```python
 # agio/config/builtin_plugins.py
 from agio.config.plugin import ConfigPlugin, register_plugin
-from agio.config.schema import ComponentType, ModelConfig, ToolConfig, AgentConfig, WorkflowConfig
-from agio.config.builders import ModelBuilder, ToolBuilder, AgentBuilder, WorkflowBuilder
+from agio.config.schema import ComponentType, ModelConfig, ToolConfig, AgentConfig
+from agio.config.builders import ModelBuilder, ToolBuilder, AgentBuilder
 
 class ModelPlugin(ConfigPlugin):
     @property
@@ -325,7 +323,6 @@ def register_builtin_plugins():
     register_plugin(ModelPlugin())
     register_plugin(ToolPlugin())
     register_plugin(AgentPlugin())
-    register_plugin(WorkflowPlugin())
     # ... 其他插件
 ```
 
@@ -745,24 +742,6 @@ async def test_config_loading_performance():
 
 ---
 
-## 后续优化（可选）
-
-完成本次重构后，可以考虑以下优化（不在本次计划内）：
-
-1. **Runnable 协议增强**：
-   - 添加能力声明系统
-   - 添加生命周期钩子
-   - 实现中间件机制
-
-2. **WorkflowState 优化**：
-   - LRU 缓存淘汰
-   - 按需加载
-
-3. **API 版本控制**：
-   - 设计 V2 API 规范
-   - 统一错误响应格式
-
----
 
 ## 总结
 

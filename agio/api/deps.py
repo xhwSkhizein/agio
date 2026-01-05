@@ -83,40 +83,6 @@ def get_agent(
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found: {e}")
 
 
-def get_memory(
-    name: str,
-    config_sys: ConfigSystem = Depends(get_config_sys),
-) -> Any:
-    """
-    Get Memory instance by name.
-
-    Raises:
-        HTTPException: If memory not found
-    """
-    try:
-        return config_sys.get(name)
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=f"Memory '{name}' not found: {e}")
-
-
-def get_knowledge(
-    name: str,
-    config_sys: ConfigSystem = Depends(get_config_sys),
-) -> Any:
-    """
-    Get Knowledge instance by name.
-
-    Raises:
-        HTTPException: If knowledge not found
-    """
-    try:
-        return config_sys.get(name)
-    except Exception as e:
-        raise HTTPException(
-            status_code=404, detail=f"Knowledge '{name}' not found: {e}"
-        )
-
-
 # Singleton InMemoryTraceStore for fallback
 _default_trace_store: TraceStore | None = None
 

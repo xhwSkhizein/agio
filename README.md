@@ -44,8 +44,6 @@ For complete architecture and usage documentation, please refer to:
 - [Configuration System](./docs/CONFIG_SYSTEM_V2.md) - Configuration-driven architecture and usage guide
 - [Tool Configuration](./docs/TOOL_CONFIGURATION.md) - Tool configuration methods and environment variable support
 - [Agent System](./docs/AGENT_SYSTEM.md) - Agent execution engine and LLM call loop
-- [Workflow Orchestration](./docs/WORKFLOW_ORCHESTRATION.md) - Pipeline/Loop/Parallel workflows
-- [Runnable Protocol](./docs/RUNNABLE_PROTOCOL.md) - Unified execution interface and nesting capabilities
 - [Observability](./docs/OBSERVABILITY.md) - Distributed tracing and Trace querying
 - [API Control Panel](./docs/API_CONTROL_PANEL.md) - RESTful API and streaming event interfaces
 - [API Integration Guide](./agio/api/README.md) - How to integrate Agio API and frontend into existing FastAPI applications
@@ -159,46 +157,10 @@ result = await agent.run("Hello!")
 
 ### Configuration-Driven
 
-Agio uses YAML configuration files to define Agents, tools, and workflows. Example configuration files are located in the `configs/` directory.
+Agio uses YAML configuration files to define Agents and tools. Example configuration files are located in the `configs/` directory.
 
 See [configs/README.md](./configs/README.md) for details.
 
-## 🔧 Development and Release
-
-### Automated Release (GitHub Actions)
-
-The project is configured with GitHub Actions workflows for automatic publishing to PyPI.
-
-#### Configure GitHub Secrets
-
-Add the following secrets in your GitHub repository settings:
-
-1. **PYPI_API_TOKEN** (Required): PyPI API Token
-
-   - Create an API Token at [PyPI Account Settings](https://pypi.org/manage/account/)
-   - Add it in GitHub repository Settings → Secrets and variables → Actions
-
-2. **TEST_PYPI_API_TOKEN** (Optional): TestPyPI API Token (for test releases)
-   - Create an API Token at [TestPyPI Account Settings](https://test.pypi.org/manage/account/)
-
-#### Release Methods
-
-**Method 1: Release via GitHub Release (Recommended)**
-
-1. Update version numbers: Synchronize version numbers in `pyproject.toml` and `agio/__init__.py`
-2. Commit and push code
-3. Create a GitHub Release:
-   - Click "Releases" → "Create a new release"
-   - Select or create a new tag (e.g., `v0.1.0`)
-   - Fill in the Release title and description
-   - Click "Publish release"
-4. GitHub Actions will automatically build and publish to PyPI
-
-**Method 2: Manual Trigger**
-
-1. Go to the GitHub Actions page and select the "发布到 PyPI" workflow
-2. Click "Run workflow" to manually trigger
-3. The workflow will publish to TestPyPI (if TEST_PYPI_API_TOKEN is configured)
 
 ## 📄 License
 

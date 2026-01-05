@@ -33,7 +33,6 @@ class TraceCollector:
         self,
         event_stream: AsyncIterator[StepEvent],
         trace_id: str | None = None,
-        workflow_id: str | None = None,
         agent_id: str | None = None,
         session_id: str | None = None,
         user_id: str | None = None,
@@ -46,7 +45,7 @@ class TraceCollector:
 
 1. **创建 Trace**：
    - 生成或使用提供的 `trace_id`
-   - 设置 Trace 元数据（workflow_id, agent_id, session_id 等）
+   - 设置 Trace 元数据（agent_id, session_id 等）
 
 2. **处理事件流**：
    - 监听 `StepEvent` 事件
@@ -64,7 +63,6 @@ class TraceCollector:
 ```python
 class Trace(BaseModel):
     trace_id: str
-    workflow_id: str | None
     agent_id: str | None
     session_id: str | None
     user_id: str | None
@@ -95,7 +93,7 @@ class Span(BaseModel):
     parent_span_id: str | None
     
     # 类型和名称
-    kind: SpanKind  # WORKFLOW, STAGE, AGENT, LLM_CALL, TOOL_CALL
+    kind: SpanKind  # AGENT, LLM_CALL, TOOL_CALL
     name: str
     
     # 时间
@@ -129,8 +127,6 @@ class Span(BaseModel):
 
 支持的 Span 类型：
 
-- `WORKFLOW`: Workflow 顶层 Span
-- `STAGE`: Workflow 节点 Span（Pipeline/Loop/Parallel 的节点）
 - `AGENT`: Agent 执行 Span
 - `LLM_CALL`: LLM API 调用 Span
 - `TOOL_CALL`: Tool 执行 Span
@@ -165,7 +161,7 @@ class TraceStore:
 **特点**：
 - MongoDB 持久化
 - 内存环形缓冲区（实时访问）
-- 支持复杂查询（workflow_id, agent_id, session_id, status, 时间范围等）
+- 支持复杂查询（agent_id, session_id, status, 时间范围等）
 
 ### OTLPExporter
 
@@ -195,19 +191,6 @@ class OTLPExporter:
 
 ### RUN_STARTED 事件
 
-**Workflow**：
-```python
-Span(
-    kind=SpanKind.WORKFLOW,
-    name=workflow_id,
-    depth=0,
-    attributes={
-        "workflow_id": workflow_id,
-        "workflow_type": "pipeline|loop|parallel",
-    },
-)
-```
-
 **Agent（顶层）**：
 ```python
 Span(
@@ -235,22 +218,7 @@ Span(
 )
 ```
 
-### NODE_STARTED 事件
-
-```python
-Span(
-    kind=SpanKind.STAGE,
-    name=node_id,
-    depth=parent.depth + 1,
-    parent_span_id=parent.span_id,
-    attributes={
-        "node_id": node_id,
-        "iteration": iteration,  # Loop 迭代次数
-    },
-)
-```
-
-### STEP_CREATED 事件
+### STEP_COMPLETED 事件
 
 **Assistant Step（LLM 调用）**：
 ```python
@@ -416,11 +384,10 @@ http://localhost:9411
 ### 查询 Trace 列表
 
 ```http
-GET /agio/traces?workflow_id=xxx&limit=50
+GET /agio/traces?agent_id=xxx&limit=50
 ```
 
 **查询参数**：
-- `workflow_id`: Workflow ID
 - `agent_id`: Agent ID
 - `session_id`: Session ID
 - `status`: 状态（running, ok, error）
@@ -448,7 +415,7 @@ GET /agio/traces/{trace_id}/waterfall
     {
       "span_id": "...",
       "name": "...",
-      "kind": "WORKFLOW|STAGE|AGENT|LLM_CALL|TOOL_CALL",
+      "kind": "AGENT|LLM_CALL|TOOL_CALL",
       "start_time": "...",
       "duration_ms": 123.45,
       "parent_span_id": "...",
@@ -480,7 +447,6 @@ Server-Sent Events (SSE) 流，实时推送新的 Trace。
 MongoDB 索引：
 - `trace_id` (unique)
 - `start_time`
-- `workflow_id`
 - `agent_id`
 - `session_id`
 - `status`
@@ -495,8 +461,8 @@ MongoDB 索引：
 ## 最佳实践
 
 1. **Trace ID 生成**：使用 UUID 确保唯一性
-2. **Span 命名**：使用有意义的名称（agent_id, node_id, tool_name）
-3. **属性设置**：设置必要的上下文属性（workflow_id, agent_id 等）
+2. **Span 命名**：使用有意义的名称（agent_id, tool_name）
+3. **属性设置**：设置必要的上下文属性（agent_id, session_id 等）
 4. **错误处理**：正确设置 `status=ERROR` 和 `error_message`
 5. **性能监控**：关注 `duration_ms` 和 Token 使用
 6. **采样策略**：生产环境使用采样，避免过多 Trace

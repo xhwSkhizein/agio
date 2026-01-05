@@ -362,7 +362,7 @@ class PermissionService:
         决策逻辑：
         1. 如果工具配置 requires_consent=False → allowed
         2. 如果工具配置 requires_consent=True → requires_consent
-        3. Agent/Workflow 可覆盖默认策略（如只读工具集）
+        3. Agent 可覆盖默认策略（如只读工具集）
         
         Returns:
             PermissionDecision: 权限决策

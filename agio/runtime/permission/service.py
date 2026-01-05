@@ -54,7 +54,7 @@ class PermissionService:
         Decision logic:
         1. If tool config requires_consent=False → allowed
         2. If tool config requires_consent=True → requires_consent
-        3. Agent/Workflow can override default policy (e.g., read-only tool set)
+        3. Agent can override default policy (e.g., read-only tool set)
 
         Args:
             user_id: User identifier

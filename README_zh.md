@@ -35,8 +35,6 @@ pip install agio[dev]
 - [配置系统](./docs/CONFIG_SYSTEM_V2.md) - 配置驱动架构和使用指南
 - [工具配置](./docs/TOOL_CONFIGURATION.md) - 工具配置方式和环境变量支持
 - [Agent 系统](./docs/AGENT_SYSTEM.md) - Agent 执行引擎和 LLM 调用循环
-- [Workflow 编排](./docs/WORKFLOW_ORCHESTRATION.md) - Pipeline/Loop/Parallel 工作流
-- [Runnable 协议](./docs/RUNNABLE_PROTOCOL.md) - 统一执行接口和嵌套能力
 - [可观测性](./docs/OBSERVABILITY.md) - 分布式追踪和 Trace 查询
 - [API Control Panel](./docs/API_CONTROL_PANEL.md) - RESTful API 和流式事件接口
 - [API 集成指南](./agio/api/README.md) - 如何在现有 FastAPI 应用中集成 Agio API 和前端

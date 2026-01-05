@@ -76,22 +76,34 @@ async def test_collector_builds_trace_from_events():
 async def test_collector_creates_correct_span_types():
     """Test TraceCollector creates correct span types"""
     run_id = str(uuid4())
+    session_id = str(uuid4())
 
     events = [
         StepEvent(
             type=StepEventType.RUN_STARTED,
             run_id=run_id,
-            data={"workflow_id": "test_workflow", "type": "pipeline"},
+            data={"agent_id": "test_agent", "session_id": session_id},
         ),
         StepEvent(
-            type=StepEventType.NODE_STARTED,
+            type=StepEventType.STEP_COMPLETED,
             run_id=run_id,
-            node_id="node1",
-        ),
-        StepEvent(
-            type=StepEventType.NODE_COMPLETED,
-            run_id=run_id,
-            node_id="node1",
+            step_id=str(uuid4()),
+            snapshot=Step(
+                id=str(uuid4()),
+                session_id=session_id,
+                run_id=run_id,
+                sequence=1,
+                role=MessageRole.ASSISTANT,
+                content="Test response",
+                metrics=StepMetrics(
+                    model_name="gpt-4o",
+                    provider="openai",
+                    input_tokens=100,
+                    output_tokens=200,
+                    total_tokens=300,
+                    duration_ms=1500,
+                ),
+            ),
         ),
         StepEvent(
             type=StepEventType.RUN_COMPLETED,
@@ -117,7 +129,8 @@ async def test_collector_creates_correct_span_types():
 
     async for _ in collector.wrap_stream(
         event_gen(),
-        workflow_id="test_workflow",
+        agent_id="test_agent",
+        session_id=session_id,
         input_query="Test",
     ):
         pass
@@ -128,8 +141,8 @@ async def test_collector_creates_correct_span_types():
 
     # Verify span types
     assert len(trace.spans) == 2
-    assert trace.spans[0].kind == SpanKind.WORKFLOW
-    assert trace.spans[1].kind == SpanKind.STAGE
+    assert trace.spans[0].kind == SpanKind.AGENT
+    assert trace.spans[1].kind == SpanKind.LLM_CALL
 
 
 @pytest.mark.asyncio

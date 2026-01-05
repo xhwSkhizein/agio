@@ -36,7 +36,7 @@ agent/agent.py
   └─► 使用 runtime/wire.py
 
 runtime/runnable_executor.py
-  └─► 需要知道 Runnable 的具体类型（Agent/Workflow）
+  └─► 需要知道 Runnable 的具体类型（Agent）
 ```
 
 **当前状态**：

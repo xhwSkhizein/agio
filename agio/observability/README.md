@@ -17,7 +17,7 @@
 
 端到端的执行链路追踪：
 
-- Workflow → Stage → Agent → LLM/Tool 完整层级
+- Agent → LLM/Tool 完整层级
 - 瀑布图可视化
 - 性能分析
 - 错误追踪
@@ -87,16 +87,14 @@ async for event in collector.wrap_stream(
 ```
 Trace
 ├── trace_id
-├── workflow_id / agent_id
+├── agent_id
 ├── session_id
 ├── start_time / end_time
 ├── status
 └── spans[]
-    ├── Span (WORKFLOW)
-    ├── Span (STAGE)
-    │   └── Span (AGENT)
-    │       ├── Span (LLM_CALL)
-    │       └── Span (TOOL_CALL)
+    ├── Span (AGENT)
+    │   ├── Span (LLM_CALL)
+    │   └── Span (TOOL_CALL)
     └── ...
 ```
 
@@ -133,7 +131,7 @@ TraceCollector.wrap_stream()
 ### 查询 Trace 列表
 
 ```http
-GET /api/traces?workflow_id=xxx&limit=50
+GET /api/traces?agent_id=xxx&limit=50
 ```
 
 ### 获取 Trace 详情
@@ -202,8 +200,6 @@ AGIO_OTLP_PROTOCOL=http
 
 | SpanKind | 说明 | OTLP 映射 |
 |----------|------|-----------|
-| WORKFLOW | Workflow 顶层 | INTERNAL |
-| STAGE | Workflow Stage | INTERNAL |
 | AGENT | Agent 执行 | INTERNAL |
 | LLM_CALL | LLM API 调用 | CLIENT |
 | TOOL_CALL | Tool 执行 | CLIENT |
@@ -224,7 +220,6 @@ MongoDB 索引：
 
 - `trace_id` (unique)
 - `start_time`
-- `workflow_id`
 - `session_id`
 - `status`
 - `duration_ms`

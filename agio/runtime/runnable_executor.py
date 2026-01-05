@@ -16,10 +16,12 @@ from typing import AsyncIterator
 from uuid import uuid4
 
 from agio.domain import Run, RunStatus, StepEvent
+from agio.observability import TraceCollector
 from agio.runtime.event_factory import EventFactory
 from agio.runtime.protocol import ExecutionContext, Runnable, RunOutput, RunnableType
 from agio.runtime.wire import Wire
 from agio.storage.session.base import SessionStore
+from agio.storage.trace.store import TraceStore
 from agio.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -36,18 +38,24 @@ class RunnableExecutor:
     4. Save Run to SessionStore
 
     Does NOT:
-    - Manage state (Agent/Workflow handle their own)
+    - Manage state (Agent handle their own)
     - Modify Runnable internal logic
     """
 
-    def __init__(self, store: "SessionStore | None" = None) -> None:
+    def __init__(
+        self,
+        store: "SessionStore | None" = None,
+        trace_store: "TraceStore | None" = None,
+    ) -> None:
         """
         Initialize RunnableExecutor.
 
         Args:
             store: SessionStore for Run persistence (optional)
+            trace_store: TraceStore for trace persistence (optional)
         """
         self.store = store
+        self.trace_store = trace_store
 
     async def execute(
         self,
@@ -90,7 +98,6 @@ class RunnableExecutor:
             session_id=context.session_id,
             input_query=input,
             status=RunStatus.RUNNING,
-            workflow_id=context.workflow_id,
             parent_run_id=context.parent_run_id,
         )
         run.metrics.start_time = time.time()
@@ -158,7 +165,14 @@ class RunnableExecutor:
             run.metrics.end_time = time.time()
             run.metrics.duration = run.metrics.end_time - run.metrics.start_time
 
-            logger.error("run_failed", run_id=run.id, error=str(e))
+            logger.error(
+                "run_failed",
+                run_id=run.id,
+                runnable_id=runnable.id,
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=True,
+            )
 
             # Emit RUN_FAILED event
             await context.wire.write(ef.run_failed(str(e)))
@@ -178,6 +192,7 @@ class RunnableExecutor:
         user_id: str | None = None,
         metadata: dict | None = None,
         _parent_context: ExecutionContext | None = None,
+        enable_trace: bool = True,
     ) -> RunOutput:
         """
         Execute a Runnable with Wire, automatically constructing ExecutionContext.
@@ -193,16 +208,19 @@ class RunnableExecutor:
             user_id: User ID (optional)
             metadata: Additional metadata (optional)
             _parent_context: Parent context for nested execution (internal use)
+            enable_trace: Enable trace collection (default: True)
 
         Returns:
             RunOutput from the Runnable
 
         Note:
             - Wire must be created by caller (typically at API layer) for stream consumption
-            - For nested execution (Workflow), use execute() with pre-constructed context
+            - For nested execution, use execute() with pre-constructed context
+            - Trace collection is automatically enabled if trace_store is configured
         """
         # Generate run_id internally
         run_id = str(uuid4())
+        final_session_id = session_id or str(uuid4())
 
         # Construct ExecutionContext
         if _parent_context:
@@ -217,7 +235,7 @@ class RunnableExecutor:
             # Top-level execution: create new context
             context = ExecutionContext(
                 run_id=run_id,
-                session_id=session_id or str(uuid4()),
+                session_id=final_session_id,
                 wire=wire,
                 user_id=user_id,
                 runnable_type=runnable.runnable_type,
@@ -237,12 +255,14 @@ class RunnableExecutor:
         user_id: str | None = None,
         metadata: dict | None = None,
         cleanup_timeout: float = 5.0,
+        enable_trace: bool = True,
     ) -> AsyncIterator[StepEvent]:
         """
         Execute a Runnable in streaming mode, automatically managing Wire and Task lifecycle.
 
         This method creates Wire internally, starts execution in a background task,
         and yields events from the wire. Wire cleanup is handled automatically.
+        Trace collection is automatically enabled if trace_store is configured.
 
         Args:
             runnable: The Runnable to execute
@@ -250,44 +270,93 @@ class RunnableExecutor:
             session_id: Session ID (auto-generated if not provided)
             user_id: User ID (optional)
             metadata: Additional metadata (optional)
+            cleanup_timeout: Timeout for cleanup operations (default: 5.0s)
+            enable_trace: Enable trace collection (default: True)
 
         Yields:
-            StepEvent: Events from the execution
+            StepEvent: Events from the execution (with trace_id injected if tracing enabled)
 
         Example:
             async for event in executor.execute_stream(agent, query, session_id="sess_123"):
                 print(event.type, event.data)
         """
-        wire = Wire()
+        final_session_id = session_id or str(uuid4())
+        
+        # Wrap with trace collection if enabled
+        if enable_trace and self.trace_store:
+            # Create internal wire for execution task
+            internal_wire = Wire()
+            collector = TraceCollector(store=self.trace_store)
 
-        async def _run():
+            async def _run():
+                try:
+                    await self.execute_with_wire(
+                        runnable,
+                        input,
+                        internal_wire,
+                        session_id=final_session_id,
+                        user_id=user_id,
+                        metadata=metadata,
+                        enable_trace=False,  # Disable nested trace wrapping
+                    )
+                finally:
+                    await internal_wire.close()
+
             try:
-                await self.execute_with_wire(
-                    runnable,
-                    input,
-                    wire,
-                    session_id=session_id,
-                    user_id=user_id,
-                    metadata=metadata,
-                )
+                async with asyncio.TaskGroup() as tg:
+                    tg.create_task(_run())
+                    # Wrap event stream with trace collection
+                    async for event in collector.wrap_stream(
+                        internal_wire.read(),
+                        agent_id=runnable.id,
+                        session_id=final_session_id,
+                        user_id=user_id,
+                        input_query=input,
+                    ):
+                        yield event
             finally:
-                await wire.close()
+                try:
+                    async with asyncio.timeout(cleanup_timeout):
+                        await internal_wire.close()
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "execute_stream_cleanup_timeout",
+                        runnable_id=runnable.id,
+                        timeout=cleanup_timeout,
+                    )
+        else:
+            # No trace collection
+            wire = Wire()
 
-        try:
-            async with asyncio.TaskGroup() as tg:
-                tg.create_task(_run())
-                async for event in wire.read():
-                    yield event
-        finally:
-            try:
-                async with asyncio.timeout(cleanup_timeout):
+            async def _run():
+                try:
+                    await self.execute_with_wire(
+                        runnable,
+                        input,
+                        wire,
+                        session_id=final_session_id,
+                        user_id=user_id,
+                        metadata=metadata,
+                        enable_trace=False,
+                    )
+                finally:
                     await wire.close()
-            except asyncio.TimeoutError:
-                logger.warning(
-                    "execute_stream_cleanup_timeout",
-                    runnable_id=runnable.id,
-                    timeout=cleanup_timeout,
-                )
+
+            try:
+                async with asyncio.TaskGroup() as tg:
+                    tg.create_task(_run())
+                    async for event in wire.read():
+                        yield event
+            finally:
+                try:
+                    async with asyncio.timeout(cleanup_timeout):
+                        await wire.close()
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "execute_stream_cleanup_timeout",
+                        runnable_id=runnable.id,
+                        timeout=cleanup_timeout,
+                    )
 
 
 __all__ = ["RunnableExecutor"]

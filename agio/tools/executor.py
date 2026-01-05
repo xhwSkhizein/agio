@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import json
 import time
+from dataclasses import replace
 from typing import Any
 
 from agio.domain import ToolResult
@@ -156,17 +157,18 @@ class ToolExecutor:
             tool, "timeout_seconds", None
         )
 
+        # Pass timeout to context instead of forcing cancellation
+        # This allows nested Agents to handle timeout gracefully (e.g., summarize)
+        execution_context = context
+        if timeout_seconds:
+            timeout_at = time.time() + timeout_seconds
+            execution_context = replace(context, timeout_at=timeout_at)
+
         try:
             logger.debug("executing_tool", tool_name=fn_name, tool_call_id=call_id)
-            execute_task = asyncio.create_task(
-                tool.execute(args, context=context, abort_signal=abort_signal)
+            result: ToolResult = await tool.execute(
+                args, context=execution_context, abort_signal=abort_signal
             )
-            if timeout_seconds:
-                result: ToolResult = await asyncio.wait_for(
-                    execute_task, timeout=timeout_seconds
-                )
-            else:
-                result = await execute_task
             logger.debug(
                 "tool_execution_completed",
                 tool_name=fn_name,
@@ -179,23 +181,6 @@ class ToolExecutor:
                 self._cache.set(session_id, fn_name, args, result)
 
             return result
-
-        except asyncio.TimeoutError:
-            execute_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await execute_task
-            logger.error(
-                "tool_execution_timeout",
-                tool_name=fn_name,
-                timeout_seconds=timeout_seconds,
-                tool_call_id=call_id,
-            )
-            return self._create_error_result(
-                call_id=call_id,
-                tool_name=fn_name,
-                error=f"Tool execution timed out after {timeout_seconds} seconds",
-                start_time=start_time,
-            )
         except asyncio.CancelledError:
             logger.info("tool_execution_cancelled", tool_name=fn_name)
             return self._create_error_result(

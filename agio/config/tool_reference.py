@@ -12,24 +12,13 @@ from agio.config.schema import RunnableToolConfig, ToolReference
 
 
 class ParsedToolReference(BaseModel):
-    """Parsed tool reference with normalized structure."""
+    """Standardized tool reference structure."""
 
-    # Tool type: "function", "agent_tool", "workflow_tool"
-    type: str
-
-    # For function tools: tool name
-    name: str | None = None
-
-    # For agent_tool: agent reference
-    agent: str | None = None
-
-    # For workflow_tool: workflow reference
-    workflow: str | None = None
-
-    # Optional description
+    tool_type: str  # "regular_tool" or "agent_tool"
+    tool_name: str | None = None  # For regular_tool
+    agent_name: str | None = None  # For agent_tool
     description: str | None = None
-
-    # Original raw reference
+    custom_name: str | None = None
     raw: Any = None
 
 
@@ -45,54 +34,50 @@ def parse_tool_reference(tool_ref: ToolReference) -> ParsedToolReference:
 
     Examples:
         >>> parse_tool_reference("web_search")
-        ParsedToolReference(type="function", name="web_search")
+        ParsedToolReference(tool_type="regular_tool", tool_name="web_search")
 
         >>> parse_tool_reference({"type": "agent_tool", "agent": "researcher"})
-        ParsedToolReference(type="agent_tool", agent="researcher")
+        ParsedToolReference(tool_type="agent_tool", agent_name="researcher")
     """
     # Case 1: String reference (built-in or custom tool name)
     if isinstance(tool_ref, str):
         return ParsedToolReference(
-            type="function",
-            name=tool_ref,
+            tool_type="regular_tool",
+            tool_name=tool_ref,
             raw=tool_ref,
         )
 
-    # Case 2: RunnableToolConfig object
+    # Case 2: RunnableToolConfig object (agent_tool only)
     if isinstance(tool_ref, RunnableToolConfig):
         return ParsedToolReference(
-            type=tool_ref.type,
-            agent=tool_ref.agent,
-            workflow=tool_ref.workflow,
+            tool_type="agent_tool",
+            agent_name=tool_ref.agent,
             description=tool_ref.description,
-            name=tool_ref.name,
+            custom_name=tool_ref.name,
             raw=tool_ref,
         )
 
     # Case 3: Dict (from YAML/JSON)
     if isinstance(tool_ref, dict):
-        tool_type = tool_ref.get("type", "function")
+        tool_type = tool_ref.get("type", "regular_tool")
 
-        # agent_tool or workflow_tool
-        if tool_type in ("agent_tool", "workflow_tool"):
+        if tool_type == "agent_tool":
             return ParsedToolReference(
-                type=tool_type,
-                agent=tool_ref.get("agent"),
-                workflow=tool_ref.get("workflow"),
+                tool_type="agent_tool",
+                agent_name=tool_ref.get("agent"),
                 description=tool_ref.get("description"),
-                name=tool_ref.get("name"),
+                custom_name=tool_ref.get("name"),
                 raw=tool_ref,
             )
 
-        # Fallback: treat as function tool with name
+        # Fallback: treat as regular tool
         return ParsedToolReference(
-            type="function",
-            name=tool_ref.get("name"),
+            tool_type="regular_tool",
+            tool_name=tool_ref.get("name") or tool_ref.get("tool_name"),
             description=tool_ref.get("description"),
             raw=tool_ref,
         )
 
-    # Unsupported type
     raise ValueError(f"Unsupported tool reference type: {type(tool_ref)}")
 
 

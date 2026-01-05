@@ -26,10 +26,7 @@ interface SSEEventData {
   nesting_type?: string
   nested_runnable_id?: string
   
-  // Workflow context
-  workflow_type?: string
-  workflow_id?: string
-  node_id?: string
+  // Execution context
   branch_id?: string
   
   // Content
@@ -176,14 +173,11 @@ export class ExecutionTreeBuilder {
       case 'error':
         this.handleError(data)
         break
-      case 'node_started':
-      case 'node_completed':
-      case 'node_skipped':
       case 'branch_started':
       case 'branch_completed':
       case 'iteration_started':
-        // Workflow structural events - currently just logged
-        console.log(`Workflow event: ${eventType}`, data)
+        // Structural events - currently just logged
+        console.log(`Structural event: ${eventType}`, data)
         break
       default:
         console.log('Unhandled event:', eventType, data)
@@ -200,20 +194,16 @@ export class ExecutionTreeBuilder {
     }
     
     // Determine runnable type
-    const runnableType = (data.runnable_type || 
-      (data.workflow_type ? 'workflow' : 'agent')) as 'agent' | 'workflow'
+    const runnableType = (data.runnable_type || 'agent') as 'agent'
     
     // Create new execution
     const exec: RunnableExecution = {
       id: runId,
-      runnableId: data.runnable_id || data.nested_runnable_id || data.workflow_id || '',
+      runnableId: data.runnable_id || data.nested_runnable_id || '',
       runnableType,
-      nestingType: data.nesting_type as 'tool_call' | 'workflow_node' | undefined,
+      nestingType: data.nesting_type as 'tool_call' | undefined,
       parentRunId: data.parent_run_id,
       depth: data.depth ?? 0,
-      workflowType: data.workflow_type as 'pipeline' | 'parallel' | 'loop' | undefined,
-      nodeId: data.node_id,
-      branchId: data.branch_id,
       status: 'running',
       steps: [],
       children: [],

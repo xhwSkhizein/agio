@@ -15,8 +15,6 @@ from pydantic import BaseModel, Field
 class SpanKind(str, Enum):
     """Span type classification"""
 
-    WORKFLOW = "workflow"
-    STAGE = "stage"
     AGENT = "agent"
     LLM_CALL = "llm_call"
     TOOL_CALL = "tool_call"
@@ -62,8 +60,6 @@ class Span(BaseModel):
     # === Context Attributes ===
     attributes: dict[str, Any] = Field(default_factory=dict)
     # Common attributes:
-    # - workflow_id: Workflow ID
-    # - stage_id: Stage ID
     # - agent_id: Agent ID
     # - model_id: LLM model ID
     # - tool_name: Tool name
@@ -141,8 +137,6 @@ class Span(BaseModel):
         - CONSUMER = 5
         """
         mapping = {
-            SpanKind.WORKFLOW: 1,  # INTERNAL
-            SpanKind.STAGE: 1,  # INTERNAL
             SpanKind.AGENT: 1,  # INTERNAL
             SpanKind.LLM_CALL: 3,  # CLIENT (calling external LLM API)
             SpanKind.TOOL_CALL: 3,  # CLIENT
@@ -172,15 +166,14 @@ class Trace(BaseModel):
     Complete execution trace.
 
     A Trace contains one complete user request processing,
-    which may be a single Agent run or a full Workflow execution.
+    which may be a single Agent run or nested Agent executions.
     """
 
     # === Identity ===
     trace_id: str = Field(default_factory=lambda: str(uuid4()))
 
     # === Context ===
-    workflow_id: str | None = None  # Workflow ID (if workflow execution)
-    agent_id: str | None = None  # Agent ID (if single agent execution)
+    agent_id: str | None = None  # Agent ID
     session_id: str | None = None
     user_id: str | None = None
 

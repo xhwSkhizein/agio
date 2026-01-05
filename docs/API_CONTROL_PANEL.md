@@ -9,7 +9,6 @@ FastAPI Application
     │
     ├─► /agio/runnables      # 统一 Runnable 执行接口
     ├─► /agio/agents         # Agent 管理
-    ├─► /agio/workflows      # Workflow 管理
     ├─► /agio/sessions       # 会话管理
     ├─► /agio/traces         # 追踪查询
     ├─► /agio/config         # 配置管理
@@ -18,7 +17,7 @@ FastAPI Application
 
 ## 核心特性
 
-- ✅ **统一执行接口**：通过 `/runnables` 执行任何 Runnable（Agent/Workflow）
+- ✅ **统一执行接口**：通过 `/runnables` 执行任何 Runnable（Agent）
 - ✅ **流式事件传输**：SSE 方式返回 `StepEvent`，实时展示执行过程
 - ✅ **配置驱动**：热重载 `configs/`，拓扑排序构建组件
 - ✅ **会话管理**：支持会话查询、Fork、Resume
@@ -30,7 +29,7 @@ FastAPI Application
 
 #### POST `/agio/runnables/{runnable_id}/run`
 
-执行任何 Runnable（Agent 或 Workflow）。
+执行任何 Runnable（Agent）。
 
 **请求体**：
 ```json
@@ -84,7 +83,7 @@ data: {"type": "RUN_COMPLETED", "run_id": "..."}
 
 #### GET `/agio/runnables`
 
-列出所有 Runnable（Agent 和 Workflow）。
+列出所有 Runnable（Agent）。
 
 **响应**：
 ```json
@@ -93,13 +92,6 @@ data: {"type": "RUN_COMPLETED", "run_id": "..."}
     {
       "id": "research_agent",
       "type": "Agent",
-      "description": null
-    }
-  ],
-  "workflows": [
-    {
-      "id": "research_pipeline",
-      "type": "PipelineWorkflow",
       "description": null
     }
   ]
@@ -118,11 +110,11 @@ data: {"type": "RUN_COMPLETED", "run_id": "..."}
 }
 ```
 
-**响应（Workflow）**：
+**响应（Agent）**：
 ```json
 {
-  "id": "research_pipeline",
-  "type": "PipelineWorkflow",
+  "id": "research_agent",
+  "type": "Agent",
   "stages": [
     {
       "id": "research",
@@ -160,12 +152,9 @@ data: {"type": "RUN_COMPLETED", "run_id": "..."}
           "type": "function",
           "name": "web_search",
           "agent": null,
-          "workflow": null,
-          "description": null
+          "description": "Search the web for information"
         }
       ],
-      "memory": null,
-      "knowledge": null,
       "system_prompt": "...",
       "tags": []
     }
@@ -189,12 +178,9 @@ data: {"type": "RUN_COMPLETED", "run_id": "..."}
       "type": "function",
       "name": "web_search",
       "agent": null,
-      "workflow": null,
       "description": null
     }
   ],
-  "memory": null,
-  "knowledge": null,
   "system_prompt": "You are a research assistant.",
   "tags": []
 }
@@ -204,65 +190,6 @@ data: {"type": "RUN_COMPLETED", "run_id": "..."}
 
 获取 Agent 状态（是否已构建、依赖是否满足等）。
 
-### Workflows（Workflow 管理）
-
-#### GET `/agio/workflows`
-
-列出所有 Workflow 配置。
-
-**响应**：
-```json
-[
-  {
-    "id": "research_pipeline",
-    "type": "PipelineWorkflow",
-    "stage_count": 2
-  }
-]
-```
-
-#### GET `/agio/workflows/{workflow_id}`
-
-获取 Workflow 结构（节点列表、依赖关系）。
-
-**响应**：
-```json
-{
-  "id": "research_pipeline",
-  "type": "PipelineWorkflow",
-  "stages": [
-    {
-      "id": "research",
-      "runnable": "researcher",
-      "input_template": "Research: {input}",
-      "condition": null
-    },
-    {
-      "id": "analyze",
-      "runnable": "analyzer",
-      "input_template": "Analyze: {research.output}",
-      "condition": "{research.output} contains 'data'"
-    }
-  ],
-  "loop_condition": null,
-  "max_iterations": null,
-  "merge_template": null
-}
-```
-
-#### GET `/agio/workflows/{workflow_id}/dependencies`
-
-获取 Workflow 依赖关系图。
-
-**响应**：
-```json
-{
-  "research": [],
-  "analyze": ["research"]
-}
-```
-
-**说明**：返回每个 stage 依赖的其他 stage IDs（基于 input_template 中的引用）。
 
 ### Sessions（会话管理）
 
@@ -314,7 +241,6 @@ data: {"type": "RUN_COMPLETED", "run_id": "..."}
       "session_id": "session_123",
       "agent_id": "research_agent",
       "user_id": "user_456",
-      "workflow_id": null,
       "run_count": 5,
       "step_count": 25,
       "last_message": "Research AI trends",
@@ -411,7 +337,6 @@ data: {"type": "RUN_COMPLETED", "run_id": "..."}
       "tool_call_id": null,
       "run_id": "run_123",
       "parent_run_id": null,
-      "workflow_id": null,
       "node_id": null,
       "branch_key": null,
       "runnable_id": "research_agent",
@@ -470,7 +395,7 @@ Fork 会话（在指定 Step 处创建新会话，复制历史 Steps）。
 
 #### POST `/agio/sessions/{session_id}/resume`
 
-Resume 会话（继续执行，支持 Agent 和 Workflow）。
+Resume 会话（继续执行，支持 Agent）。
 
 **请求体**：
 ```json
@@ -487,7 +412,6 @@ Resume 会话（继续执行，支持 Agent 和 Workflow）。
 **说明**：
 - 自动从 Steps 中推断 `runnable_id`（如果未提供）
 - Agent：从 pending tool_calls 继续执行
-- Workflow：幂等重新执行（跳过已完成的节点）
 
 ### Traces（追踪查询）
 
@@ -496,7 +420,6 @@ Resume 会话（继续执行，支持 Agent 和 Workflow）。
 查询 Traces。
 
 **查询参数**：
-- `workflow_id`: Workflow ID（可选）
 - `agent_id`: Agent ID（可选）
 - `session_id`: Session ID（可选）
 - `status`: 状态（running, ok, error）（可选）
@@ -512,7 +435,6 @@ Resume 会话（继续执行，支持 Agent 和 Workflow）。
 [
   {
     "trace_id": "trace_123",
-    "workflow_id": null,
     "agent_id": "research_agent",
     "session_id": "session_123",
     "start_time": "2024-01-01T12:00:00Z",
@@ -637,7 +559,6 @@ Resume 会话（继续执行，支持 Agent 和 Workflow）。
 {
   "agent": [...],
   "tool": [...],
-  "workflow": [...],
   "model": [...],
   "session_store": [...],
   "trace_store": [...]
@@ -649,7 +570,7 @@ Resume 会话（继续执行，支持 Agent 和 Workflow）。
 列出指定类型的配置。
 
 **路径参数**：
-- `config_type`: 配置类型（agent, tool, workflow, model, session_store, trace_store, citation_store）
+- `config_type`: 配置类型（agent, tool, model, session_store, trace_store, citation_store）
 
 **响应**：
 ```json
@@ -793,11 +714,13 @@ Resume 会话（继续执行，支持 Agent 和 Workflow）。
 - `STEP_CREATED`: Step 创建
 - `STEP_UPDATED`: Step 更新
 - `RUN_STARTED`: Run 开始
+- `STEP_DELTA`: Step 增量更新
+- `STEP_COMPLETED`: Step 完成
 - `RUN_COMPLETED`: Run 完成
 - `RUN_FAILED`: Run 失败
-- `NODE_STARTED`: Workflow 节点开始
-- `NODE_COMPLETED`: Workflow 节点完成
-- `error`: 错误事件
+- `ERROR`: 错误事件
+- `TOOL_AUTH_REQUIRED`: 工具授权请求
+- `TOOL_AUTH_DENIED`: 工具授权拒绝
 
 ### 事件格式
 
@@ -938,7 +861,6 @@ AGIO_OTLP_PROTOCOL=grpc
 - `agio/api/router.py`: 路由聚合
 - `agio/api/routes/runnables.py`: Runnable 执行接口
 - `agio/api/routes/agents.py`: Agent 管理
-- `agio/api/routes/workflows.py`: Workflow 管理
 - `agio/api/routes/sessions.py`: 会话管理
 - `agio/api/routes/traces.py`: Trace 查询
 - `agio/api/routes/config.py`: 配置管理

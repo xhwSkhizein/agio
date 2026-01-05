@@ -33,7 +33,7 @@ class Agent:
     """
     Agent configuration container.
 
-    Holds configuration for Model, Tools, Memory, etc.
+    Holds configuration for Model and Tools.
     Implements Runnable protocol for multi-agent orchestration.
     """
 ```

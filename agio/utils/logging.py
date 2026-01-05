@@ -36,12 +36,21 @@ SENSITIVE_KEYS = {
     "password",
     "api_key",
     "secret",
-    "token",
     "authorization",
     "auth",
     "apikey",
     "access_token",
     "refresh_token",
+}
+
+# Keys that should NOT be filtered (even if they contain sensitive patterns)
+ALLOWED_KEYS = {
+    "tokens",
+    "total_tokens",
+    "input_tokens",
+    "output_tokens",
+    "prompt_tokens",
+    "completion_tokens",
 }
 
 
@@ -50,6 +59,10 @@ def filter_sensitive_data(
 ) -> dict:
     """Filter out sensitive information from logs."""
     for key in list(event_dict.keys()):
+        # Skip allowed keys
+        if key in ALLOWED_KEYS:
+            continue
+        # Check if key contains sensitive patterns
         if any(sensitive in key.lower() for sensitive in SENSITIVE_KEYS):
             event_dict[key] = "***REDACTED***"
     return event_dict

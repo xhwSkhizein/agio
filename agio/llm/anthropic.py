@@ -18,7 +18,10 @@ except ImportError:
     raise ImportError("Please install anthropic package: uv add anthropic")
 
 from agio.llm.base import Model, StreamChunk
+from agio.utils.logging import get_logger
 from agio.utils.retry import retry_async
+
+logger = get_logger(__name__)
 
 # Retryable exceptions for Anthropic
 ANTHROPIC_RETRYABLE = (
@@ -175,7 +178,28 @@ class AnthropicModel(Model):
         if anthropic_tools:
             params["tools"] = anthropic_tools
 
-        stream = await self.client.messages.create(**params)
+        logger.debug(
+            "llm_request",
+            model=actual_model,
+            messages_count=len(anthropic_messages),
+            tools_count=len(anthropic_tools) if anthropic_tools else 0,
+            temperature=self.temperature,
+            max_tokens=params["max_tokens"],
+        )
+
+        try:
+            stream = await self.client.messages.create(**params)
+        except Exception as e:
+            logger.error(
+                "llm_request_failed",
+                model=actual_model,
+                error=str(e),
+                error_type=type(e).__name__,
+                messages_count=len(anthropic_messages),
+                tools_count=len(anthropic_tools) if anthropic_tools else 0,
+                exc_info=True,
+            )
+            raise
 
         async for event in stream:
             stream_chunk = StreamChunk()

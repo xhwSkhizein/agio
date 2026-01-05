@@ -69,6 +69,9 @@ export SMTP_USERNAME="mock-user"
 export SMTP_PASSWORD="mock-pass"
 export REPO_PATH="./"
 
+# 创建 logs 目录（如果不存在）
+mkdir -p logs
+
 # 启动后端 (使用 uv run)
 echo "🔧 Starting FastAPI backend on port 8900..."
 # Note: Using single worker for development. For production, use --workers N

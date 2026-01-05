@@ -8,7 +8,7 @@ license = {text = "MIT"}
 authors = [
     {name = "Agio Contributors"}
 ]
-keywords = ["ai", "agent", "llm", "framework", "orchestration", "workflow"]
+keywords = ["ai", "agent", "llm", "framework"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",

@@ -170,8 +170,6 @@ Agio Span 到 OTLP Span 的映射：
 
 | Agio SpanKind | OTLP SpanKind | 说明 |
 |---------------|---------------|------|
-| WORKFLOW | INTERNAL | 内部执行 |
-| STAGE | INTERNAL | 内部执行 |
 | AGENT | INTERNAL | 内部执行 |
 | LLM_CALL | CLIENT | 调用外部 LLM API |
 | TOOL_CALL | CLIENT | 调用外部工具 |

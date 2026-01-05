@@ -1,7 +1,7 @@
 /**
  * RunnableExecutionView - Unified component for displaying any Runnable execution
  * 
- * This component recursively renders Agent and Workflow executions with their
+ * This component recursively renders Agent executions with their
  * steps and children, supporting arbitrary nesting depth.
  */
 
@@ -11,9 +11,6 @@ import { MessageContent } from './MessageContent'
 import { ToolCall } from './ToolCall'
 import { 
   Bot, 
-  Layers, 
-  GitBranch, 
-  RefreshCw, 
   Cog,
   ChevronLeft,
   ChevronRight,
@@ -43,18 +40,6 @@ interface ExecutionHeaderProps {
 
 function ExecutionHeader({ execution, isExpanded, onToggle }: ExecutionHeaderProps) {
   const getIcon = () => {
-    if (execution.runnableType === 'workflow') {
-      switch (execution.workflowType) {
-        case 'pipeline':
-          return <Layers className="w-3.5 h-3.5" />
-        case 'parallel':
-          return <GitBranch className="w-3.5 h-3.5" />
-        case 'loop':
-          return <RefreshCw className="w-3.5 h-3.5" />
-        default:
-          return <Layers className="w-3.5 h-3.5" />
-      }
-    }
     // Agent triggered by tool_call
     if (execution.nestingType === 'tool_call') {
       return <Cog className="w-3.5 h-3.5" />
@@ -63,18 +48,6 @@ function ExecutionHeader({ execution, isExpanded, onToggle }: ExecutionHeaderPro
   }
 
   const getColorClass = () => {
-    if (execution.runnableType === 'workflow') {
-      switch (execution.workflowType) {
-        case 'pipeline':
-          return 'bg-primary-500/20 text-primary-400 border-primary-500/30'
-        case 'parallel':
-          return 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-        case 'loop':
-          return 'bg-purple-500/20 text-purple-400 border-purple-500/30'
-        default:
-          return 'bg-primary-500/20 text-primary-400 border-primary-500/30'
-      }
-    }
     if (execution.nestingType === 'tool_call') {
       return 'bg-amber-500/10 text-amber-400 border-amber-500/30'
     }
@@ -88,9 +61,7 @@ function ExecutionHeader({ execution, isExpanded, onToggle }: ExecutionHeaderPro
   }
 
   const displayName = execution.runnableId.replace(/_/g, ' ') || 'Unknown'
-  const typeLabel = execution.runnableType === 'workflow' 
-    ? execution.workflowType?.toUpperCase() 
-    : execution.nestingType === 'tool_call' ? 'RUNNABLE' : 'AGENT'
+  const typeLabel = execution.nestingType === 'tool_call' ? 'RUNNABLE' : 'AGENT'
 
   return (
     <button
@@ -180,21 +151,12 @@ function ExecutionSteps({ execution }: ExecutionStepsProps) {
   }
 
   // Find child execution for a tool_call (RunnableTool)
-  // If tool_call step has childRunId, use it for precise matching.
-  // Otherwise, fall back to matching by runnableId (may match wrong child if parallel calls exist).
+  // Only use precise childRunId matching to avoid showing wrong child execution
   const getChildForToolCall = (step: Extract<ExecutionStep, { type: 'tool_call' }>) => {
-    // If step has childRunId, use it for precise matching
     if (step.childRunId) {
       return execution.children.find(child => child.id === step.childRunId)
     }
-
-  // Fallback: match by runnableId (legacy behavior, may be incorrect for parallel calls)
-    // Extract runnable_id from tool name (e.g., "call_collector" -> "collector")
-    const runnableId = step.toolName.startsWith('call_') ? step.toolName.slice(5) : step.toolName
-    
-    return execution.children.find(child => 
-      child.nestingType === 'tool_call' && child.runnableId === runnableId
-    )
+    return undefined
   }
 
   // Group consecutive tool_calls together (they are concurrent)
@@ -433,7 +395,6 @@ function ExecutionSteps({ execution }: ExecutionStepsProps) {
 interface ExecutionChildrenProps {
   children: RunnableExecution[]
   parentDepth: number
-  parentWorkflowType?: string  // 'pipeline' | 'parallel' | 'loop'
 }
 
 const ChildStatusIcon = ({ status }: { status: string }) => {
@@ -462,7 +423,7 @@ function ChildTab({ child, isActive, onClick }: ChildTabProps) {
     failed: 'border-red-500',
   }
 
-  const displayName = child.nodeId || child.branchId || child.runnableId.replace(/_/g, ' ')
+  const displayName = child.runnableId.replace(/_/g, ' ')
 
   return (
     <button
@@ -488,7 +449,7 @@ function ChildTab({ child, isActive, onClick }: ChildTabProps) {
   )
 }
 
-function ExecutionChildren({ children, parentDepth, parentWorkflowType }: ExecutionChildrenProps) {
+function ExecutionChildren({ children, parentDepth }: ExecutionChildrenProps) {
   const [activeIndex, setActiveIndex] = useState(0)
 
   if (children.length === 0) {
@@ -505,14 +466,9 @@ function ExecutionChildren({ children, parentDepth, parentWorkflowType }: Execut
   }
 
   // Determine if children should be displayed in parallel (tabs) or sequential (vertical)
-  // Parallel display conditions:
-  // 1. Parent is a ParallelWorkflow
-  // 2. Multiple children are running concurrently (e.g., concurrent tool calls)
+  // Multiple children running concurrently (e.g., concurrent tool calls)
   const runningCount = standaloneChildren.filter(c => c.status === 'running').length
-  const hasParallelContext =
-    parentWorkflowType === 'parallel' ||
-    standaloneChildren.some(child => child.branchId)
-  const isParallelExecution = hasParallelContext || runningCount > 1
+  const isParallelExecution = runningCount > 1
 
   // Single child - render directly
   if (standaloneChildren.length === 1) {
@@ -633,23 +589,11 @@ export function RunnableExecutionView({
 
   // Determine border color based on type
   const borderColor = useMemo(() => {
-    if (execution.runnableType === 'workflow') {
-      switch (execution.workflowType) {
-        case 'pipeline':
-          return 'border-primary-500/30'
-        case 'parallel':
-          return 'border-amber-500/30'
-        case 'loop':
-          return 'border-purple-500/30'
-        default:
-          return 'border-primary-500/30'
-      }
-    }
     if (execution.nestingType === 'tool_call') {
       return 'border-amber-500/30'
     }
     return 'border-blue-500/30'
-  }, [execution.runnableType, execution.workflowType, execution.nestingType])
+  }, [execution.nestingType])
 
   // For root-level agents without nested structure, render steps directly without container
   if (isRoot && execution.runnableType === 'agent' && execution.children.length === 0) {
@@ -670,7 +614,6 @@ export function RunnableExecutionView({
           <ExecutionChildren 
             children={execution.children} 
             parentDepth={depth}
-            parentWorkflowType={execution.workflowType}
           />
         </div>
       )}

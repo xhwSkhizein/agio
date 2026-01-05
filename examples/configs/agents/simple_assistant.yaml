@@ -11,6 +11,7 @@ hooks:
   - logging_hook
 max_steps: 10
 enable_memory_update: false
+enable_skills: true
 enabled: true
 tags:
   - simple

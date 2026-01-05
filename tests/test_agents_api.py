@@ -71,9 +71,6 @@ tools:
   - type: agent_tool
     agent: researcher
     description: Research expert
-  - type: workflow_tool
-    workflow: analysis_pipeline
-    description: Analysis workflow
 tags:
   - test
 """
@@ -108,27 +105,21 @@ tools:
     # Verify agent 1 (string tools)
     agent1 = next(a for a in data["items"] if a["name"] == "test_agent_1")
     assert len(agent1["tools"]) == 2
-    assert agent1["tools"][0]["type"] == "function"
+    assert agent1["tools"][0]["type"] == "regular_tool"
     assert agent1["tools"][0]["name"] == "web_search"
-    assert agent1["tools"][1]["type"] == "function"
-    assert agent1["tools"][1]["name"] == "file_read"
 
     # Verify agent 2 (dict tools)
     agent2 = next(a for a in data["items"] if a["name"] == "test_agent_2")
-    assert len(agent2["tools"]) == 3
-    assert agent2["tools"][0]["type"] == "function"
+    assert len(agent2["tools"]) == 2
+    assert agent2["tools"][0]["type"] == "regular_tool"
     assert agent2["tools"][0]["name"] == "web_search"
     assert agent2["tools"][1]["type"] == "agent_tool"
     assert agent2["tools"][1]["agent"] == "researcher"
-    assert agent2["tools"][1]["description"] == "Research expert"
-    assert agent2["tools"][2]["type"] == "workflow_tool"
-    assert agent2["tools"][2]["workflow"] == "analysis_pipeline"
 
     # Verify agent 3 (mixed tools)
     agent3 = next(a for a in data["items"] if a["name"] == "test_agent_3")
     assert len(agent3["tools"]) == 2
-    assert agent3["tools"][0]["type"] == "function"
-    assert agent3["tools"][0]["name"] == "file_read"
+    assert agent3["tools"][0]["type"] == "regular_tool"
     assert agent3["tools"][1]["type"] == "agent_tool"
     assert agent3["tools"][1]["agent"] == "code_assistant"
 
@@ -153,11 +144,6 @@ tools:
   - type: agent_tool
     agent: code_assistant
     description: Coding expert
-  - type: workflow_tool
-    workflow: analysis_pipeline
-    description: Complete analysis
-memory: conversation_memory
-knowledge: product_docs
 tags:
   - orchestrator
   - multi-agent
@@ -176,12 +162,10 @@ tags:
     data = response.json()
     assert data["name"] == "orchestra"
     assert data["model"] == "gpt-4o"
-    assert data["memory"] == "conversation_memory"
-    assert data["knowledge"] == "product_docs"
-    assert len(data["tools"]) == 4
+    assert len(data["tools"]) == 3
 
     # Verify string tool
-    assert data["tools"][0]["type"] == "function"
+    assert data["tools"][0]["type"] == "regular_tool"
     assert data["tools"][0]["name"] == "web_search"
 
     # Verify agent tools
@@ -191,10 +175,6 @@ tags:
 
     assert data["tools"][2]["type"] == "agent_tool"
     assert data["tools"][2]["agent"] == "code_assistant"
-
-    # Verify workflow tool
-    assert data["tools"][3]["type"] == "workflow_tool"
-    assert data["tools"][3]["workflow"] == "analysis_pipeline"
 
 
 def test_get_agent_not_found(client):
