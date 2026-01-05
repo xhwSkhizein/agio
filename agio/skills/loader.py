@@ -125,7 +125,8 @@ class SkillLoader:
         if not metadata:
             return content
 
-        base_dir = str(metadata.base_dir.absolute())
+        # Use resolve() to normalize paths (handles Windows short names like RUNNER~1)
+        base_dir = str(metadata.base_dir.resolve())
         return content.replace("{baseDir}", base_dir)
 
     async def load_reference(self, skill_name: str, rel_path: str) -> str:

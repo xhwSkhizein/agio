@@ -79,7 +79,13 @@ async def test_resolve_base_dir(registry_with_skill, sample_skill):
     resolved = loader.resolve_base_dir("test-skill", content)
 
     assert "{baseDir}" not in resolved
-    assert str(sample_skill.absolute()) in resolved
+    # Use resolve() to normalize paths (handles Windows short names like RUNNER~1)
+    expected_path = sample_skill.resolve()
+    # Extract the base directory path from resolved string
+    # Format: "Path: <path>/scripts/init.py"
+    path_part = resolved.replace("Path: ", "").replace("/scripts/init.py", "")
+    resolved_path = Path(path_part).resolve()
+    assert resolved_path == expected_path
 
 
 @pytest.mark.asyncio

@@ -1,11 +1,18 @@
 """BashTool 测试用例"""
 
+import sys
+
 import pytest
 
 from agio.tools.builtin.bash_tool import BashTool
 from agio.runtime.control import AbortSignal
 from agio.runtime.protocol import ExecutionContext
 from agio.runtime import Wire
+
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="BashTool is not supported on Windows (requires /bin/bash)",
+)
 
 
 class TestBashTool:
