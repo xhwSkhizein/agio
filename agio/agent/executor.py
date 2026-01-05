@@ -304,7 +304,7 @@ class AgentExecutor:
         self.tool_executor = ToolExecutor(
             tools,
             permission_manager=permission_manager,
-            default_timeout=config.tool_timeout,
+            default_timeout=self.config.tool_timeout,
         )
         self._tool_schemas = [t.to_openai_schema() for t in tools] if tools else None
 
