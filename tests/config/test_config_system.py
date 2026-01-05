@@ -190,6 +190,23 @@ class TestConfigSystemBuild:
         assert model is not None
 
     @pytest.mark.asyncio
+    async def test_use_context_release(self, config_system, temp_config_dir):
+        """Ensure use() context acquires and releases component references."""
+        await config_system.load_from_directory(temp_config_dir)
+        await config_system.build_all()
+
+        container = config_system._active_container  # noqa: SLF001 test access
+        assert container.ref_count("test_model") == 0
+
+        async with config_system.use("test_model") as model:
+            assert model is not None
+            assert container.ref_count("test_model") == 1
+
+        # after context exit, ref count should drop to zero
+        await container.wait_for_zero()
+        assert container.ref_count("test_model") == 0
+
+    @pytest.mark.asyncio
     async def test_get_component_not_found(self, config_system):
         """Test getting a non-existent component."""
         with pytest.raises(ComponentNotFoundError):
@@ -209,6 +226,127 @@ class TestConfigSystemBuild:
             assert "name" in comp
             assert "type" in comp
             assert "created_at" in comp
+
+
+class TestConfigSystemReloadSafety:
+    """Integration-like tests for reload swap, draining, and failure rollback."""
+
+    @pytest.mark.asyncio
+    async def test_reload_waits_for_inflight_refs_and_cleans_old(self, monkeypatch):
+        """Ensure reload swaps after build, waits for refs, and cleans old container."""
+
+        class TrackingBuilder:
+            def __init__(self):
+                self.build_count = 0
+                self.cleanup_count = 0
+                self.last_cleaned = None
+
+            async def build(self, config, dependencies):
+                self.build_count += 1
+                return {"version": self.build_count}
+
+            async def cleanup(self, instance):
+                self.cleanup_count += 1
+                self.last_cleaned = instance
+
+        builder = TrackingBuilder()
+        system = ConfigSystem()
+        # Registry: single model
+        model_cfg = ModelConfig(
+            name="m1", provider="mock", model_name="mock-gpt", api_key="k"
+        )
+        system.registry.register(model_cfg)
+
+        # monkeypatch builder registry
+        orig_get = system.builder_registry.get
+
+        def fake_get(component_type):
+            if component_type == ComponentType.MODEL:
+                return builder
+            return orig_get(component_type)
+
+        monkeypatch.setattr(system.builder_registry, "get", fake_get)
+
+        # initial build
+        stats = await system.build_all()
+        assert stats["built"] == 1
+        first_instance = system.get("m1")
+
+        # hold reference during reload
+        async with system.use("m1"):
+            reload_stats = await system.build_all()
+            assert reload_stats["built"] == 1
+            # old instance still referenced
+            assert system._draining_containers  # noqa: SLF001 test access
+            assert builder.build_count == 2
+
+        # ensure drain completes
+        await system._drain_containers()  # noqa: SLF001 test access
+
+        # old instance cleaned after ref released
+        assert builder.cleanup_count >= 1
+        assert builder.last_cleaned == first_instance
+
+        # active instance is the new one
+        new_instance = system.get("m1")
+        assert new_instance != first_instance
+
+    @pytest.mark.asyncio
+    async def test_reload_failure_keeps_active_container(self, monkeypatch):
+        """On build failure, active container should remain unchanged."""
+
+        class FailingBuilder:
+            async def build(self, config, dependencies):
+                raise RuntimeError("boom")
+
+            async def cleanup(self, instance):
+                return None
+
+        system = ConfigSystem()
+        model_cfg = ModelConfig(
+            name="m_fail", provider="mock", model_name="mock-gpt", api_key="k"
+        )
+        system.registry.register(model_cfg)
+
+        # initial successful build with tracking builder
+        class OkBuilder:
+            def __init__(self):
+                self.build_count = 0
+
+            async def build(self, config, dependencies):
+                self.build_count += 1
+                return {"v": self.build_count}
+
+            async def cleanup(self, instance):
+                return None
+
+        ok_builder = OkBuilder()
+        orig_get = system.builder_registry.get
+
+        def ok_get(component_type):
+            if component_type == ComponentType.MODEL:
+                return ok_builder
+            return orig_get(component_type)
+
+        monkeypatch.setattr(system.builder_registry, "get", ok_get)
+        stats = await system.build_all()
+        assert stats["built"] == 1
+        active_before = system._active_container  # noqa: SLF001 test access
+        instance_before = system.get("m_fail")
+
+        # now force failure
+        def failing_get(component_type):
+            if component_type == ComponentType.MODEL:
+                return FailingBuilder()
+            return orig_get(component_type)
+
+        monkeypatch.setattr(system.builder_registry, "get", failing_get)
+        stats_fail = await system.build_all()
+        assert stats_fail["failed"] >= 1
+
+        # container and instance stay unchanged
+        assert system._active_container is active_before  # noqa: SLF001
+        assert system.get("m_fail") == instance_before
 
 
 class TestConfigSystemSaveDelete:

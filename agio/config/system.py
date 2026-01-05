@@ -9,6 +9,7 @@ Responsibilities:
 
 import asyncio
 import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -68,11 +69,13 @@ class ConfigSystem:
     def __init__(self) -> None:
         self._lock = asyncio.Lock()
         self.registry = ConfigRegistry()
-        self.container = ComponentContainer()
+        self._active_container = ComponentContainer()
+        self.container = self._active_container  # backward compatibility
+        self._draining_containers: list[ComponentContainer] = []
         self.dependency_resolver = DependencyResolver()
         self.builder_registry = BuilderRegistry()
         self.hot_reload = HotReloadManager(
-            self.container, self.dependency_resolver, self.builder_registry
+            self._active_container, self.dependency_resolver, self.builder_registry
         )
 
     async def load_from_directory(self, config_dir: str | Path) -> dict[str, int]:
@@ -137,13 +140,10 @@ class ConfigSystem:
             self.registry.register(config)
             logger.info(f"Config saved: {component_type.value}/{name}")
 
-            if is_update and self.container.has(name):
-                await self.hot_reload.handle_change(
-                    name, "update", lambda n: self._build_by_name(n)
-                )
-            else:
-                await self._build_component(config)
-                self.hot_reload._notify_callbacks(name, "create")
+            await self._reload_active_container()
+            self.hot_reload._notify_callbacks(
+                name, "create" if not is_update else "update"
+            )
 
     async def delete_config(self, component_type: ComponentType, name: str) -> None:
         """
@@ -159,10 +159,9 @@ class ConfigSystem:
                     f"Config {component_type.value}/{name} not found"
                 )
 
-            await self.hot_reload.handle_change(name, "delete", None)
-
             self.registry.remove(component_type, name)
             logger.info(f"Config deleted: {component_type.value}/{name}")
+            await self._reload_active_container()
 
     def get_config(self, component_type: ComponentType, name: str) -> dict | None:
         """Get configuration (returns dict format for backward compatibility)."""
@@ -188,30 +187,7 @@ class ConfigSystem:
         logger.info("Building all components...")
 
         async with self._lock:
-            configs = self.registry.list_all()
-            available_names = self.registry.get_all_names()
-
-            sorted_configs = self.dependency_resolver.topological_sort(
-                configs, available_names
-            )
-
-            stats = {"built": 0, "failed": 0}
-
-            for config in sorted_configs:
-                if self.container.has(config.name):
-                    continue
-
-                try:
-                    await self._build_component(config)
-                    stats["built"] += 1
-                except Exception as e:
-                    logger.exception(
-                        f"Failed to build {config.type}/{config.name}: {e}"
-                    )
-                    stats["failed"] += 1
-
-        logger.info(f"Build completed: {stats}")
-        return stats
+            return await self._reload_active_container()
 
     async def rebuild(self, name: str) -> None:
         """
@@ -221,17 +197,22 @@ class ConfigSystem:
             name: Component name
         """
         async with self._lock:
-            await self.hot_reload.handle_change(
-                name, "update", lambda n: self._build_by_name(n)
-            )
+            await self._reload_active_container()
 
     def get(self, name: str) -> Any:
         """Get component instance."""
-        return self.container.get(name)
+        return self._active_container.acquire(name)
 
     def get_or_none(self, name: str) -> Any | None:
-        """Get component instance (returns None if not found)."""
-        return self.container.get_or_none(name)
+        """Get component instance or None."""
+        try:
+            return self._active_container.acquire(name)
+        except ComponentNotFoundError:
+            return None
+
+    def release(self, name: str) -> None:
+        """Release component instance."""
+        self._active_container.release(name)
 
     def get_instance(self, name: str) -> Any:
         """Get component instance (alias for get)."""
@@ -239,7 +220,76 @@ class ConfigSystem:
 
     def get_all_instances(self) -> dict[str, Any]:
         """Get all component instances."""
-        return self.container.get_all_instances()
+        return self._active_container.get_all_instances()
+
+    @asynccontextmanager
+    async def use(self, name: str):
+        """
+        Async context manager to auto release component reference.
+        """
+        instance = self.get(name)
+        try:
+            yield instance
+        finally:
+            self.release(name)
+
+    async def _reload_active_container(self) -> dict[str, int]:
+        """
+        Build components into a new container, then atomically swap and drain old containers.
+        """
+        new_container = ComponentContainer()
+        configs = self.registry.list_all()
+        available_names = self.registry.get_all_names()
+
+        sorted_configs = self.dependency_resolver.topological_sort(
+            configs, available_names
+        )
+
+        stats = {"built": 0, "failed": 0}
+
+        for config in sorted_configs:
+            try:
+                await self._build_component(config, new_container)
+                stats["built"] += 1
+            except Exception as e:
+                logger.exception(f"Failed to build {config.type}/{config.name}: {e}")
+                stats["failed"] += 1
+                # Abort swap on failure
+                return stats
+
+        # Swap containers
+        old_container = self._active_container
+        self._active_container = new_container
+        self.container = new_container
+        self.hot_reload.set_container(new_container)
+        self._draining_containers.append(old_container)
+
+        # Begin draining old containers (fire and forget)
+        asyncio.create_task(self._drain_containers())
+
+        logger.info(f"Build completed and swapped: {stats}")
+        return stats
+
+    async def _drain_containers(self) -> None:
+        """Wait for draining containers to have zero refs, then cleanup."""
+        while self._draining_containers:
+            container = self._draining_containers.pop(0)
+            drained = await container.wait_for_zero(timeout=5.0)
+            if not drained:
+                logger.warning("Draining container timeout; forcing cleanup")
+            await self._cleanup_container(container)
+
+    async def _cleanup_container(self, container: ComponentContainer) -> None:
+        """Cleanup all instances in a container using builders."""
+        for name, metadata in container.get_all_metadata().items():
+            instance = container.get_or_none(name)
+            builder = self.builder_registry.get(metadata.component_type)
+            if instance is not None and builder:
+                try:
+                    await builder.cleanup(instance)
+                except Exception as e:
+                    logger.error(f"Failed to cleanup {name}: {e}")
+        container.clear()
 
     def list_components(self) -> list[dict]:
         """List all built components."""
@@ -278,9 +328,11 @@ class ConfigSystem:
         """Register configuration change callback."""
         self.hot_reload.register_callback(callback)
 
-    async def _build_component(self, config: ComponentConfig) -> Any:
+    async def _build_component(
+        self, config: ComponentConfig, container: ComponentContainer
+    ) -> Any:
         """Build single component."""
-        dependencies = await self._resolve_dependencies(config)
+        dependencies = await self._resolve_dependencies(config, container)
 
         component_type = ComponentType(config.type)
         builder = self.builder_registry.get(component_type)
@@ -294,34 +346,38 @@ class ConfigSystem:
             config=config,
             dependencies=list(dependencies.keys()),
         )
-        self.container.register(config.name, instance, metadata)
+        container.register(config.name, instance, metadata)
 
         logger.info(f"Component built: {component_type.value}/{config.name}")
         return instance
 
-    async def _build_by_name(self, name: str) -> Any:
+    async def _build_by_name(self, name: str, container: ComponentContainer) -> Any:
         """Build component by name (for hot reload)."""
         for config in self.registry.list_all():
             if config.name == name:
-                return await self._build_component(config)
+                return await self._build_component(config, container)
 
         raise ConfigNotFoundError(f"Config for component '{name}' not found")
 
-    async def _resolve_dependencies(self, config: ComponentConfig) -> dict[str, Any]:
+    async def _resolve_dependencies(
+        self, config: ComponentConfig, container: ComponentContainer
+    ) -> dict[str, Any]:
         """Resolve component dependencies."""
         if isinstance(config, AgentConfig):
-            return await self._resolve_agent_dependencies(config)
+            return await self._resolve_agent_dependencies(config, container)
         elif isinstance(config, ToolConfig):
-            return await self._resolve_tool_dependencies(config)
+            return await self._resolve_tool_dependencies(config, container)
         elif isinstance(config, WorkflowConfig):
-            return await self._resolve_workflow_dependencies(config)
+            return await self._resolve_workflow_dependencies(config, container)
         return {}
 
-    async def _resolve_agent_dependencies(self, config: AgentConfig) -> dict[str, Any]:
+    async def _resolve_agent_dependencies(
+        self, config: AgentConfig, container: ComponentContainer
+    ) -> dict[str, Any]:
         """Resolve Agent dependencies."""
         dependencies = {}
 
-        dependencies["model"] = self.container.get(config.model)
+        dependencies["model"] = container.get(config.model)
 
         tools = []
         for tool_ref in config.tools:
@@ -329,38 +385,41 @@ class ConfigSystem:
                 tool_ref,
                 current_component=config.name,
                 session_store_name=config.session_store,
+                container=container,
             )
             tools.append(tool)
         dependencies["tools"] = tools
 
         if config.memory:
-            dependencies["memory"] = self.container.get(config.memory)
+            dependencies["memory"] = container.get(config.memory)
 
         if config.knowledge:
-            dependencies["knowledge"] = self.container.get(config.knowledge)
+            dependencies["knowledge"] = container.get(config.knowledge)
 
         if config.session_store:
-            dependencies["session_store"] = self.container.get(config.session_store)
+            dependencies["session_store"] = container.get(config.session_store)
 
         return dependencies
 
-    async def _resolve_tool_dependencies(self, config: ToolConfig) -> dict[str, Any]:
+    async def _resolve_tool_dependencies(
+        self, config: ToolConfig, container: ComponentContainer
+    ) -> dict[str, Any]:
         """Resolve Tool dependencies."""
         dependencies = {}
         for param_name, dep_name in config.effective_dependencies.items():
-            dependencies[param_name] = self.container.get(dep_name)
+            dependencies[param_name] = container.get(dep_name)
         return dependencies
 
     async def _resolve_workflow_dependencies(
-        self, config: WorkflowConfig
+        self, config: WorkflowConfig, container: ComponentContainer
     ) -> dict[str, Any]:
         """Resolve Workflow dependencies."""
         dependencies = {}
 
-        dependencies["_all_instances"] = self.container.get_all_instances()
+        dependencies["_all_instances"] = container.get_all_instances()
 
         if config.session_store:
-            dependencies["session_store"] = self.container.get(config.session_store)
+            dependencies["session_store"] = container.get(config.session_store)
 
         return dependencies
 
@@ -369,10 +428,12 @@ class ConfigSystem:
         tool_ref: str | dict | RunnableToolConfig,
         current_component: str | None = None,
         session_store_name: str | None = None,
+        container: ComponentContainer | None = None,
     ) -> Any:
         """Resolve tool reference."""
+        container = container or self._active_container
         if isinstance(tool_ref, str):
-            return await self._get_or_create_tool(tool_ref)
+            return await self._get_or_create_tool(tool_ref, container)
 
         if isinstance(tool_ref, RunnableToolConfig):
             parsed = parse_tool_reference(tool_ref.model_dump(exclude_none=True))
@@ -397,6 +458,7 @@ class ConfigSystem:
         config: dict,
         current_component: str | None = None,
         session_store_name: str | None = None,
+        container: ComponentContainer | None = None,
     ) -> Any:
         """Create RunnableTool."""
         id_field = "agent" if tool_type == "agent_tool" else "workflow"
@@ -410,12 +472,15 @@ class ConfigSystem:
             )
 
         session_store = (
-            self.container.get_or_none(session_store_name)
+            container.get_or_none(session_store_name)
+            if container
+            else None
             if session_store_name
             else None
         )
 
-        runnable = self.container.get(runnable_id)
+        target_container = container or self._active_container
+        runnable = target_container.get(runnable_id)
         tool = as_tool(
             runnable,
             description=config.get("description"),
@@ -425,14 +490,17 @@ class ConfigSystem:
         logger.info(f"Created {tool_type}: {tool.get_name()} (wrapping {runnable_id})")
         return tool
 
-    async def _get_or_create_tool(self, tool_name: str) -> Any:
+    async def _get_or_create_tool(
+        self, tool_name: str, container: ComponentContainer | None = None
+    ) -> Any:
         """Get or create tool."""
-        if self.container.has(tool_name):
-            return self.container.get(tool_name)
+        container = container or self._active_container
+        if container.has(tool_name):
+            return container.get(tool_name)
 
         config = self.registry.get(ComponentType.TOOL, tool_name)
         if config:
-            return await self._build_component(config)
+            return await self._build_component(config, container)
 
         registry = get_tool_registry()
 
@@ -443,7 +511,7 @@ class ConfigSystem:
                 config=ToolConfig(type="tool", name=tool_name, tool_name=tool_name),
                 dependencies=[],
             )
-            self.container.register(tool_name, tool, metadata)
+            container.register(tool_name, tool, metadata)
             logger.info(f"Created built-in tool: {tool_name}")
             return tool
 

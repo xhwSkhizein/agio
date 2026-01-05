@@ -4,6 +4,7 @@ Component Container - Component instance storage and lifecycle management.
 Manages built component instances, stores component metadata, and handles component lifecycle.
 """
 
+import asyncio
 from datetime import datetime
 from typing import Any
 
@@ -42,6 +43,8 @@ class ComponentContainer:
     def __init__(self) -> None:
         self._instances: dict[str, Any] = {}
         self._metadata: dict[str, ComponentMetadata] = {}
+        self._ref_counts: dict[str, int] = {}
+        self._ref_cond = asyncio.Condition()
 
     def register(self, name: str, instance: Any, metadata: ComponentMetadata) -> None:
         """
@@ -54,6 +57,7 @@ class ComponentContainer:
         """
         self._instances[name] = instance
         self._metadata[name] = metadata
+        self._ref_counts[name] = 0
         logger.debug(
             f"Registered component: {name} "
             f"(type={metadata.component_type.value}, deps={metadata.dependencies})"
@@ -151,6 +155,7 @@ class ComponentContainer:
         """
         instance = self._instances.pop(name, None)
         metadata = self._metadata.pop(name, None)
+        self._ref_counts.pop(name, None)
 
         if instance is not None:
             logger.debug(f"Removed component: {name}")
@@ -161,11 +166,52 @@ class ComponentContainer:
         """Clear all components."""
         self._instances.clear()
         self._metadata.clear()
+        self._ref_counts.clear()
         logger.debug("Cleared all components")
 
     def count(self) -> int:
         """Get total component count."""
         return len(self._instances)
+
+    def acquire(self, name: str) -> Any:
+        """Acquire component instance and increase reference count."""
+        instance = self.get(name)
+        self._ref_counts[name] = self._ref_counts.get(name, 0) + 1
+        return instance
+
+    def release(self, name: str) -> None:
+        """Release component instance and decrease reference count."""
+        if name not in self._ref_counts:
+            return
+        current = self._ref_counts.get(name, 0)
+        self._ref_counts[name] = max(0, current - 1)
+
+        async def _notify():
+            async with self._ref_cond:
+                self._ref_cond.notify_all()
+
+        # fire-and-forget notification
+        asyncio.create_task(_notify())
+
+    def ref_count(self, name: str) -> int:
+        """Get reference count for component."""
+        return self._ref_counts.get(name, 0)
+
+    def total_ref_count(self) -> int:
+        """Get total reference count across all components."""
+        return sum(self._ref_counts.values())
+
+    async def wait_for_zero(self, timeout: float | None = 5.0) -> bool:
+        """Wait until all reference counts drop to zero."""
+        async with self._ref_cond:
+            try:
+                await asyncio.wait_for(
+                    self._ref_cond.wait_for(lambda: self.total_ref_count() == 0),
+                    timeout=timeout,
+                )
+                return True
+            except asyncio.TimeoutError:
+                return self.total_ref_count() == 0
 
     def get_dependents(self, name: str) -> list[str]:
         """

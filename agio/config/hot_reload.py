@@ -29,6 +29,10 @@ class HotReloadManager:
         self._builder_registry = builder_registry
         self._callbacks: list[Callable[[str, str], None]] = []
 
+    def set_container(self, container: ComponentContainer) -> None:
+        """Update active container reference."""
+        self._container = container
+
     def register_callback(self, callback: Callable[[str, str], None]) -> None:
         """
         注册变更回调

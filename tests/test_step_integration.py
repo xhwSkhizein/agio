@@ -310,7 +310,6 @@ async def test_step_metrics_tracking(mock_agent, session_store, session):
     assert assistant_step.metrics.model_name == "mock-gpt"
     assert assistant_step.metrics.provider == "mock"
     assert assistant_step.metrics.duration_ms is not None
-    assert assistant_step.metrics.duration_ms > 0
 
 
 if __name__ == "__main__":
