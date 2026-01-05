@@ -3,16 +3,8 @@
 ## issues
 
 - [ ] 文档 & 代码 一致性
-- [ ] config yaml 支持 Jinja2 模版，可以支持条件表达式/loop 等， agent的各种 Prompt 支持参数 Jinja2 模版和参数替换等
-- [ ] system prompt 中强调所有 path 相关参数使用绝对路径
-
-
-
-
 
 - [ ] web 展示问题
-  
-  
 
 - [ ] 基础工具问题
   
@@ -24,6 +16,7 @@
 
 ## archived
 
+- [x] config yaml 支持 Jinja2 模版，可以支持条件表达式/loop 等， agent的各种 Prompt 支持参数 Jinja2 模版和参数替换等
 - [x] 各种 Store 没有一个统一的 Specs，应该像 K8s 中的 spec 一样，为各种 Store 设计Specs，然后同步不同类型的父类进行封装/抽象管理，方便后续拓展，也方便 yaml 配置时格式统一，同样的系统中所有支持配置的组件应该都是这种模式
 - [x] playwright 爬虫依赖的 ToolSettings 疑似遗留代码问题，需要进行重构优化
   ```
