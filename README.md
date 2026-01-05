@@ -174,6 +174,7 @@ The project is configured with GitHub Actions workflows for automatic publishing
 Add the following secrets in your GitHub repository settings:
 
 1. **PYPI_API_TOKEN** (Required): PyPI API Token
+
    - Create an API Token at [PyPI Account Settings](https://pypi.org/manage/account/)
    - Add it in GitHub repository Settings → Secrets and variables → Actions
 
@@ -198,98 +199,6 @@ Add the following secrets in your GitHub repository settings:
 1. Go to the GitHub Actions page and select the "发布到 PyPI" workflow
 2. Click "Run workflow" to manually trigger
 3. The workflow will publish to TestPyPI (if TEST_PYPI_API_TOKEN is configured)
-
-### Manual Release
-
-#### Pre-release Preparation
-
-1. **Update version numbers**: Synchronize version numbers in `pyproject.toml` and `agio/__init__.py`
-
-2. **Run pre-release checks**:
-```bash
-./scripts/prepare_release.sh
-```
-
-### Build Package
-
-```bash
-./scripts/build_package.sh
-```
-
-After building, the following files will be generated in the `dist/` directory:
-- `agio-X.X.X-py3-none-any.whl` - Wheel file (recommended)
-- `agio-X.X.X.tar.gz` - Source distribution package
-
-### Check Package
-
-```bash
-./scripts/check_package.sh
-```
-
-### Local Test Installation
-
-Before releasing, it's recommended to test installation locally:
-
-```bash
-pip install dist/agio-*.whl
-# or
-pip install dist/agio-*.tar.gz
-```
-
-Test the command-line tool:
-```bash
-agio-server --help
-```
-
-### Publish to TestPyPI (Testing)
-
-For first-time releases, it's recommended to publish to TestPyPI first:
-
-```bash
-./scripts/publish_package.sh testpypi
-```
-
-Test installation:
-```bash
-pip install --index-url https://test.pypi.org/simple/ agio
-```
-
-### Publish to PyPI (Production)
-
-After testing passes, publish to the official PyPI:
-
-```bash
-./scripts/publish_package.sh pypi
-```
-
-### PyPI Credentials Configuration
-
-Before publishing, you need to configure PyPI credentials. It's recommended to use API Tokens:
-
-1. **Using API Token (Recommended)**:
-   - Create an API Token at [PyPI Account Settings](https://pypi.org/manage/account/)
-   - Set environment variables:
-     ```bash
-     export TWINE_USERNAME=__token__
-     export TWINE_PASSWORD=pypi-your-token
-     ```
-
-2. **Using ~/.pypirc file**:
-   ```ini
-   [pypi]
-   username = __token__
-   password = pypi-your-token
-
-   [testpypi]
-   username = __token__
-   password = pypi-your-testpypi-token
-   ```
-
-3. **Using traditional username/password** (Not recommended):
-   ```bash
-   export TWINE_USERNAME=your-username
-   export TWINE_PASSWORD=your-password
-   ```
 
 ## 📄 License
 
