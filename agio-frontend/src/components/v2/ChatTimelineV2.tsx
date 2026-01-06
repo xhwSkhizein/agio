@@ -56,13 +56,13 @@ export function ChatTimelineV2({
             const msg = item.data
             return (
               <TimelineItem
-                key={msg.id}
+                key={`msg-${msg.id}-${index}`}
                 type={msg.type}
                 isLast={index === items.length - 1 && !isStreaming}
               >
-                <div className={`max-w-[85%] rounded-2xl px-4 py-2 text-sm leading-relaxed ${
-                  msg.type === 'error' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
-                  msg.type === 'user' ? 'bg-primary-600/20 text-primary-400 border border-primary-500/30 ml-auto' : 'bg-surface text-gray-300'
+                <div className={`max-w-[85%] rounded-xl px-3.5 py-1.5 text-[13px] leading-relaxed ${
+                  msg.type === 'error' ? 'bg-red-500/10 text-red-400/90 border border-red-500/20' :
+                  msg.type === 'user' ? 'bg-primary-600/10 text-primary-400/90 border border-primary-500/20 ml-auto' : 'bg-white/5 text-gray-400 border border-white/5'
                 }`}>
                   <MessageContent content={msg.content} />
                 </div>
@@ -74,7 +74,7 @@ export function ChatTimelineV2({
           const exec = item.data
           return (
             <TimelineItem
-              key={exec.id}
+              key={`exec-${exec.id}-${index}`}
               type="assistant"
               isLast={index === items.length - 1 && !isStreaming}
             >
@@ -89,11 +89,11 @@ export function ChatTimelineV2({
 
         {isStreaming && (
           <TimelineItem type="assistant" isLast={true}>
-            <div className="flex items-center gap-2 text-blue-400 text-xs font-medium animate-pulse">
-              <Activity className="w-3 h-3" />
+            <div className="flex items-center gap-2 text-blue-400/70 text-[11px] font-bold animate-pulse">
+              <Activity className="w-2.5 h-2.5" />
               <span>Agent is thinking...</span>
               {currentRunId && (
-                <span className="text-[10px] opacity-50 font-mono ml-1">
+                <span className="text-[9px] opacity-40 font-mono ml-1">
                   ({currentRunId.slice(0, 8)})
                 </span>
               )}

@@ -13,7 +13,7 @@ Wire-based Architecture:
 
 from uuid import uuid4
 
-from agio.config import ConfigSystem
+from agio.config import ComponentType, ConfigSystem
 from agio.domain import MessageRole
 from agio.runtime.protocol import ExecutionContext, RunOutput
 from agio.runtime.runnable_executor import RunnableExecutor
@@ -137,7 +137,8 @@ class ResumeExecutor:
 
         # 5. Get Runnable instance
         try:
-            runnable = self.config_system.get_instance(runnable_id)
+            # Currently only agents are runnables
+            runnable = self.config_system.get_instance(runnable_id, ComponentType.AGENT)
         except Exception as e:
             raise ValueError(f"Runnable {runnable_id} not found: {e}")
 

@@ -43,14 +43,13 @@ class DependencyResolver:
     """
 
     def extract_dependencies(
-        self, config: ComponentConfig, available_names: set[str] | None = None
+        self, config: ComponentConfig
     ) -> set[str]:
         """
         Extract configuration dependencies (unified entry point).
 
         Args:
             config: Component configuration
-            available_names: Set of available component names (for filtering built-in dependencies)
 
         Returns:
             Set of dependency names
@@ -61,9 +60,6 @@ class DependencyResolver:
             deps.update(self._extract_agent_deps(config))
         elif isinstance(config, ToolConfig):
             deps.update(self._extract_tool_deps(config))
-
-        if available_names:
-            deps = deps & available_names
 
         return deps
 
@@ -109,84 +105,142 @@ class DependencyResolver:
         return deps
 
     def topological_sort(
-        self, configs: list[ComponentConfig], available_names: set[str] | None = None
+        self, configs: list[ComponentConfig]
     ) -> list[ComponentConfig]:
         """
-        Topological sort (Kahn's algorithm).
+        Topological sort (Kahn's algorithm) with type-name isolation.
 
         Args:
             configs: List of configurations to sort
-            available_names: Set of available component names (for filtering built-in dependencies)
 
         Returns:
             Sorted list of configurations
-
-        Raises:
-            ConfigError: Circular dependency detected
         """
         nodes = {}
-        for config in configs:
-            deps = self.extract_dependencies(config, available_names)
+        # Key by (type, name) to support name reuse across different types
+        available_configs = {(ComponentType(c.type), c.name) for c in configs}
 
-            nodes[config.name] = DependencyNode(
+        for config in configs:
+            ctype = ComponentType(config.type)
+            deps = self.extract_dependencies(config)
+
+            # Validate dependencies: must exist in available_configs
+            for dep_name in deps:
+                found_dep = False
+                for prov_type in ComponentType:
+                    if (prov_type, dep_name) in available_configs:
+                        if self._is_compatible_dependency(ctype, prov_type):
+                            found_dep = True
+                            break
+                
+                if not found_dep:
+                    # Check if it might be an internal tool or other built-in
+                    # For now, if it's not in configs, it's missing or disabled
+                    logger.warning(
+                        f"Component '{ctype.value}/{config.name}' depends on '{dep_name}', "
+                        f"but no enabled component with that name was found."
+                    )
+
+            nodes[(ctype, config.name)] = DependencyNode(
                 name=config.name,
-                component_type=ComponentType(config.type),
+                component_type=ctype,
                 dependencies=deps,
             )
 
-        in_degree = {name: len(node.dependencies) for name, node in nodes.items()}
-        queue = deque([name for name, degree in in_degree.items() if degree == 0])
-        sorted_names = []
+        # Build adjacency list: name -> set of (type, name)
+        # This helps mapping a dependency 'name' to all possible component nodes
+        name_to_nodes = {}
+        for key in nodes:
+            name = key[1]
+            if name not in name_to_nodes:
+                name_to_nodes[name] = set()
+            name_to_nodes[name].add(key)
+
+        in_degree = {key: 0 for key in nodes}
+        for key, node in nodes.items():
+            for dep_name in node.dependencies:
+                # If dep_name exists as a built-in or other component
+                if dep_name in name_to_nodes:
+                    for dep_key in name_to_nodes[dep_name]:
+                        # Cross-type dependency handling:
+                        # Agents depend on Models and Tools.
+                        # Tools depend on other Stores.
+                        # We only count it as an edge if the types are compatible.
+                        if self._is_compatible_dependency(node.component_type, dep_key[0]):
+                            in_degree[key] += 1
+
+        queue = deque([key for key, degree in in_degree.items() if degree == 0])
+        sorted_keys = []
 
         while queue:
-            name = queue.popleft()
-            sorted_names.append(name)
+            key = queue.popleft()
+            sorted_keys.append(key)
 
-            for other_name, node in nodes.items():
-                if name in node.dependencies:
-                    in_degree[other_name] -= 1
-                    if in_degree[other_name] == 0:
-                        queue.append(other_name)
+            # Find nodes that depend on this one
+            for other_key, node in nodes.items():
+                if key[1] in node.dependencies and self._is_compatible_dependency(node.component_type, key[0]):
+                    in_degree[other_key] -= 1
+                    if in_degree[other_key] == 0:
+                        queue.append(other_key)
 
-        if len(sorted_names) < len(nodes):
-            unresolved = set(nodes.keys()) - set(sorted_names)
+        if len(sorted_keys) < len(nodes):
+            unresolved = set(nodes.keys()) - set(sorted_keys)
+            raise ConfigError(f"Circular dependency detected among: {unresolved}")
 
-            cycle_info = []
-            for name in unresolved:
-                deps = nodes[name].dependencies & unresolved
-                if deps:
-                    cycle_info.append(f"{name} -> {deps}")
+        key_to_config = {(ComponentType(c.type), c.name): c for c in configs}
+        return [key_to_config[key] for key in sorted_keys]
 
-            raise ConfigError(
-                f"Circular dependency detected among: {unresolved}. "
-                f"Dependency chains: {'; '.join(cycle_info)}. "
-                f"Please check your configuration and break the cycle."
-            )
-
-        name_to_config = {config.name: config for config in configs}
-        return [name_to_config[name] for name in sorted_names]
+    def _is_compatible_dependency(self, consumer_type: ComponentType, provider_type: ComponentType) -> bool:
+        """Check if provider_type is a valid dependency for consumer_type."""
+        if consumer_type == ComponentType.AGENT:
+            return provider_type in [
+                ComponentType.MODEL,
+                ComponentType.TOOL,
+                ComponentType.SESSION_STORE,
+                ComponentType.AGENT,
+            ]
+        if consumer_type == ComponentType.TOOL:
+            return provider_type in [
+                ComponentType.SESSION_STORE,
+                ComponentType.TRACE_STORE,
+                ComponentType.CITATION_STORE,
+                ComponentType.MODEL,
+                ComponentType.AGENT,
+            ]
+        return False
 
     def get_affected_components(
-        self, target_name: str, all_metadata: dict[str, ComponentMetadata]
-    ) -> list[str]:
+        self, 
+        target_name: str, 
+        target_type: ComponentType,
+        all_metadata: dict[tuple[ComponentType, str], ComponentMetadata]
+    ) -> list[tuple[ComponentType, str]]:
         """
         Get list of affected components (including dependents) - BFS traversal.
 
         Args:
             target_name: Target component name
+            target_type: Target component type
             all_metadata: Metadata of all components
 
         Returns:
-            List of affected component names (in topological order, target_name first)
+            List of affected component (type, name) tuples (target first)
         """
-        affected = [target_name]
-        queue = [target_name]
+        target_key = (target_type, target_name)
+        affected = [target_key]
+        queue = [target_key]
 
         while queue:
-            current = queue.pop(0)
-            for comp_name, metadata in all_metadata.items():
-                if current in metadata.dependencies and comp_name not in affected:
-                    affected.append(comp_name)
-                    queue.append(comp_name)
+            current_type, current_name = queue.pop(0)
+            for comp_key, metadata in all_metadata.items():
+                # Check if current component is a dependency of comp_key
+                # We check by name and compatibility
+                if current_name in metadata.dependencies:
+                    # Verify if the dependency is actually this specific component type
+                    # (In a real scenario, the consumer knows which type it depends on)
+                    if self._is_compatible_dependency(comp_key[0], current_type):
+                        if comp_key not in affected:
+                            affected.append(comp_key)
+                            queue.append(comp_key)
 
         return affected

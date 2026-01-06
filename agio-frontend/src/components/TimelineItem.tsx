@@ -11,44 +11,42 @@ export function TimelineItem({ type, children, isLast = false, depth = 0 }: Time
   const getDotColor = () => {
     switch (type) {
       case 'user':
-        return 'bg-primary-500 ring-primary-500/30';
+        return 'bg-primary-500 shadow-[0_0_8px_rgba(249,115,22,0.5)]';
       case 'assistant':
-        return 'bg-blue-500 ring-blue-500/30';
+        return 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]';
       case 'tool':
-        return 'bg-purple-500 ring-purple-500/30';
+        return 'bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.5)]';
       case 'nested':
-        return 'bg-amber-500 ring-amber-500/30';
+        return 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]';
       case 'parallel_nested':
-        return 'bg-amber-500 ring-amber-500/30';
+        return 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]';
       case 'error':
-        return 'bg-red-500 ring-red-500/30';
+        return 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]';
       default:
-        return 'bg-gray-500 ring-gray-500/30';
+        return 'bg-gray-500';
     }
   };
 
-  // Calculate left padding based on depth
-  const paddingLeft = 20 + depth * 16;  // Base 20px + 16px per depth level
+  const paddingLeft = 24 + depth * 20;
 
-  // Dot: 6px (w-1.5 h-1.5), positioned at left-[2px]
-  // Dot center X = 2px + 3px = 5px, so line should be at left-[4.5px] (centered on 1px line)
-  // Dot top = 1.05rem ≈ 17px, dot bottom = 17 + 6 = 23px ≈ 1.45rem
-  
   return (
-    <div className="relative pt-3 group" style={{ paddingLeft }}>
-      {/* Vertical Line - from below this dot to next dot */}
+    <div className="relative pt-4 group animate-in fade-in slide-in-from-left-2 duration-500" style={{ paddingLeft }}>
+      {/* Vertical Line */}
       {!isLast && (
-        <div className="absolute top-[1.45rem] bottom-[-1rem] w-px bg-border group-hover:bg-gray-700 transition-colors" style={{ left: 4.5 + depth * 16 }} />
+        <div 
+          className="absolute top-[1.8rem] bottom-[-1rem] w-px bg-white/5 group-hover:bg-white/10 transition-colors" 
+          style={{ left: 9.5 + depth * 20 }} 
+        />
       )}
 
-      {/* Dot Marker - vertically centered with first line text */}
+      {/* Dot Marker */}
       <div 
-        className={`absolute top-[1.05rem] w-1.5 h-1.5 rounded-full ${getDotColor()} ring-1 transition-all duration-300 z-10`}
-        style={{ left: 2 + depth * 16 }}
+        className={`absolute top-[1.35rem] w-1.5 h-1.5 rounded-full ${getDotColor()} transition-all duration-300 z-10 border border-black/50`}
+        style={{ left: 7 + depth * 20 }}
       />
 
       {/* Content */}
-      <div className="min-w-0">
+      <div className="min-w-0 pb-2">
         {children}
       </div>
     </div>

@@ -347,7 +347,7 @@ export default function Chat() {
   const hasContent = executionTree.messages.length > 0 || executionTree.executions.length > 0
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3rem)] max-w-4xl mx-auto">
+    <div className="flex flex-col h-[calc(100vh-2rem)] max-w-5xl mx-auto px-4 animate-in fade-in duration-700">
       {/* Header with Agent Selector */}
       <ChatHeader
         selectedAgentId={selectedAgentId}
@@ -361,44 +361,58 @@ export default function Chat() {
       />
 
       {/* Version Switcher */}
-      <div className="flex items-center gap-2 pb-3 px-1">
-        <button 
-          onClick={() => navigate(currentSessionId ? `/chat/${currentSessionId}` : '/chat')}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 transition-colors"
-        >
-          <LayoutPanelLeft className="w-3.5 h-3.5" />
-          Switch to V2 (New Default)
-        </button>
+      <div className="flex items-center justify-between pb-4 px-2">
+        <div className="flex items-center gap-2">
+          <div className="px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-[9px] font-black text-amber-500 uppercase tracking-widest">
+            Legacy Mode
+          </div>
+          <button 
+            onClick={() => navigate(currentSessionId ? `/chat/${currentSessionId}` : '/chat')}
+            className="group flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-all active:scale-95"
+          >
+            <LayoutPanelLeft className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+            Switch to V2 (Recommended)
+          </button>
+        </div>
+        
+        <div className="flex items-center gap-2 text-[9px] font-bold text-gray-700 uppercase tracking-widest">
+          <span>Engine Status:</span>
+          <span className="text-emerald-500/80">Synchronized</span>
+        </div>
       </div>
 
       {/* Timeline */}
-      {!hasContent && !isStreaming ? (
-        <div
-          ref={scrollContainerRef}
-          className="flex-1 overflow-y-auto pr-4 -mr-4 mb-4"
-        >
-          <ChatEmptyState agent={agent} />
-        </div>
-      ) : (
-        <ChatTimeline
-          tree={executionTree}
-          isStreaming={isStreaming}
-          currentRunId={currentRunId}
-          scrollContainerRef={scrollContainerRef}
-          messagesEndRef={messagesEndRef}
-        />
-      )}
+      <div className="flex-1 flex flex-col min-h-0 relative">
+        {!hasContent && !isStreaming ? (
+          <div
+            ref={scrollContainerRef}
+            className="flex-1 overflow-y-auto custom-scrollbar pr-4 -mr-4 mb-4"
+          >
+            <ChatEmptyState agent={agent} />
+          </div>
+        ) : (
+          <ChatTimeline
+            tree={executionTree}
+            isStreaming={isStreaming}
+            currentRunId={currentRunId}
+            scrollContainerRef={scrollContainerRef}
+            messagesEndRef={messagesEndRef}
+          />
+        )}
+      </div>
 
       {/* Input Area */}
-      <ChatInput
-        input={input}
-        setInput={setInput}
-        isStreaming={isStreaming}
-        hasPendingToolCalls={!!hasPendingToolCalls}
-        onSend={handleSend}
-        onCancel={handleCancel}
-        onContinue={handleContinue}
-      />
+      <div className="pt-2">
+        <ChatInput
+          input={input}
+          setInput={setInput}
+          isStreaming={isStreaming}
+          hasPendingToolCalls={!!hasPendingToolCalls}
+          onSend={handleSend}
+          onCancel={handleCancel}
+          onContinue={handleContinue}
+        />
+      </div>
 
       {/* Agent Config Modal */}
       {agent && (

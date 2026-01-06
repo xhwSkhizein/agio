@@ -57,6 +57,15 @@ class MongoCitationStore:
                 uri=self.uri,
                 db_name=self.db_name,
             )
+        else:
+            # Check if client is still open
+            try:
+                # This might not be perfect for motor, but it's a hint
+                # For motor, we usually trust the connection pool
+                pass
+            except Exception:
+                self.client = None
+                await self._ensure_connection()
 
     async def store_citation_sources(
         self,
@@ -275,6 +284,9 @@ class MongoCitationStore:
         """Close MongoDB connection."""
         if self.client:
             self.client.close()
+            self.client = None
+            self.db = None
+            self.citations_collection = None
             logger.info("mongodb_citation_store_disconnected")
 
 

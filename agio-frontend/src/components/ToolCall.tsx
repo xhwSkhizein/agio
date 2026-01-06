@@ -56,86 +56,99 @@ export function ToolCall({ toolName, args, result, status, duration }: ToolCallP
   const StatusIcon = () => {
     if (status === 'running') {
       return (
-        <svg className="w-3.5 h-3.5 animate-spin text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-        </svg>
+        <div className="relative">
+          <div className="w-3.5 h-3.5 border-2 border-primary-500/20 border-t-primary-500 rounded-full animate-spin" />
+          <div className="absolute inset-0 m-auto w-1 h-1 bg-primary-500 rounded-full animate-pulse" />
+        </div>
       );
     }
     if (status === 'failed') {
       return (
-        <svg className="w-3.5 h-3.5 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <circle cx="12" cy="12" r="10" />
-          <line x1="15" y1="9" x2="9" y2="15" />
-          <line x1="9" y1="9" x2="15" y2="15" />
-        </svg>
+        <div className="p-0.5 rounded-md bg-red-500/20 text-red-400 border border-red-500/30">
+          <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </div>
       );
     }
     return (
-      <svg className="w-3.5 h-3.5 text-green-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <polyline points="20 6 9 17 4 12" />
-      </svg>
+      <div className="p-0.5 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+        <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      </div>
     );
   };
 
   return (
-    <div className="my-1">
+    <div className="my-1.5 group/tool">
       {/* Compact header */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center gap-1.5 px-2 py-1 rounded hover:bg-white/5 transition-colors text-left group"
+        className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all duration-200 text-left border ${
+          isOpen 
+            ? 'bg-white/5 border-white/10 shadow-inner' 
+            : 'bg-transparent border-transparent hover:bg-white/[0.03]'
+        }`}
       >
-        <svg 
-          className={`w-3 h-3 text-gray-500 transition-transform ${isOpen ? 'rotate-90' : ''}`} 
-          viewBox="0 0 24 24" 
-          fill="none" 
-          stroke="currentColor" 
-          strokeWidth="2"
-        >
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
+        <div className={`p-0.5 rounded transition-colors ${isOpen ? 'bg-white/10 text-white' : 'text-gray-600 group-hover/tool:text-gray-500'}`}>
+          <svg 
+            className={`w-2.5 h-2.5 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} 
+            viewBox="0 0 24 24" 
+            fill="none" 
+            stroke="currentColor" 
+            strokeWidth="3"
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </div>
         
         <StatusIcon />
         
-        <span className="font-mono text-xs text-purple-400">{toolName || 'tool'}</span>
+        <div className="flex flex-col">
+          <span className="font-mono text-[11px] font-black text-primary-500/70 tracking-tight uppercase">{toolName || 'system_call'}</span>
+          {!isOpen && argsSummary && (
+            <span className="text-[9px] text-gray-600 truncate max-w-[360px] font-medium italic">
+              payload: {argsSummary}
+            </span>
+          )}
+        </div>
         
-        {!isOpen && argsSummary && (
-          <span className="text-[11px] text-gray-500 truncate max-w-[600px]">
-            ({argsSummary})
-          </span>
-        )}
-        
-        <span className="flex-1" />
+        <div className="flex-1" />
         
         {duration && (
-          <span className="text-[10px] text-gray-500 font-mono">
+          <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-md bg-black/20 border border-white/5 text-[8px] text-gray-600 font-black tracking-widest font-mono">
             {formatDuration(duration)}
-          </span>
+          </div>
         )}
       </button>
 
       {/* Expanded details */}
       {isOpen && (
-        <div className="ml-5 mt-1 space-y-2 animate-slide-up">
+        <div className="ml-3 mt-1.5 space-y-2.5 animate-in slide-in-from-top-2 duration-300">
           {/* Input */}
-          <div className="rounded border border-border/50 overflow-hidden">
-            <div className="px-2 py-0.5 bg-surface/50 border-b border-border/50">
-              <span className="text-[10px] uppercase tracking-wider text-gray-500">Input</span>
+          <div className="rounded-xl border border-white/5 bg-black/20 overflow-hidden">
+            <div className="px-3 py-1 bg-white/5 border-b border-white/5 flex items-center justify-between">
+              <span className="text-[8px] font-black uppercase tracking-[0.2em] text-gray-600">Input Specification</span>
+              <div className="w-1 h-1 rounded-full bg-primary-500/30" />
             </div>
-            <pre className="p-2 text-[11px] font-mono text-gray-300 overflow-x-auto bg-black/20 max-h-[200px] overflow-y-auto">
+            <pre className="p-3 text-[10px] font-mono text-gray-500 overflow-x-auto leading-relaxed custom-scrollbar max-h-[240px]">
               {formattedArgs}
             </pre>
           </div>
           
           {/* Output */}
           {result && (
-            <div className="rounded border border-border/50 overflow-hidden">
-              <div className="px-2 py-0.5 bg-surface/50 border-b border-border/50">
-                <span className="text-[10px] uppercase tracking-wider text-gray-500">Output</span>
+            <div className="rounded-xl border border-white/5 bg-black/20 overflow-hidden">
+              <div className="px-3 py-1 bg-white/5 border-b border-white/5 flex items-center justify-between">
+                <span className="text-[8px] font-black uppercase tracking-[0.2em] text-gray-600">Execution Result</span>
+                <div className="w-1 h-1 rounded-full bg-emerald-500/30" />
               </div>
-              <div className="p-2 text-[11px] text-gray-300 overflow-x-auto bg-black/20 max-h-[300px] overflow-y-auto prose prose-invert prose-sm max-w-none
-                prose-pre:bg-black/30 prose-pre:border prose-pre:border-border/30 prose-pre:text-[11px]
-                prose-code:text-purple-300 prose-code:bg-black/30 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-[11px]
-                prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-li:my-0.5">
+              <div className="p-3 text-[10px] text-gray-400 overflow-x-auto prose prose-invert prose-sm max-w-none
+                prose-pre:bg-black/40 prose-pre:border prose-pre:border-white/5 prose-pre:text-[10px] prose-pre:rounded-lg
+                prose-code:text-primary-400/70 prose-code:bg-white/5 prose-code:px-1 prose-code:py-0.5 prose-code:rounded-md prose-code:text-[10px]
+                prose-p:my-0.5 prose-headings:my-1.5 prose-ul:my-0.5 prose-li:my-0.5 leading-relaxed custom-scrollbar max-h-[400px]">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {result}
                 </ReactMarkdown>

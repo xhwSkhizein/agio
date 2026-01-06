@@ -52,7 +52,7 @@ def get_session_store(
             name = store_config.get("name")
             if name:
                 try:
-                    store = config_sys.get_or_none(name)
+                    store = config_sys.get_or_none(name, ComponentType.SESSION_STORE)
                     if store is not None:
                         return store
                 except Exception as e:
@@ -78,7 +78,7 @@ def get_agent(
         HTTPException: If agent not found
     """
     try:
-        return config_sys.get(name)
+        return config_sys.get(name, ComponentType.AGENT)
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found: {e}")
 
@@ -106,7 +106,7 @@ def get_trace_store(
             name = store_config.get("name")
             if name:
                 try:
-                    store = config_sys.get_or_none(name)
+                    store = config_sys.get_or_none(name, ComponentType.TRACE_STORE)
                     if store is not None:
                         return store
                 except Exception as e:

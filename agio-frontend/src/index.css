@@ -8,8 +8,8 @@
   font-weight: 400;
 
   color-scheme: dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #09090b;
+  color: rgba(255, 255, 255, 0.8);
+  background-color: #050505;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -20,13 +20,13 @@
 body {
   margin: 0;
   min-height: 100vh;
-  @apply bg-background text-gray-100;
+  @apply bg-background text-gray-300/90;
 }
 
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -34,46 +34,46 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-surfaceHighlight rounded-full;
+  @apply bg-white/5 rounded-full border border-white/5;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-border;
+  @apply bg-white/10 border-white/10;
 }
 
 /* Markdown Styles */
 .prose {
-  @apply text-gray-300;
+  @apply text-gray-400;
 }
 
 .prose pre {
-  @apply bg-surface border border-border rounded-lg p-4 overflow-x-auto;
+  @apply bg-surface border border-border rounded-lg p-3 overflow-x-auto;
 }
 
 .prose code {
-  @apply font-mono text-sm bg-surfaceHighlight px-1 py-0.5 rounded text-primary-300;
+  @apply font-mono text-[13px] bg-surfaceHighlight px-1 py-0.5 rounded text-primary-400/80;
 }
 
 .prose pre code {
-  @apply bg-transparent p-0 text-gray-200;
+  @apply bg-transparent p-0 text-gray-300;
 }
 
 .prose a {
-  @apply text-primary-400 hover:text-primary-300 underline decoration-primary-400/30 underline-offset-2;
+  @apply text-primary-500/80 hover:text-primary-400 underline decoration-primary-500/20 underline-offset-2;
 }
 
 .prose ul {
-  @apply list-disc list-outside ml-4 space-y-1;
+  @apply list-disc list-outside ml-4 space-y-0.5;
 }
 
 .prose ol {
-  @apply list-decimal list-outside ml-4 space-y-1;
+  @apply list-decimal list-outside ml-4 space-y-0.5;
 }
 
 .prose h1, .prose h2, .prose h3, .prose h4 {
-  @apply font-semibold text-white mt-6 mb-3;
+  @apply font-semibold text-gray-200 mt-5 mb-2.5;
 }
 
 .prose p {
-  @apply mb-0.5 leading-snug;
+  @apply mb-0.5 leading-relaxed;
 }

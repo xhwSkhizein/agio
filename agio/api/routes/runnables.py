@@ -6,6 +6,7 @@ through the same endpoint.
 """
 
 import asyncio
+import json
 from typing import Any
 from uuid import uuid4
 
@@ -14,7 +15,7 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from agio.api.deps import get_session_store, get_trace_store
-from agio.config import ConfigSystem, get_config_system
+from agio.config import ComponentType, ConfigSystem, get_config_system
 from agio.runtime import Runnable, RunnableExecutor
 from agio.runtime.protocol import RunnableType
 
@@ -68,7 +69,8 @@ async def get_runnable_info(
 ) -> dict[str, Any]:
     """Get information about a specific Runnable."""
     try:
-        instance: Runnable = config_system.get_instance(runnable_id)
+        # Currently only agents are runnables
+        instance: Runnable = config_system.get_instance(runnable_id, ComponentType.AGENT)
     except Exception:
         raise HTTPException(
             status_code=404, detail=f"Runnable not found: {runnable_id}"
@@ -90,7 +92,8 @@ async def run_runnable(
 ):
     """Execute a Runnable (Agent)."""
     try:
-        instance: Runnable = config_system.get_instance(runnable_id)
+        # Currently only agents are runnables
+        instance: Runnable = config_system.get_instance(runnable_id, ComponentType.AGENT)
     except Exception:
         raise HTTPException(
             status_code=404, detail=f"Runnable not found: {runnable_id}"
@@ -117,7 +120,8 @@ async def run_runnable(
             ):
                 yield {"event": event.type.value, "data": event.model_dump_json()}
         except Exception as e:
-            yield {"event": "error", "data": str(e)}
+            # Ensure the error message is JSON-encoded for frontend parsing
+            yield {"event": "error", "data": json.dumps({"error": str(e)})}
 
     if request.stream:
         return EventSourceResponse(execute_and_stream())

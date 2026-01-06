@@ -207,7 +207,7 @@ class Trace(BaseModel):
         # Update aggregated metrics
         if span.kind == SpanKind.LLM_CALL:
             self.total_llm_calls += 1
-            if "tokens.total" in span.metrics:
+            if span.metrics and span.metrics.get("tokens.total") is not None:
                 self.total_tokens += span.metrics["tokens.total"]
         elif span.kind == SpanKind.TOOL_CALL:
             self.total_tool_calls += 1

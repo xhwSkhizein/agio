@@ -1,6 +1,6 @@
 from typing import Any, Callable
 
-from agio.config.builder_registry import BuilderRegistry
+from agio.config.builder_registry import BuilderRegistry, ComponentType
 from agio.config.container import ComponentContainer
 from agio.config.dependency import DependencyResolver
 from agio.utils.logging import get_logger
@@ -55,20 +55,22 @@ class HotReloadManager:
     async def handle_change(
         self,
         name: str,
+        target_type: ComponentType,
         change_type: str,
-        rebuild_func: Callable[[str], Any] | None = None,
+        rebuild_func: Callable[[str, ComponentType], Any] | None = None,
     ) -> None:
         """
         处理配置变更
 
         Args:
             name: 变更的组件名称
+            target_type: 变更的组件类型
             change_type: 变更类型（create/update/delete）
             rebuild_func: 重建函数（可选）
         """
-        logger.info(f"Handling config change: {name} ({change_type})")
+        logger.info(f"Handling config change: {name} ({target_type.value}) ({change_type})")
 
-        affected = self._get_affected_components(name)
+        affected = self._get_affected_components(name, target_type)
         logger.debug(f"Affected components: {affected}")
 
         await self._destroy_affected(affected)
@@ -78,15 +80,15 @@ class HotReloadManager:
 
         self._notify_callbacks(name, change_type)
 
-    async def _destroy_affected(self, affected: list[str]) -> None:
+    async def _destroy_affected(self, affected: list[tuple[ComponentType, str]]) -> None:
         """
         销毁受影响的组件（逆序）
 
         Args:
-            affected: 受影响的组件名称列表
+            affected: 受影响的组件 (type, name) 列表
         """
-        for comp_name in reversed(affected):
-            instance, metadata = self._container.remove(comp_name)
+        for comp_type, comp_name in reversed(affected):
+            instance, metadata = self._container.remove(comp_name, comp_type)
 
             if instance is not None and metadata is not None:
                 builder = self._builder_registry.get(metadata.component_type)
@@ -94,36 +96,37 @@ class HotReloadManager:
                     try:
                         await builder.cleanup(instance)
                     except Exception as e:
-                        logger.error(f"Failed to cleanup {comp_name}: {e}")
+                        logger.error(f"Failed to cleanup {comp_name} ({comp_type.value}): {e}")
 
     async def _rebuild_affected(
-        self, affected: list[str], rebuild_func: Callable[[str], Any]
+        self, affected: list[tuple[ComponentType, str]], rebuild_func: Callable[[str, ComponentType], Any]
     ) -> None:
         """
         重建受影响的组件（正序）
 
         Args:
-            affected: 受影响的组件名称列表
+            affected: 受影响的组件 (type, name) 列表
             rebuild_func: 重建函数
         """
-        for comp_name in affected:
+        for comp_type, comp_name in affected:
             try:
-                await rebuild_func(comp_name)
+                await rebuild_func(comp_name, comp_type)
             except Exception as e:
-                logger.error(f"Failed to rebuild {comp_name}: {e}")
+                logger.error(f"Failed to rebuild {comp_name} ({comp_type.value}): {e}")
 
-    def _get_affected_components(self, name: str) -> list[str]:
+    def _get_affected_components(self, name: str, target_type: ComponentType) -> list[tuple[ComponentType, str]]:
         """
         获取受影响的组件列表（BFS 遍历依赖图）
 
         Args:
             name: 组件名称
+            target_type: 组件类型
 
         Returns:
-            受影响的组件名称列表（拓扑顺序）
+            受影响的组件 (type, name) 列表（拓扑顺序）
         """
         all_metadata = self._container.get_all_metadata()
-        return self._dependency_resolver.get_affected_components(name, all_metadata)
+        return self._dependency_resolver.get_affected_components(name, target_type, all_metadata)
 
     def _notify_callbacks(self, name: str, change_type: str) -> None:
         """
@@ -142,7 +145,7 @@ class HotReloadManager:
     async def handle_skill_change(
         self,
         skill_name: str | None = None,
-        rebuild_func: Callable[[str], Any] | None = None,
+        rebuild_func: Callable[[str, ComponentType], Any] | None = None,
     ) -> None:
         """
         Handle skill file change (SKILL.md modified).
@@ -156,13 +159,13 @@ class HotReloadManager:
         logger.info("handling_skill_change", skill_name=skill_name)
 
         # Find all agents that have skills enabled
-        affected_agents = []
+        affected_agents: list[tuple[ComponentType, str]] = []
         all_metadata = self._container.get_all_metadata()
-        for name, metadata in all_metadata.items():
-            if metadata.component_type.value == "agent":
+        for (comp_type, name), metadata in all_metadata.items():
+            if comp_type == ComponentType.AGENT:
                 config = metadata.config
                 if hasattr(config, "enable_skills") and config.enable_skills:
-                    affected_agents.append(name)
+                    affected_agents.append((comp_type, name))
 
         if not affected_agents:
             logger.debug("no_agents_with_skills")
@@ -170,9 +173,9 @@ class HotReloadManager:
 
         # Rebuild affected agents
         if rebuild_func:
-            for agent_name in affected_agents:
+            for comp_type, agent_name in affected_agents:
                 try:
-                    await rebuild_func(agent_name)
+                    await rebuild_func(agent_name, comp_type)
                     logger.info("agent_rebuilt_for_skill_change", agent_name=agent_name)
                 except Exception as e:
                     logger.error(

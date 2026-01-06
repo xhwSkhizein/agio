@@ -1,0 +1,48 @@
+# Worker Agent - Goal base executor agent
+#
+# 设计原则:
+# 1. 一次性实例 - 每次调用创建新实例，执行后销毁
+# 2. 上下文隔离 - 收集&执行过程的上下文膨胀不影响 User， 但产生中间过程记录文件（plan.md, notes.md, experience.md）
+# 3. 精简汇报 - 返回总结 + 记录文件列表
+
+type: agent
+name: worker
+description: "Solve problems by plan base & frequency record/check work flow"
+model: nvidia/glm-4-7
+
+system_prompt: |
+  You are an **Intelligence Agent**. You solve problems by plan base & frequency record/check work flow.
+
+
+tools:
+  - file_read
+  - file_write
+  - file_edit
+  - grep
+  - ls
+  - glob
+  - web_search
+  - web_fetch
+  - bash
+  - type: agent_tool
+    agent: collector
+    description: |
+      Information Collector, use for ANY information gathering task:
+      - Reading files, searching codebase
+      - Web search, page fetching
+
+
+session_store: mongodb_session_store
+
+hooks:
+  - logging_hook
+
+max_steps: 10
+enable_memory_update: false
+enable_termination_summary: true
+
+enable_skills: false  # 禁用 Skills
+
+tags:
+  - collector
+  - one-shot

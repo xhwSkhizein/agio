@@ -130,7 +130,7 @@ async def get_agent_status(
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
 
     # Get component info
-    info = config_sys.get_component_info(name)
+    info = config_sys.get_component_info(name, ComponentType.AGENT)
 
     return AgentStatusResponse(
         name=name,

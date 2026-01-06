@@ -94,6 +94,17 @@ class MongoSessionStore(SessionStore):
 
             logger.info("mongodb_connected", uri=self.uri, db_name=self.db_name)
 
+    async def disconnect(self) -> None:
+        """Close MongoDB connection."""
+        if self.client:
+            self.client.close()
+            self.client = None
+            self.db = None
+            self.runs_collection = None
+            self.steps_collection = None
+            self.counters_collection = None
+            logger.info("mongodb_disconnected")
+
     async def save_run(self, run: Run) -> None:
         """Save or update a run."""
         await self._ensure_connection()

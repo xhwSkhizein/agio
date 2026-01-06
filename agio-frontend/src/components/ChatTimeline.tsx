@@ -63,9 +63,9 @@ export function ChatTimeline({
                 type={msg.type}
                 isLast={index === items.length - 1}
               >
-                <div className={`text-xs leading-relaxed ${
-                  msg.type === 'error' ? 'text-red-400' :
-                  msg.type === 'user' ? 'text-white font-medium' : 'text-gray-300'
+                <div className={`max-w-[90%] rounded-2xl px-5 py-3 text-sm leading-relaxed shadow-sm transition-all duration-300 ${
+                  msg.type === 'error' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                  msg.type === 'user' ? 'bg-primary-600/10 text-primary-400 border border-primary-500/20 ml-auto' : 'bg-white/5 text-gray-300 border border-white/5'
                 }`}>
                   <MessageContent content={msg.content} />
                 </div>
@@ -91,12 +91,17 @@ export function ChatTimeline({
 
         {isStreaming && items.length > 0 && (
           <TimelineItem type="assistant" isLast={true}>
-            <div className="flex items-center gap-1.5 text-gray-500 text-xs">
-              <span className="w-1.5 h-1.5 bg-primary-500 rounded-full animate-pulse" />
-              Thinking...
+            <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-white/5 border border-white/5 w-fit animate-pulse">
+              <div className="flex items-center gap-1.5 text-primary-400 text-[10px] font-black uppercase tracking-[0.2em]">
+                <div className="w-1.5 h-1.5 bg-primary-500 rounded-full animate-ping" />
+                <span>Thinking</span>
+              </div>
               {currentRunId && (
-                <span className="text-[9px] text-gray-600 font-mono ml-1.5">
-                  {currentRunId.slice(0, 8)}
+                <div className="h-3 w-px bg-white/10" />
+              )}
+              {currentRunId && (
+                <span className="text-[9px] text-gray-600 font-black font-mono uppercase tracking-widest">
+                  PROC_ID: {currentRunId.slice(0, 8)}
                 </span>
               )}
             </div>

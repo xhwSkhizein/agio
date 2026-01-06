@@ -2,8 +2,9 @@
 Anthropic Model implementation - Pure LLM Interface
 """
 
+import json
 import os
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 from pydantic import ConfigDict, Field, SecretStr
 
@@ -69,6 +70,12 @@ class AnthropicModel(Model):
                 client_kwargs["base_url"] = self.base_url
             self.client = AsyncAnthropic(**client_kwargs)
 
+        logger.info(
+            "AnthropicModel initialized",
+            model_name=self.model_name,
+            use_key=resolved_api_key[:10] if resolved_api_key else "None",
+        )
+
         # Call base class to enable tracking
         super().model_post_init(__context)
 
@@ -86,20 +93,39 @@ class AnthropicModel(Model):
             elif role == "user":
                 anthropic_messages.append({"role": "user", "content": content})
             elif role == "assistant":
-                if "tool_calls" in msg:
+                reasoning = msg.get("reasoning_content")
+                if "tool_calls" in msg or reasoning:
                     content_blocks = []
+
+                    if reasoning:
+                        content_blocks.append(
+                            {"type": "thinking", "thinking": reasoning}
+                        )
+
                     if content:
                         content_blocks.append({"type": "text", "text": content})
 
-                    for tool_call in msg["tool_calls"]:
-                        content_blocks.append(
-                            {
-                                "type": "tool_use",
-                                "id": tool_call["id"],
-                                "name": tool_call["function"]["name"],
-                                "input": tool_call["function"]["arguments"],
-                            }
-                        )
+                    if "tool_calls" in msg:
+                        for tool_call in msg["tool_calls"]:
+                            func = tool_call["function"]
+                            args = func["arguments"]
+                            if isinstance(args, str):
+                                try:
+                                    args = json.loads(args)
+                                except json.JSONDecodeError:
+                                    logger.error(
+                                        "failed_to_decode_tool_arguments",
+                                        arguments=args,
+                                    )
+
+                            content_blocks.append(
+                                {
+                                    "type": "tool_use",
+                                    "id": tool_call["id"],
+                                    "name": func["name"],
+                                    "input": args,
+                                }
+                            )
 
                     anthropic_messages.append(
                         {"role": "assistant", "content": content_blocks}
@@ -107,6 +133,11 @@ class AnthropicModel(Model):
                 else:
                     anthropic_messages.append({"role": "assistant", "content": content})
             elif role == "tool":
+                # Ensure tool result content is a string
+                tool_result_content = content
+                if not isinstance(tool_result_content, str):
+                    tool_result_content = json.dumps(tool_result_content)
+
                 anthropic_messages.append(
                     {
                         "role": "user",
@@ -114,7 +145,7 @@ class AnthropicModel(Model):
                             {
                                 "type": "tool_result",
                                 "tool_use_id": msg.get("tool_call_id"),
-                                "content": content,
+                                "content": tool_result_content,
                             }
                         ],
                     }
@@ -178,13 +209,14 @@ class AnthropicModel(Model):
         if anthropic_tools:
             params["tools"] = anthropic_tools
 
-        logger.debug(
+        logger.info(
             "llm_request",
             model=actual_model,
             messages_count=len(anthropic_messages),
             tools_count=len(anthropic_tools) if anthropic_tools else 0,
             temperature=self.temperature,
             max_tokens=params["max_tokens"],
+            detail=json.dumps(params, indent=2, ensure_ascii=False),
         )
 
         try:
@@ -201,25 +233,92 @@ class AnthropicModel(Model):
             )
             raise
 
+        # Track tool calls being built during streaming
+        tool_calls_buffer = {}
+        # Track usage
+        usage_info = {"input_tokens": 0, "output_tokens": 0}
+
         async for event in stream:
             stream_chunk = StreamChunk()
 
-            if event.type == "content_block_delta":
+            if event.type == "message_start":
+                if hasattr(event.message, "usage"):
+                    usage_info["input_tokens"] = event.message.usage.input_tokens
+                    usage_info["output_tokens"] = event.message.usage.output_tokens
+                    stream_chunk.usage = {
+                        "input_tokens": usage_info["input_tokens"],
+                        "output_tokens": usage_info["output_tokens"],
+                        "total_tokens": usage_info["input_tokens"]
+                        + usage_info["output_tokens"],
+                    }
+
+            elif event.type == "content_block_start":
+                if event.content_block.type == "tool_use":
+                    index = event.index
+                    tool_calls_buffer[index] = {
+                        "id": event.content_block.id,
+                        "name": event.content_block.name,
+                        "input": "",
+                    }
+
+            elif event.type == "content_block_delta":
                 delta = event.delta
 
                 if delta.type == "text_delta":
                     stream_chunk.content = delta.text
+                elif delta.type == "thinking_delta":
+                    stream_chunk.reasoning_content = delta.thinking
+                elif delta.type == "input_json_delta":
+                    index = event.index
+                    if index in tool_calls_buffer:
+                        tool_calls_buffer[index]["input"] += delta.partial_json
+
+            elif event.type == "content_block_stop":
+                index = event.index
+                if index in tool_calls_buffer:
+                    tool_call = tool_calls_buffer[index]
+                    stream_chunk.tool_calls = [
+                        {
+                            "index": index,
+                            "id": tool_call["id"],
+                            "type": "function",
+                            "function": {
+                                "name": tool_call["name"],
+                                "arguments": tool_call["input"],
+                            },
+                        }
+                    ]
+                    # Note: We emit the tool call when it's complete
+                    # or should we emit deltas? Agio seems to prefer chunks.
+                    # Given the current structure, we'll emit the full tool call at block stop.
 
             elif event.type == "message_delta":
+                if hasattr(event, "usage"):
+                    usage_info["output_tokens"] = event.usage.output_tokens
+                    stream_chunk.usage = {
+                        "input_tokens": usage_info["input_tokens"],
+                        "output_tokens": usage_info["output_tokens"],
+                        "total_tokens": usage_info["input_tokens"]
+                        + usage_info["output_tokens"],
+                    }
+
                 if event.delta.stop_reason:
-                    stream_chunk.finish_reason = event.delta.stop_reason
+                    # Anthropic stop reasons: end_turn, max_tokens, stop_sequence, tool_use
+                    stop_reason = event.delta.stop_reason
+                    if stop_reason == "tool_use":
+                        stream_chunk.finish_reason = "tool_calls"
+                    else:
+                        stream_chunk.finish_reason = stop_reason
 
             elif event.type == "message_stop":
-                stream_chunk.finish_reason = "stop"
+                if stream_chunk.finish_reason is None:
+                    stream_chunk.finish_reason = "stop"
 
             if (
                 stream_chunk.content is not None
+                or stream_chunk.reasoning_content is not None
                 or stream_chunk.tool_calls is not None
+                or stream_chunk.usage is not None
                 or stream_chunk.finish_reason is not None
             ):
                 yield stream_chunk

@@ -241,6 +241,10 @@ class TraceStore:
         """Close MongoDB connection"""
         if self._client:
             self._client.close()
+            self._client = None
+            self._collection = None
+            self._initialized = False
+            logger.info("trace_store_closed")
 
 
 __all__ = ["TraceStore", "TraceQuery"]

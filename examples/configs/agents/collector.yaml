@@ -8,7 +8,7 @@
 type: agent
 name: collector
 description: "Information collector - gathers and reports with tool_call references"
-model: deepseek-reasoner
+model: minimax21
 
 system_prompt: |
   You are an **Intelligence Scout Agent**. You always find *valuable* information for the User.

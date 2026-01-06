@@ -5,11 +5,14 @@ Configuration management routes.
 import os
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from agio.api.deps import get_config_sys
 from agio.config import ComponentType, ConfigSystem
+from agio.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/config")
 
@@ -128,6 +131,7 @@ async def upsert_config(
 
         return MessageResponse(message=f"Config '{config_type}/{name}' saved")
     except Exception as e:
+        logger.exception(f"Failed to upsert config {config_type}/{name}: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -151,8 +155,12 @@ async def delete_config(
             status_code=404, detail=f"Config '{config_type}/{name}' not found"
         )
 
-    await config_sys.delete_config(comp_type, name)
-    return MessageResponse(message=f"Config '{config_type}/{name}' deleted")
+    try:
+        await config_sys.delete_config(comp_type, name)
+        return MessageResponse(message=f"Config '{config_type}/{name}' deleted")
+    except Exception as e:
+        logger.exception(f"Failed to delete config {config_type}/{name}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/components", response_model=list[ComponentInfo])
@@ -161,19 +169,37 @@ async def list_components(
 ):
     """List all built component instances."""
     components = config_sys.list_components()
-    return [ComponentInfo(**c) for c in components]
+    return [
+        ComponentInfo(
+            name=c["name"],
+            type=c["type"],
+            dependencies=c["dependencies"],
+            created_at=c["created_at"]
+        ) for c in components
+    ]
 
 
 @router.post("/components/{name}/rebuild", response_model=MessageResponse)
 async def rebuild_component(
     name: str,
+    component_type: str | None = Query(None, description="Component type for targeted rebuild"),
     config_sys: ConfigSystem = Depends(get_config_sys),
 ):
     """Rebuild a component and its dependents."""
     try:
-        await config_sys.rebuild(name)
+        ctype = None
+        if component_type:
+            try:
+                ctype = ComponentType(component_type)
+            except ValueError:
+                raise HTTPException(
+                    status_code=400, detail=f"Invalid component type: {component_type}"
+                )
+        
+        await config_sys.rebuild(name, ctype)
         return MessageResponse(message=f"Component '{name}' rebuilt")
     except Exception as e:
+        logger.exception(f"Failed to rebuild component {name}: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -182,11 +208,13 @@ async def reload_configs(
     config_sys: ConfigSystem = Depends(get_config_sys),
 ):
     """Reload all configurations from disk."""
-    config_dir = os.getenv("AGIO_CONFIG_DIR", "./configs")
+    # Priority: 1. Current system config_dir, 2. AGIO_CONFIG_DIR env, 3. Default examples/configs
+    config_dir = config_sys.config_dir or os.getenv("AGIO_CONFIG_DIR", "examples/configs")
 
     try:
         stats = await config_sys.load_from_directory(config_dir)
         await config_sys.build_all()
         return MessageResponse(message="Configs reloaded", details=stats)
     except Exception as e:
+        logger.exception(f"Failed to reload configs from {config_dir}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

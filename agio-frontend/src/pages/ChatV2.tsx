@@ -208,6 +208,13 @@ export default function ChatV2() {
         signal: abortControllerRef.current.signal,
       })
 
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Failed to start execution' }))
+        processTreeEvent('error', { error: errorData.detail || 'Failed to start execution' })
+        setIsStreaming(false)
+        return
+      }
+
       const reader = response.body?.getReader()
       const decoder = new TextDecoder()
       if (!reader) return
@@ -221,7 +228,17 @@ export default function ChatV2() {
         buffer = remaining
         for (const sseEvent of sseEvents) {
           try {
-            const data = JSON.parse(sseEvent.data)
+            let data: any
+            try {
+              data = JSON.parse(sseEvent.data)
+            } catch (parseErr) {
+              // Fallback for non-JSON error messages
+              if (sseEvent.event === 'error') {
+                data = { error: sseEvent.data }
+              } else {
+                throw parseErr
+              }
+            }
             handleSSEEvent(sseEvent.event, data)
           } catch (e) {
             console.error('Parse error:', e)
@@ -249,6 +266,14 @@ export default function ChatV2() {
         headers: { Accept: 'text/event-stream' },
         signal: abortControllerRef.current.signal,
       })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Failed to continue' }))
+        processTreeEvent('error', { error: errorData.detail || 'Failed to continue' })
+        setIsStreaming(false)
+        return
+      }
+
       const reader = response.body?.getReader()
       const decoder = new TextDecoder()
       if (!reader) return
@@ -261,7 +286,17 @@ export default function ChatV2() {
         buffer = remaining
         for (const sseEvent of sseEvents) {
           try {
-            const data = JSON.parse(sseEvent.data)
+            let data: any
+            try {
+              data = JSON.parse(sseEvent.data)
+            } catch (parseErr) {
+              // Fallback for non-JSON error messages
+              if (sseEvent.event === 'error') {
+                data = { error: sseEvent.data }
+              } else {
+                throw parseErr
+              }
+            }
             handleSSEEvent(sseEvent.event, data)
           } catch (e) {
             console.error('Parse error:', e)
@@ -289,7 +324,7 @@ export default function ChatV2() {
   const hasContent = executionTree.messages.length > 0 || executionTree.executions.length > 0
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3rem)] max-w-4xl mx-auto">
+    <div className="flex flex-col h-[calc(100vh-2.5rem)] max-w-5xl mx-auto px-2 animate-in fade-in duration-700">
       {/* Sticky Header with Mode Switcher */}
       <div className="sticky top-0 z-20 bg-background/80 backdrop-blur-md">
         <ChatHeader
@@ -303,28 +338,28 @@ export default function ChatV2() {
           onOpenSettings={() => setShowConfigModal(true)}
         />
         
-        <div className="flex items-center justify-between pb-3 px-1">
-           <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between pb-2 px-1">
+           <div className="flex items-center gap-1.5">
              <button 
                onClick={() => navigate(urlSessionId ? `/chat-v1/${urlSessionId}` : '/chat-v1')}
-               className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-white/5 text-gray-400 hover:text-white transition-colors"
+               className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-white/5 text-gray-500 hover:text-gray-300 transition-colors"
              >
-               <LayoutPanelLeft className="w-3.5 h-3.5" />
-               Switch to Legacy V1
+               <LayoutPanelLeft className="w-3 h-3" />
+               Legacy V1
              </button>
            </div>
            
-           <div className="flex items-center gap-2">
+           <div className="flex items-center gap-1.5">
              <button 
                onClick={() => setDebugMode(!debugMode)}
-               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+               className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold transition-colors ${
                  debugMode 
-                   ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' 
-                   : 'bg-white/5 text-gray-400 hover:text-white border border-transparent'
+                   ? 'bg-blue-500/10 text-blue-400/80 border border-blue-500/20' 
+                   : 'bg-white/5 text-gray-500 hover:text-gray-300 border border-transparent'
                }`}
              >
-               <Bug className="w-3.5 h-3.5" />
-               {debugMode ? 'Debug Mode: ON' : 'Debug Mode: OFF'}
+               <Bug className="w-3 h-3" />
+               {debugMode ? 'Debug: ON' : 'Debug: OFF'}
              </button>
            </div>
         </div>

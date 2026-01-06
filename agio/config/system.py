@@ -75,6 +75,12 @@ class ConfigSystem:
         self.hot_reload = HotReloadManager(
             self._active_container, self.dependency_resolver, self.builder_registry
         )
+        self._config_dir: Path | None = None
+
+    @property
+    def config_dir(self) -> Path | None:
+        """Get current configuration directory."""
+        return self._config_dir
 
     async def load_from_directory(self, config_dir: str | Path) -> dict[str, int]:
         """
@@ -86,6 +92,7 @@ class ConfigSystem:
         Returns:
             Loading statistics {"loaded": count, "failed": count}
         """
+        config_dir = Path(config_dir)
         logger.info(f"Loading configs from: {config_dir}")
 
         loader = ConfigLoader(config_dir)
@@ -98,6 +105,7 @@ class ConfigSystem:
             all_config_dicts.extend(configs)
 
         async with self._lock:
+            self._config_dir = config_dir
             for config_dict in all_config_dicts:
                 name = config_dict.get("name", "unknown")
                 try:
@@ -106,7 +114,7 @@ class ConfigSystem:
                     logger.info(f"Loaded config: {config.type}/{config.name}")
                     stats["loaded"] += 1
                 except Exception as e:
-                    logger.error(f"Failed to parse config {name}: {e}")
+                    logger.exception(f"Failed to parse config {name}: {e}")
                     stats["failed"] += 1
 
         logger.info(f"Config loading completed: {stats}")
@@ -187,49 +195,60 @@ class ConfigSystem:
         async with self._lock:
             return await self._reload_active_container()
 
-    async def rebuild(self, name: str) -> None:
+    async def rebuild(self, name: str, component_type: ComponentType | None = None) -> None:
         """
         Rebuild single component and its dependents.
 
         Args:
             name: Component name
+            component_type: Component type
         """
         async with self._lock:
-            await self._reload_active_container()
+            if component_type:
+                # Use HotReloadManager for fine-grained rebuild
+                await self.hot_reload.handle_change(
+                    name, 
+                    component_type, 
+                    "update", 
+                    rebuild_func=self._build_by_key
+                )
+            else:
+                # Fallback to full reload if type is not specified
+                await self._reload_active_container()
 
-    def get(self, name: str) -> Any:
+    def get(self, name: str, component_type: ComponentType | None = None) -> Any:
         """Get component instance."""
-        return self._active_container.acquire(name)
+        return self._active_container.acquire(name, component_type)
 
-    def get_or_none(self, name: str) -> Any | None:
+    def get_or_none(self, name: str, component_type: ComponentType | None = None) -> Any | None:
         """Get component instance or None."""
         try:
-            return self._active_container.acquire(name)
+            return self._active_container.acquire(name, component_type)
         except ComponentNotFoundError:
             return None
 
-    def release(self, name: str) -> None:
+    def release(self, name: str, component_type: ComponentType | None = None) -> None:
         """Release component instance."""
-        self._active_container.release(name)
+        self._active_container.release(name, component_type)
 
-    def get_instance(self, name: str) -> Any:
+    def get_instance(self, name: str, component_type: ComponentType | None = None) -> Any:
         """Get component instance (alias for get)."""
-        return self.get(name)
+        return self.get(name, component_type)
 
-    def get_all_instances(self) -> dict[str, Any]:
+    def get_all_instances(self) -> dict[tuple[ComponentType, str], Any]:
         """Get all component instances."""
         return self._active_container.get_all_instances()
 
     @asynccontextmanager
-    async def use(self, name: str):
+    async def use(self, name: str, component_type: ComponentType | None = None):
         """
         Async context manager to auto release component reference.
         """
-        instance = self.get(name)
+        instance = self.get(name, component_type)
         try:
             yield instance
         finally:
-            self.release(name)
+            self.release(name, component_type)
 
     async def _reload_active_container(self) -> dict[str, int]:
         """
@@ -239,9 +258,7 @@ class ConfigSystem:
         configs = self.registry.list_all()
         available_names = self.registry.get_all_names()
 
-        sorted_configs = self.dependency_resolver.topological_sort(
-            configs, available_names
-        )
+        sorted_configs = self.dependency_resolver.topological_sort(configs)
 
         stats = {"built": 0, "failed": 0}
 
@@ -260,10 +277,12 @@ class ConfigSystem:
         self._active_container = new_container
         self.container = new_container
         self.hot_reload.set_container(new_container)
-        self._draining_containers.append(old_container)
-
-        # Begin draining old containers (fire and forget)
-        asyncio.create_task(self._drain_containers())
+        
+        # Only drain if the old container actually had instances
+        if old_container.count() > 0:
+            self._draining_containers.append(old_container)
+            # Begin draining old containers (fire and forget)
+            asyncio.create_task(self._drain_containers())
 
         logger.info(f"Build completed and swapped: {stats}")
         return stats
@@ -279,38 +298,38 @@ class ConfigSystem:
 
     async def _cleanup_container(self, container: ComponentContainer) -> None:
         """Cleanup all instances in a container using builders."""
-        for name, metadata in container.get_all_metadata().items():
-            instance = container.get_or_none(name)
-            builder = self.builder_registry.get(metadata.component_type)
+        for (comp_type, name), metadata in container._metadata.items():
+            instance = container.get_or_none(name, comp_type)
+            builder = self.builder_registry.get(comp_type)
             if instance is not None and builder:
                 try:
                     await builder.cleanup(instance)
                 except Exception as e:
-                    logger.error(f"Failed to cleanup {name}: {e}")
+                    logger.error(f"Failed to cleanup {comp_type.value}/{name}: {e}")
         container.clear()
 
     def list_components(self) -> list[dict]:
         """List all built components."""
         result = []
-        for name in self.container.list_names():
-            metadata = self.container.get_metadata(name)
+        for comp_type, name in self.container.list_components():
+            metadata = self.container.get_metadata(name, comp_type)
             if metadata:
                 result.append(
                     {
                         "name": name,
-                        "type": metadata.component_type.value,
+                        "type": comp_type.value,
                         "dependencies": metadata.dependencies,
                         "created_at": metadata.created_at.isoformat(),
                     }
                 )
         return result
 
-    def get_component_info(self, name: str) -> dict | None:
+    def get_component_info(self, name: str, component_type: ComponentType | None = None) -> dict | None:
         """Get component detailed information."""
-        if not self.container.has(name):
+        if not self.container.has(name, component_type):
             return None
 
-        metadata = self.container.get_metadata(name)
+        metadata = self.container.get_metadata(name, component_type)
         if not metadata:
             return None
 
@@ -352,13 +371,13 @@ class ConfigSystem:
         logger.info(f"Component built: {component_type.value}/{config.name}")
         return instance
 
-    async def _build_by_name(self, name: str, container: ComponentContainer) -> Any:
-        """Build component by name (for hot reload)."""
-        for config in self.registry.list_all():
-            if config.name == name:
-                return await self._build_component(config, container)
+    async def _build_by_key(self, name: str, component_type: ComponentType) -> Any:
+        """Build component by key (name and type)."""
+        config = self.registry.get(component_type, name)
+        if config:
+            return await self._build_component(config, self._active_container)
 
-        raise ConfigNotFoundError(f"Config for component '{name}' not found")
+        raise ConfigNotFoundError(f"Config for component {component_type.value}/{name} not found")
 
     def _find_dependency_config(self, dep_name: str) -> ComponentConfig | None:
         """
@@ -400,16 +419,27 @@ class ConfigSystem:
             Component instance
             
         Raises:
-            ComponentNotFoundError: If dependency config not found
+            ComponentNotFoundError: If dependency config not found and not in container
         """
-        if not container.has(dep_name):
-            dep_config = self._find_dependency_config(dep_name)
-            if not dep_config:
-                raise ComponentNotFoundError(
-                    f"Dependency '{dep_name}' not found for {context}"
-                )
+        # 1. Check if already built in container (backward compatibility/manual registration)
+        instance = container.get_or_none(dep_name)
+        if instance is not None:
+            return instance
+
+        # 2. Find config from registry
+        dep_config = self._find_dependency_config(dep_name)
+        if not dep_config:
+            raise ComponentNotFoundError(
+                f"Dependency '{dep_name}' not found for {context}"
+            )
+        
+        # 3. Build if necessary
+        dep_type = ComponentType(dep_config.type)
+        if not container.has(dep_name, dep_type):
             await self._build_component(dep_config, container)
-        return container.get(dep_name)
+        
+        # 4. Return instance
+        return container.get(dep_name, dep_type)
 
     async def _resolve_dependencies(
         self, config: ComponentConfig, container: ComponentContainer
@@ -514,17 +544,15 @@ class ConfigSystem:
             )
 
         session_store = (
-            container.get_or_none(session_store_name)
-            if container
-            else None
-            if session_store_name
+            container.get_or_none(session_store_name, ComponentType.SESSION_STORE)
+            if container and session_store_name
             else None
         )
 
         target_container = container or self._active_container
         
         # Ensure the referenced agent is built first
-        if not target_container.has(runnable_id):
+        if not target_container.has(runnable_id, ComponentType.AGENT):
             agent_config = self.registry.get(ComponentType.AGENT, runnable_id)
             if not agent_config:
                 raise ComponentNotFoundError(
@@ -534,7 +562,7 @@ class ConfigSystem:
             # Build the agent first
             await self._build_component(agent_config, target_container)
         
-        runnable = target_container.get(runnable_id)
+        runnable = target_container.get(runnable_id, ComponentType.AGENT)
         tool = as_tool(
             runnable,
             description=config.get("description"),
@@ -549,8 +577,8 @@ class ConfigSystem:
     ) -> Any:
         """Get or create tool."""
         container = container or self._active_container
-        if container.has(tool_name):
-            return container.get(tool_name)
+        if container.has(tool_name, ComponentType.TOOL):
+            return container.get(tool_name, ComponentType.TOOL)
 
         config = self.registry.get(ComponentType.TOOL, tool_name)
         if config:

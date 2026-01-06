@@ -47,6 +47,7 @@ class StepDelta(BaseModel):
         None  # Reasoning content to append (e.g., DeepSeek thinking mode)
     )
     tool_calls: list[dict] | None = None  # Tool calls to append/update
+    usage: dict[str, int] | None = None  # Token usage metrics
 
 
 class StepEvent(BaseModel):

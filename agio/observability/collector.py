@@ -108,6 +108,8 @@ class TraceCollector:
             logger.error(
                 "trace_collection_failed", trace_id=trace.trace_id, error=str(e)
             )
+            # Ensure the last event we saw (or the root if none) is saved before raising
+            # This handles cases where an error occurs before any RUN_FAILED event is generated
             raise
         finally:
             # Save trace

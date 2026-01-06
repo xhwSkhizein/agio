@@ -11,6 +11,7 @@ This module contains LLM model implementations:
 from .anthropic import AnthropicModel
 from .base import Model, StreamChunk
 from .deepseek import DeepseekModel
+from .nvidia import NvidiaModel
 from .openai import OpenAIModel
 
 __all__ = [
@@ -19,4 +20,5 @@ __all__ = [
     "OpenAIModel",
     "AnthropicModel",
     "DeepseekModel",
+    "NvidiaModel",
 ]

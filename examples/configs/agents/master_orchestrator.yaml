@@ -9,7 +9,7 @@
 type: agent
 name: master_orchestrator
 description: "Master orchestrator - delegates to collectors and processors"
-model: deepseek-reasoner
+model: minimax21
 
 system_prompt: |
   You are the **Master Orchestrator**.

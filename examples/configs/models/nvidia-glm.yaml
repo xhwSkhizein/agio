@@ -1,0 +1,8 @@
+type: model
+name: nvidia/glm-4-7
+provider: nvidia
+model_name: z-ai/glm4.7
+temperature: 0.6
+top_p: 0.7
+max_tokens: 4096
+# class_path: agio.llm.NvidiaModel (handled by ModelBuilder based on provider)

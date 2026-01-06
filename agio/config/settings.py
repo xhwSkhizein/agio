@@ -48,6 +48,10 @@ class AgioSettings(BaseSettings):
     deepseek_api_key: SecretStr | None = None
     deepseek_base_url: str = "https://api.deepseek.com"
 
+    # NVIDIA
+    nvidia_api_key: SecretStr | None = None
+    nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
+
     # Anthropic
     anthropic_api_key: SecretStr | None = None
 

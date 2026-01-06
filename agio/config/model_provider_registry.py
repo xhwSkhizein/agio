@@ -7,7 +7,7 @@ Manages model provider factories and creates model instances from configuration.
 from typing import Any, Callable, Protocol
 
 from agio.config.schema import ModelConfig
-from agio.llm import AnthropicModel, DeepseekModel, OpenAIModel
+from agio.llm import AnthropicModel, DeepseekModel, NvidiaModel, OpenAIModel
 from agio.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -50,6 +50,7 @@ class ModelProviderRegistry:
         self.register("openai", OpenAIModel)
         self.register("anthropic", AnthropicModel)
         self.register("deepseek", DeepseekModel)
+        self.register("nvidia", NvidiaModel)
 
         logger.debug("Registered default model providers")
 

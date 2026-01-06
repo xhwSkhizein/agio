@@ -142,8 +142,9 @@ export class ExecutionTreeBuilder {
    * Add a user message to the timeline
    */
   addUserMessage(content: string): void {
+    const id = `user_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
     this.tree.messages.push({
-      id: `user_${Date.now()}`,
+      id,
       type: 'user',
       content,
       timestamp: Date.now(),
@@ -187,6 +188,12 @@ export class ExecutionTreeBuilder {
   private handleRunStarted(data: SSEEventData): void {
     const runId = data.run_id
     if (!runId) return
+
+    // If already exists, don't add again to list/children
+    if (this.tree.executionMap.has(runId)) {
+      console.warn(`Duplicate run_started event for runId: ${runId}`)
+      return
+    }
     
     // Extract session ID
     if (data.data?.session_id) {
@@ -262,10 +269,11 @@ export class ExecutionTreeBuilder {
     exec.status = 'failed'
     exec.endTime = Date.now()
     
-    // Add error message
+    // Add error message with unique ID
     const errorMsg = data.data?.error || data.error || 'Run failed'
+    const id = `error_run_${runId}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
     this.tree.messages.push({
-      id: `error_${Date.now()}`,
+      id,
       type: 'error',
       content: errorMsg,
       timestamp: Date.now(),
@@ -371,8 +379,9 @@ export class ExecutionTreeBuilder {
   
   private handleError(data: SSEEventData): void {
     const errorMsg = data.data?.error || data.error || 'Unknown error'
+    const id = `error_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
     this.tree.messages.push({
-      id: `error_${Date.now()}`,
+      id,
       type: 'error',
       content: errorMsg,
       timestamp: Date.now(),

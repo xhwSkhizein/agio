@@ -2,6 +2,7 @@
 OpenAI Model implementation - Pure LLM Interface
 """
 
+import json
 import os
 from typing import AsyncIterator
 
@@ -114,13 +115,14 @@ class OpenAIModel(Model):
         if tools:
             params["tools"] = tools
 
-        logger.debug(
+        logger.info(
             "llm_request",
             model=actual_model,
             messages_count=len(messages),
             tools_count=len(tools) if tools else 0,
             temperature=self.temperature,
             max_tokens=self.max_tokens,
+            detail=json.dumps(params, indent=2, ensure_ascii=False),
         )
 
         try:

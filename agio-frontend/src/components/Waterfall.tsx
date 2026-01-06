@@ -31,15 +31,15 @@ const MIN_BAR_WIDTH = 4;
 const TIMELINE_MIN_WIDTH = 600;
 
 const KIND_COLORS: Record<string, string> = {
-  agent: 'bg-green-500',
-  llm_call: 'bg-amber-500',
-  tool_call: 'bg-orange-500',
+  agent: 'bg-emerald-500/60',
+  llm_call: 'bg-blue-500/60',
+  tool_call: 'bg-primary-500/60',
 };
 
 const KIND_ICONS: Record<string, string> = {
   agent: '🤖',
-  llm_call: '💬',
-  tool_call: '🔧',
+  llm_call: '🧠',
+  tool_call: '🛠️',
 };
 
 export function Waterfall({ spans, totalDuration, onSpanClick }: WaterfallProps) {
@@ -143,23 +143,23 @@ export function Waterfall({ spans, totalDuration, onSpanClick }: WaterfallProps)
   };
 
   return (
-    <div className="w-full">
+    <div className="w-full font-sans">
       {/* Timeline header */}
-      <div className="flex border-b border-border mb-2 pb-2 overflow-x-auto">
+      <div className="flex border-b border-white/5 mb-3 pb-2 overflow-x-auto custom-scrollbar">
         <div 
           style={{ minWidth: LABEL_MIN_WIDTH, maxWidth: LABEL_MAX_WIDTH }} 
-          className="shrink-0 px-2 py-1 text-sm font-medium text-white"
+          className="shrink-0 px-3 text-[9px] font-black text-gray-700 uppercase tracking-[0.2em]"
         >
-          Span
+          EXECUTION SPAN
         </div>
-        <div className="flex-1 relative h-6 shrink-0" style={{ minWidth: TIMELINE_MIN_WIDTH }}>
+        <div className="flex-1 relative h-5 shrink-0" style={{ minWidth: TIMELINE_MIN_WIDTH }}>
           {timeMarkers.map((pct) => (
             <div
               key={pct}
-              className="absolute top-0 h-full border-l border-border"
+              className="absolute top-0 h-full border-l border-white/5"
               style={{ left: `${pct * 100}%` }}
             >
-              <span className="text-xs text-gray-500 ml-1">
+              <span className="text-[9px] font-bold text-gray-800 ml-1.5">
                 {formatDuration(totalDuration * pct)}
               </span>
             </div>
@@ -168,102 +168,109 @@ export function Waterfall({ spans, totalDuration, onSpanClick }: WaterfallProps)
       </div>
 
       {/* Spans */}
-      <div className="relative overflow-x-auto">
-        {sortedSpans.map((span) => {
-          const leftPct = (span.start_offset_ms / totalDuration) * 100;
-          const widthPct = Math.max(
-            (span.duration_ms / totalDuration) * 100,
-            (MIN_BAR_WIDTH / 800) * 100
-          );
+      <div className="relative overflow-x-auto custom-scrollbar">
+        <div className="space-y-1">
+          {sortedSpans.map((span) => {
+            const leftPct = (span.start_offset_ms / totalDuration) * 100;
+            const widthPct = Math.max(
+              (span.duration_ms / totalDuration) * 100,
+              (MIN_BAR_WIDTH / 800) * 100
+            );
 
-          const isError = span.status === 'error';
+            const isError = span.status === 'error';
+            const primaryInfo = getPrimaryInfo(span);
+            const secondaryInfo = getSecondaryInfo(span);
 
-          const primaryInfo = getPrimaryInfo(span);
-          const secondaryInfo = getSecondaryInfo(span);
-
-          return (
-            <div
-              key={span.span_id}
-              className={`flex items-center min-h-[3rem] py-1 hover:bg-surfaceHighlight cursor-pointer transition-colors ${
-                isError ? 'bg-red-900/20' : ''
-              }`}
-              onClick={() => onSpanClick?.(span)}
-            >
-              {/* Label */}
+            return (
               <div
-                style={{
-                  minWidth: LABEL_MIN_WIDTH,
-                  maxWidth: LABEL_MAX_WIDTH,
-                  paddingLeft: span.depth * 16 + 8,
-                }}
-                className="shrink-0 px-2 flex flex-col gap-0.5"
+                key={span.span_id}
+                className={`flex items-center min-h-[2.75rem] py-1.5 rounded-xl hover:bg-white/[0.03] group cursor-pointer transition-all duration-200 ${
+                  isError ? 'bg-red-500/5 border border-red-500/10' : 'border border-transparent'
+                }`}
+                onClick={() => onSpanClick?.(span)}
               >
-                {/* Main label row */}
-                <div className="flex items-center gap-2">
-                  <span className="text-base shrink-0">
-                    {KIND_ICONS[span.kind] || '●'}
-                  </span>
-                  <span 
-                    className="font-medium text-white truncate text-sm" 
-                    title={span.label}
-                  >
-                    {span.label}
-                  </span>
-                </div>
-                
-                {/* Secondary info row */}
-                {(primaryInfo.text || secondaryInfo.length > 0) && (
-                  <div className="flex items-center gap-2 ml-6 text-xs">
-                    {primaryInfo.text && (
-                      <span className={`font-medium ${
-                        primaryInfo.type === 'tokens' ? 'text-yellow-400' : 'text-blue-400'
-                      }`}>
-                        {primaryInfo.text}
-                      </span>
-                    )}
-                    {secondaryInfo.length > 0 && (
-                      <>
-                        {primaryInfo.text && <span className="text-gray-600 mx-1">•</span>}
-                        <span className="text-gray-500">
-                          {secondaryInfo.join(' • ')}
-                        </span>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Timeline bar */}
-              <div className="flex-1 relative h-full shrink-0" style={{ minWidth: TIMELINE_MIN_WIDTH }}>
+                {/* Label */}
                 <div
-                  className={`absolute top-1/2 -translate-y-1/2 h-5 rounded shadow-sm ${
-                    KIND_COLORS[span.kind] || 'bg-gray-400'
-                  } ${isError ? '!bg-red-500' : ''}`}
                   style={{
-                    left: `${leftPct}%`,
-                    width: `${widthPct}%`,
-                    minWidth: MIN_BAR_WIDTH,
+                    minWidth: LABEL_MIN_WIDTH,
+                    maxWidth: LABEL_MAX_WIDTH,
+                    paddingLeft: span.depth * 16 + 10,
                   }}
+                  className="shrink-0 px-2 flex flex-col gap-0.5"
                 >
-                  {/* Duration label on bar */}
-                  {widthPct > 8 && (
-                    <span className="absolute inset-0 flex items-center justify-center text-xs text-white font-medium">
-                      {formatDuration(span.duration_ms)}
+                  {/* Main label row */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs shrink-0 grayscale group-hover:grayscale-0 transition-all">
+                      {KIND_ICONS[span.kind] || '●'}
                     </span>
+                    <span 
+                      className="font-bold text-gray-300 truncate text-[11px] group-hover:text-white transition-colors uppercase tracking-tight" 
+                      title={span.label}
+                    >
+                      {span.label}
+                    </span>
+                  </div>
+                  
+                  {/* Secondary info row */}
+                  {(primaryInfo.text || secondaryInfo.length > 0) && (
+                    <div className="flex items-center gap-1.5 ml-6 text-[9px] font-bold tracking-tight">
+                      {primaryInfo.text && (
+                        <span className={`${
+                          primaryInfo.type === 'tokens' ? 'text-yellow-500/60' : 'text-blue-500/60'
+                        }`}>
+                          {primaryInfo.text.toUpperCase()}
+                        </span>
+                      )}
+                      {secondaryInfo.length > 0 && (
+                        <>
+                          <span className="text-gray-800">•</span>
+                          <span className="text-gray-700 uppercase">
+                            {secondaryInfo.join(' • ')}
+                          </span>
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
+
+                {/* Timeline bar */}
+                <div className="flex-1 relative h-full shrink-0" style={{ minWidth: TIMELINE_MIN_WIDTH }}>
+                  {/* Background track line */}
+                  <div className="absolute top-1/2 left-0 right-0 h-px bg-white/5 -translate-y-1/2" />
+                  
+                  <div
+                    className={`absolute top-1/2 -translate-y-1/2 h-5 rounded-lg shadow-lg backdrop-blur-sm border border-white/5 group-hover:border-white/20 transition-all duration-300 ${
+                      KIND_COLORS[span.kind] || 'bg-gray-500/40'
+                    } ${isError ? '!bg-red-500/60 !border-red-500/30' : ''}`}
+                    style={{
+                      left: `${leftPct}%`,
+                      width: `${widthPct}%`,
+                      minWidth: MIN_BAR_WIDTH,
+                    }}
+                  >
+                    {/* Duration label on bar */}
+                    {widthPct > 12 && (
+                      <span className="absolute inset-0 flex items-center justify-center text-[9px] text-white/90 font-black tracking-tighter drop-shadow-md">
+                        {formatDuration(span.duration_ms)}
+                      </span>
+                    )}
+                    
+                    {/* Active glow */}
+                    <div className="absolute inset-0 rounded-lg bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
       {/* Legend */}
-      <div className="mt-6 flex flex-wrap gap-4 text-sm text-gray-400">
+      <div className="mt-6 flex flex-wrap gap-4 px-3 py-2 bg-white/5 rounded-xl border border-white/5 w-fit">
         {Object.entries(KIND_ICONS).map(([kind, icon]) => (
-          <div key={kind} className="flex items-center gap-2">
-            <span>{icon}</span>
-            <span className="capitalize">{kind.replace('_', ' ')}</span>
+          <div key={kind} className="flex items-center gap-1.5">
+            <span className="text-xs grayscale group-hover:grayscale-0">{icon}</span>
+            <span className="text-[9px] font-black text-gray-600 uppercase tracking-widest">{kind.replace('_', ' ')}</span>
           </div>
         ))}
       </div>

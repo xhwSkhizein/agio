@@ -257,9 +257,10 @@ class StepBuilder:
             self.step.metrics.input_tokens = normalized["input_tokens"]
             self.step.metrics.output_tokens = normalized["output_tokens"]
             self.step.metrics.total_tokens = normalized["total_tokens"]
+            delta.usage = normalized
 
         # Emit delta
-        if has_content:
+        if has_content or delta.usage:
             await self.state.emit_delta(self.step.id, delta)
 
     def finalize(self) -> "Step":
