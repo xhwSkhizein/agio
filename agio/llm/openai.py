@@ -146,13 +146,19 @@ class OpenAIModel(Model):
                 # Convert OpenAI-style tokens to unified format
                 from agio.domain.models import normalize_usage_metrics
 
-                stream_chunk.usage = normalize_usage_metrics(
-                    {
-                        "prompt_tokens": chunk.usage.prompt_tokens,
-                        "completion_tokens": chunk.usage.completion_tokens,
-                        "total_tokens": chunk.usage.total_tokens,
-                    }
-                )
+                usage_dict = {
+                    "prompt_tokens": chunk.usage.prompt_tokens,
+                    "completion_tokens": chunk.usage.completion_tokens,
+                    "total_tokens": chunk.usage.total_tokens,
+                }
+
+                # Extract OpenAI specific cache details if available
+                if hasattr(chunk.usage, "prompt_tokens_details") and chunk.usage.prompt_tokens_details:
+                    details = chunk.usage.prompt_tokens_details
+                    if hasattr(details, "cached_tokens"):
+                        usage_dict["cached_tokens"] = details.cached_tokens
+
+                stream_chunk.usage = normalize_usage_metrics(usage_dict)
 
             if chunk.choices and len(chunk.choices) > 0:
                 choice = chunk.choices[0]

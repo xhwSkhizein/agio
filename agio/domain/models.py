@@ -48,31 +48,66 @@ def normalize_usage_metrics(usage_data: dict[str, Any] | None) -> dict[str, int 
     """
     Normalize model usage metrics to unified format.
 
-    Handles both OpenAI-style (prompt_tokens/completion_tokens) and
-    unified-style (input_tokens/output_tokens) metrics.
+    Handles both OpenAI-style and unified-style metrics, including prompt caching.
+    Ensures 'input_tokens' always represents the TOTAL input (including cache).
 
     Args:
-        usage_data: Raw usage data from model (may contain prompt_tokens/completion_tokens
-                   or input_tokens/output_tokens)
+        usage_data: Raw usage data from model
 
     Returns:
-        dict with normalized keys: input_tokens, output_tokens, total_tokens
+        dict with normalized keys: 
+        - input_tokens (Total input)
+        - output_tokens
+        - total_tokens (input_tokens + output_tokens)
+        - cache_read_tokens
+        - cache_creation_tokens
     """
     if not usage_data:
         return {
             "input_tokens": None,
             "output_tokens": None,
             "total_tokens": None,
+            "cache_read_tokens": None,
+            "cache_creation_tokens": None,
         }
 
-    # Handle both OpenAI-style and unified-style keys
-    input_tokens = usage_data.get("input_tokens") or usage_data.get("prompt_tokens")
+    # Extract base tokens
+    # OpenAI: prompt_tokens (Total)
+    # Anthropic: input_tokens (Excludes cache)
+    base_input = usage_data.get("input_tokens") or usage_data.get("prompt_tokens")
     output_tokens = usage_data.get("output_tokens") or usage_data.get(
         "completion_tokens"
     )
-    total_tokens = usage_data.get("total_tokens")
 
-    # Calculate total_tokens if not provided but both input/output are available
+    # Extract cache details
+    # OpenAI: cached_tokens
+    # Anthropic: cache_read_tokens, cache_creation_tokens
+    cache_read_tokens = (
+        usage_data.get("cache_read_tokens")
+        or usage_data.get("cache_read_input_tokens")
+        or usage_data.get("cached_tokens")
+    )
+    cache_creation_tokens = usage_data.get("cache_creation_tokens") or usage_data.get(
+        "cache_creation_input_tokens"
+    )
+
+    input_tokens = base_input
+    # For Anthropic (where we have cache_read_tokens or cache_creation_tokens), 
+    # the base_input usually excludes them.
+    # For OpenAI, prompt_tokens (base_input) already includes them.
+    # Detect provider style by key names or by checking if we need to sum up.
+    # If we see cache_read_input_tokens or cache_creation_input_tokens, it's Anthropic style.
+    if "cache_read_input_tokens" in usage_data or "cache_creation_input_tokens" in usage_data:
+        # Anthropic style: sum them up to get Total Input
+        if input_tokens is not None:
+            input_tokens += (cache_read_tokens or 0) + (cache_creation_tokens or 0)
+    elif "cache_read_tokens" in usage_data or "cache_creation_tokens" in usage_data:
+        # Also Anthropic style if passed from my updated anthropic.py
+        if input_tokens is not None:
+            input_tokens += (cache_read_tokens or 0) + (cache_creation_tokens or 0)
+
+    # Calculate total_tokens (Input + Output)
+    total_tokens = usage_data.get("total_tokens")
     if total_tokens is None and input_tokens is not None and output_tokens is not None:
         total_tokens = input_tokens + output_tokens
 
@@ -80,6 +115,8 @@ def normalize_usage_metrics(usage_data: dict[str, Any] | None) -> dict[str, int 
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "total_tokens": total_tokens,
+        "cache_read_tokens": cache_read_tokens,
+        "cache_creation_tokens": cache_creation_tokens,
     }
 
 
@@ -103,7 +140,8 @@ class StepMetrics(BaseModel):
     input_tokens: int | None = None
     output_tokens: int | None = None
     total_tokens: int | None = None
-    cache_tokens: int | None = None
+    cache_read_tokens: int | None = None
+    cache_creation_tokens: int | None = None
 
     # Model info
     model_name: str | None = None
@@ -133,6 +171,8 @@ class RunMetrics(BaseModel):
     total_tokens: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
 
     # Execution stats
     steps_count: int = 0
@@ -177,6 +217,8 @@ class RunMetrics(BaseModel):
         self.total_tokens += other.total_tokens
         self.input_tokens += other.input_tokens
         self.output_tokens += other.output_tokens
+        self.cache_read_tokens += other.cache_read_tokens
+        self.cache_creation_tokens += other.cache_creation_tokens
 
         # Execution stats sum
         self.steps_count += other.steps_count

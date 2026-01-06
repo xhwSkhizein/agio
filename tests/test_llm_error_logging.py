@@ -89,9 +89,9 @@ async def test_openai_request_logging_on_success():
         async for chunk in model.arun_stream(messages):
             chunks.append(chunk)
         
-        # Verify debug log was called
-        assert mock_logger.debug.called
-        call_args = mock_logger.debug.call_args
+        # Verify info log was called
+        assert mock_logger.info.called
+        call_args = mock_logger.info.call_args
         
         # Check log event name
         assert call_args[0][0] == "llm_request"

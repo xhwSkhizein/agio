@@ -193,6 +193,8 @@ class Trace(BaseModel):
     total_tokens: int = 0
     total_llm_calls: int = 0
     total_tool_calls: int = 0
+    total_cache_read_tokens: int = 0
+    total_cache_creation_tokens: int = 0
     max_depth: int = 0
 
     # === Input/Output ===
@@ -207,8 +209,10 @@ class Trace(BaseModel):
         # Update aggregated metrics
         if span.kind == SpanKind.LLM_CALL:
             self.total_llm_calls += 1
-            if span.metrics and span.metrics.get("tokens.total") is not None:
-                self.total_tokens += span.metrics["tokens.total"]
+            if span.metrics:
+                self.total_tokens += span.metrics.get("tokens.total", 0) or span.metrics.get("total_tokens", 0)
+                self.total_cache_read_tokens += span.metrics.get("tokens.cache_read", 0) or span.metrics.get("cache_read_tokens", 0)
+                self.total_cache_creation_tokens += span.metrics.get("tokens.cache_creation", 0) or span.metrics.get("cache_creation_tokens", 0)
         elif span.kind == SpanKind.TOOL_CALL:
             self.total_tool_calls += 1
 

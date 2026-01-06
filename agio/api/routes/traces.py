@@ -30,6 +30,8 @@ class TraceSummary(BaseModel):
     duration_ms: float | None
     status: str
     total_tokens: int
+    total_cache_read_tokens: int = 0
+    total_cache_creation_tokens: int = 0
     total_llm_calls: int
     total_tool_calls: int
     max_depth: int
@@ -54,6 +56,9 @@ class SpanSummary(BaseModel):
     llm_details: dict[str, Any] | None = (
         None  # Complete LLM call details (for LLM_CALL spans)
     )
+    tool_details: dict[str, Any] | None = (
+        None  # Complete tool call details (for TOOL_CALL spans)
+    )
 
 
 class TraceDetail(BaseModel):
@@ -69,6 +74,8 @@ class TraceDetail(BaseModel):
     status: str
     spans: list[SpanSummary]
     total_tokens: int
+    total_cache_read_tokens: int = 0
+    total_cache_creation_tokens: int = 0
     total_llm_calls: int
     total_tool_calls: int
     max_depth: int
@@ -100,6 +107,9 @@ class WaterfallSpan(BaseModel):
     llm_details: dict[str, Any] | None = (
         None  # Complete LLM call details (for LLM_CALL spans)
     )
+    tool_details: dict[str, Any] | None = (
+        None  # Complete tool call details (for TOOL_CALL spans)
+    )
 
 
 class WaterfallData(BaseModel):
@@ -128,6 +138,8 @@ class LLMCallSummary(BaseModel):
     input_tokens: int | None
     output_tokens: int | None
     total_tokens: int | None
+    cache_read_tokens: int | None = None
+    cache_creation_tokens: int | None = None
     llm_details: dict[str, Any] | None = None
 
 
@@ -298,6 +310,8 @@ def _to_summary(trace: Trace) -> TraceSummary:
         duration_ms=trace.duration_ms,
         status=trace.status.value,
         total_tokens=trace.total_tokens,
+        total_cache_read_tokens=trace.total_cache_read_tokens,
+        total_cache_creation_tokens=trace.total_cache_creation_tokens,
         total_llm_calls=trace.total_llm_calls,
         total_tool_calls=trace.total_tool_calls,
         max_depth=trace.max_depth,
@@ -319,6 +333,8 @@ def _to_detail(trace: Trace) -> TraceDetail:
         status=trace.status.value,
         spans=[_span_to_summary(s) for s in trace.spans],
         total_tokens=trace.total_tokens,
+        total_cache_read_tokens=trace.total_cache_read_tokens,
+        total_cache_creation_tokens=trace.total_cache_creation_tokens,
         total_llm_calls=trace.total_llm_calls,
         total_tool_calls=trace.total_tool_calls,
         max_depth=trace.max_depth,
@@ -342,6 +358,7 @@ def _span_to_summary(span: Span) -> SpanSummary:
         attributes=span.attributes,
         metrics=span.metrics,
         llm_details=span.llm_details,
+        tool_details=span.tool_details,
     )
 
 
@@ -392,6 +409,7 @@ def _build_waterfall(trace: Trace) -> WaterfallData:
                 tokens=tokens,
                 metrics=span.metrics or {},
                 llm_details=span.llm_details,
+                tool_details=span.tool_details,
             )
         )
 
@@ -420,8 +438,10 @@ def _span_to_llm_call(span: Span, trace: Trace) -> LLMCallSummary:
         duration_ms=span.duration_ms,
         model_name=span.metrics.get("model") or span.attributes.get("model_name"),
         provider=span.metrics.get("provider") or span.attributes.get("provider"),
-        input_tokens=span.metrics.get("tokens.input"),
-        output_tokens=span.metrics.get("tokens.output"),
-        total_tokens=span.metrics.get("tokens.total"),
+        input_tokens=span.metrics.get("tokens.input") or span.metrics.get("input_tokens"),
+        output_tokens=span.metrics.get("tokens.output") or span.metrics.get("output_tokens"),
+        total_tokens=span.metrics.get("tokens.total") or span.metrics.get("total_tokens"),
+        cache_read_tokens=span.metrics.get("cache_read_tokens") or span.metrics.get("tokens.cache_read"),
+        cache_creation_tokens=span.metrics.get("cache_creation_tokens") or span.metrics.get("tokens.cache_creation"),
         llm_details=span.llm_details,
     )

@@ -42,7 +42,7 @@ def test_dependency_resolution_with_name_reuse():
     
     # topological_sort should not fail with circular dep error 
     # even though 'db' depends on 'db' (Tool depends on SessionStore)
-    sorted_configs = resolver.topological_sort(configs, available_names)
+    sorted_configs = resolver.topological_sort(configs)
     
     assert len(sorted_configs) == 4
     
@@ -90,10 +90,9 @@ def test_real_circular_dependency():
     model = ModelConfig(name="m", provider="openai", model_name="gpt4", api_key="k")
     
     configs = [agent_a, tool_b, model]
-    available_names = {"A", "B", "m"}
     
     with pytest.raises(ConfigError) as excinfo:
-        resolver.topological_sort(configs, available_names)
+        resolver.topological_sort(configs)
     
     assert "Circular dependency" in str(excinfo.value)
 
@@ -111,9 +110,8 @@ def test_cross_type_name_collision_no_dep():
     agent_y = AgentConfig(name="Y", model="X", tools=[])
     
     configs = [model_x, store_x, agent_y]
-    available_names = {"X", "Y"}
     
-    sorted_configs = resolver.topological_sort(configs, available_names)
+    sorted_configs = resolver.topological_sort(configs)
     assert len(sorted_configs) == 3
     
     # Agent Y must be after Model X

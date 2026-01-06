@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { CheckCircle2, XCircle, ChevronDown } from 'lucide-react';
 
 interface ToolCallProps {
   toolName: string;
@@ -8,6 +9,7 @@ interface ToolCallProps {
   result?: string;
   status: 'running' | 'completed' | 'failed';
   duration?: number;
+  icon?: React.ReactNode;
 }
 
 // Format JSON for display
@@ -16,25 +18,25 @@ function formatArgs(args: string): { formatted: string; summary: string } {
   if (!args || !args.trim()) {
     return { formatted: '{}', summary: 'no args' };
   }
-  
+
   try {
     const parsed = JSON.parse(args);
     const formatted = JSON.stringify(parsed, null, 2);
     // Create a short summary of args
     const keys = Object.keys(parsed);
-    const summary = keys.length > 0 
-      ? keys.slice(0, 3).map(k => {
-          const val = parsed[k];
-          const valStr = typeof val === 'string' 
-            ? (val.length > 20 ? val.slice(0, 20) + '...' : val)
-            : JSON.stringify(val).slice(0, 20);
-          return `${k}: ${valStr}`;
-        }).join(', ') + (keys.length > 3 ? ', ...' : '')
+    const summary = keys.length > 0
+      ? keys.slice(0, 5).map(k => {
+        const val = parsed[k];
+        const valStr = typeof val === 'string'
+          ? (val.length > 100 ? val.slice(0, 100) + '...' : val)
+          : JSON.stringify(val).slice(0, 100);
+        return `${k}: ${valStr}`;
+      }).join(', ') + (keys.length > 5 ? ', ...' : '')
       : 'no args';
     return { formatted, summary };
   } catch {
     // If not valid JSON, show raw string
-    return { formatted: args, summary: args.length > 50 ? args.slice(0, 50) + '...' : args };
+    return { formatted: args, summary: args.length > 100 ? args.slice(0, 100) + '...' : args };
   }
 }
 
@@ -45,9 +47,9 @@ function formatDuration(ms?: number): string {
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
-export function ToolCall({ toolName, args, result, status, duration }: ToolCallProps) {
+export function ToolCall({ toolName, args, result, status, duration, icon }: ToolCallProps) {
   const [isOpen, setIsOpen] = useState(false);
-  
+
   const { formatted: formattedArgs, summary: argsSummary } = useMemo(
     () => formatArgs(args),
     [args]
@@ -56,72 +58,55 @@ export function ToolCall({ toolName, args, result, status, duration }: ToolCallP
   const StatusIcon = () => {
     if (status === 'running') {
       return (
-        <div className="relative">
-          <div className="w-3.5 h-3.5 border-2 border-primary-500/20 border-t-primary-500 rounded-full animate-spin" />
-          <div className="absolute inset-0 m-auto w-1 h-1 bg-primary-500 rounded-full animate-pulse" />
+        <div className="w-4 h-4 flex items-center justify-center">
+          <div className="w-3 h-3 border-2 border-primary-500/20 border-t-primary-500 rounded-full animate-spin" />
         </div>
       );
     }
     if (status === 'failed') {
-      return (
-        <div className="p-0.5 rounded-md bg-red-500/20 text-red-400 border border-red-500/30">
-          <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </div>
-      );
+      return <XCircle className="w-4 h-4 text-red-500/80" />;
     }
-    return (
-      <div className="p-0.5 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-        <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4">
-          <polyline points="20 6 9 17 4 12" />
-        </svg>
-      </div>
-    );
+    return <CheckCircle2 className="w-4 h-4 text-emerald-500/80" />;
   };
 
   return (
-    <div className="my-1.5 group/tool">
+    <div className="my-1 group/tool">
       {/* Compact header */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all duration-200 text-left border ${
-          isOpen 
-            ? 'bg-white/5 border-white/10 shadow-inner' 
-            : 'bg-transparent border-transparent hover:bg-white/[0.03]'
-        }`}
+        className={`w-full flex items-center gap-3 px-2 py-1.5 rounded-lg transition-all duration-200 text-left ${isOpen
+            ? 'bg-white/5 shadow-sm'
+            : 'bg-transparent hover:bg-white/[0.03]'
+          }`}
       >
-        <div className={`p-0.5 rounded transition-colors ${isOpen ? 'bg-white/10 text-white' : 'text-gray-600 group-hover/tool:text-gray-500'}`}>
-          <svg 
-            className={`w-2.5 h-2.5 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} 
-            viewBox="0 0 24 24" 
-            fill="none" 
-            stroke="currentColor" 
-            strokeWidth="3"
-          >
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </div>
-        
-        <StatusIcon />
-        
-        <div className="flex flex-col">
-          <span className="font-mono text-[11px] font-black text-primary-500/70 tracking-tight uppercase">{toolName || 'system_call'}</span>
-          {!isOpen && argsSummary && (
-            <span className="text-[9px] text-gray-600 truncate max-w-[360px] font-medium italic">
-              payload: {argsSummary}
-            </span>
-          )}
-        </div>
-        
-        <div className="flex-1" />
-        
-        {duration && (
-          <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-md bg-black/20 border border-white/5 text-[8px] text-gray-600 font-black tracking-widest font-mono">
-            {formatDuration(duration)}
+        <div className="flex items-center gap-2.5 flex-1 min-w-0">
+          <div className="shrink-0 flex items-center gap-2">
+            <StatusIcon />
+            {icon && <div className="text-gray-500 shrink-0">{icon}</div>}
           </div>
-        )}
+
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <span className="font-mono text-[11px] font-bold text-amber-500/90 tracking-tight uppercase shrink-0">
+              {toolName || 'system_call'}
+            </span>
+
+            {!isOpen && argsSummary && (
+              <span className="text-[11px] text-gray-500/60 truncate font-medium italic flex-1">
+                {argsSummary}
+              </span>
+            )}
+
+            {duration && (
+              <span className="text-[9px] text-gray-600 font-mono opacity-50 shrink-0">
+                {formatDuration(duration)}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className={`shrink-0 transition-transform duration-300 ${isOpen ? 'rotate-180 text-gray-400' : 'text-gray-600'}`}>
+          <ChevronDown className="w-3.5 h-3.5" />
+        </div>
       </button>
 
       {/* Expanded details */}
@@ -137,7 +122,7 @@ export function ToolCall({ toolName, args, result, status, duration }: ToolCallP
               {formattedArgs}
             </pre>
           </div>
-          
+
           {/* Output */}
           {result && (
             <div className="rounded-xl border border-white/5 bg-black/20 overflow-hidden">

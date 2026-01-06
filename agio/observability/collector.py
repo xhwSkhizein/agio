@@ -414,6 +414,8 @@ class TraceCollector:
                         "tokens.input": step.metrics.input_tokens,
                         "tokens.output": step.metrics.output_tokens,
                         "tokens.total": step.metrics.total_tokens,
+                        "tokens.cache_read": step.metrics.cache_read_tokens,
+                        "tokens.cache_creation": step.metrics.cache_creation_tokens,
                         "first_token_ms": step.metrics.first_token_latency_ms,
                         "duration_ms": duration_ms,
                         "model": step.metrics.model_name,
@@ -501,6 +503,7 @@ class TraceCollector:
             "tool_call_id": tool_step.tool_call_id,
             "input_args": input_args,  # Complete arguments, not truncated
             "output": tool_step.content,  # Complete execution result, not truncated
+            "content_for_user": tool_step.content_for_user,
             "error": tool_step.content if is_error else None,
             "status": "error" if is_error else "completed",
         }
@@ -537,6 +540,8 @@ class TraceCollector:
                 "input_tokens": step.metrics.input_tokens,
                 "output_tokens": step.metrics.output_tokens,
                 "total_tokens": step.metrics.total_tokens,
+                "cache_read_tokens": step.metrics.cache_read_tokens,
+                "cache_creation_tokens": step.metrics.cache_creation_tokens,
             }
 
         return details

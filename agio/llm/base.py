@@ -36,9 +36,9 @@ class StreamChunk(BaseModel):
     tool_calls: list[dict] | None = Field(
         default=None, description="Tool calls delta (OpenAI format)"
     )
-    usage: dict[str, int] | None = Field(
+    usage: dict[str, Any] | None = Field(
         default=None,
-        description="Token usage stats {input_tokens, output_tokens, total_tokens}",
+        description="Token usage stats {input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_creation_tokens}",
     )
     finish_reason: str | None = Field(
         default=None, description="Finish reason: stop, tool_calls, length, etc."

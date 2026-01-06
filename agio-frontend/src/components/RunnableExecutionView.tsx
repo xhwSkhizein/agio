@@ -349,14 +349,21 @@ function ExecutionSteps({ execution }: ExecutionStepsProps) {
               )}
               {/* Metrics */}
               {step.metrics && (
-                <div className="flex items-center gap-3 px-2 py-1 rounded-lg bg-white/[0.02] border border-white/5 w-fit">
-                  {step.metrics.input_tokens && (
+                <div className="flex flex-wrap items-center gap-3 px-2 py-1 rounded-lg bg-white/[0.02] border border-white/5 w-fit">
+                  {step.metrics.input_tokens !== undefined && (
                     <div className="flex items-center gap-1">
                       <span className="text-[8px] font-black text-gray-800 uppercase tracking-tighter">In:</span>
                       <span className="text-[9px] font-mono font-bold text-gray-700">{step.metrics.input_tokens}</span>
+                      {(step.metrics.cache_read_tokens || step.metrics.cache_creation_tokens) && (
+                        <span className="text-blue-500/60 text-[7px] font-mono font-bold">
+                          ({step.metrics.cache_read_tokens ? `hit:${step.metrics.cache_read_tokens}` : ''}
+                          {step.metrics.cache_read_tokens && step.metrics.cache_creation_tokens ? ' ' : ''}
+                          {step.metrics.cache_creation_tokens ? `write:${step.metrics.cache_creation_tokens}` : ''})
+                        </span>
+                      )}
                     </div>
                   )}
-                  {step.metrics.output_tokens && (
+                  {step.metrics.output_tokens !== undefined && (
                     <div className="flex items-center gap-1">
                       <span className="text-[8px] font-black text-gray-800 uppercase tracking-tighter">Out:</span>
                       <span className="text-[9px] font-mono font-bold text-gray-700">{step.metrics.output_tokens}</span>

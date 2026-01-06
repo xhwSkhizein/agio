@@ -236,21 +236,39 @@ class AnthropicModel(Model):
         # Track tool calls being built during streaming
         tool_calls_buffer = {}
         # Track usage
-        usage_info = {"input_tokens": 0, "output_tokens": 0}
+        usage_info = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+        }
 
         async for event in stream:
             stream_chunk = StreamChunk()
 
             if event.type == "message_start":
                 if hasattr(event.message, "usage"):
-                    usage_info["input_tokens"] = event.message.usage.input_tokens
-                    usage_info["output_tokens"] = event.message.usage.output_tokens
-                    stream_chunk.usage = {
-                        "input_tokens": usage_info["input_tokens"],
-                        "output_tokens": usage_info["output_tokens"],
-                        "total_tokens": usage_info["input_tokens"]
-                        + usage_info["output_tokens"],
-                    }
+                    usage = event.message.usage
+                    usage_info["input_tokens"] = getattr(usage, "input_tokens", 0)
+                    usage_info["output_tokens"] = getattr(usage, "output_tokens", 0)
+                    usage_info["cache_read_tokens"] = getattr(
+                        usage, "cache_read_input_tokens", 0
+                    )
+                    usage_info["cache_creation_tokens"] = getattr(
+                        usage, "cache_creation_input_tokens", 0
+                    )
+
+                    # Normalize usage for consistency
+                    from agio.domain.models import normalize_usage_metrics
+
+                    stream_chunk.usage = normalize_usage_metrics(
+                        {
+                            "input_tokens": usage_info["input_tokens"],
+                            "output_tokens": usage_info["output_tokens"],
+                            "cache_read_tokens": usage_info["cache_read_tokens"],
+                            "cache_creation_tokens": usage_info["cache_creation_tokens"],
+                        }
+                    )
 
             elif event.type == "content_block_start":
                 if event.content_block.type == "tool_use":
@@ -294,13 +312,29 @@ class AnthropicModel(Model):
 
             elif event.type == "message_delta":
                 if hasattr(event, "usage"):
-                    usage_info["output_tokens"] = event.usage.output_tokens
-                    stream_chunk.usage = {
-                        "input_tokens": usage_info["input_tokens"],
-                        "output_tokens": usage_info["output_tokens"],
-                        "total_tokens": usage_info["input_tokens"]
-                        + usage_info["output_tokens"],
-                    }
+                    usage = event.usage
+                    if hasattr(usage, "output_tokens"):
+                        usage_info["output_tokens"] = usage.output_tokens
+                    if hasattr(usage, "input_tokens"):
+                        usage_info["input_tokens"] = usage.input_tokens
+                    if hasattr(usage, "cache_read_input_tokens"):
+                        usage_info["cache_read_tokens"] = usage.cache_read_input_tokens
+                    if hasattr(usage, "cache_creation_input_tokens"):
+                        usage_info["cache_creation_tokens"] = (
+                            usage.cache_creation_input_tokens
+                        )
+
+                    # Normalize usage for consistency
+                    from agio.domain.models import normalize_usage_metrics
+
+                    stream_chunk.usage = normalize_usage_metrics(
+                        {
+                            "input_tokens": usage_info["input_tokens"],
+                            "output_tokens": usage_info["output_tokens"],
+                            "cache_read_tokens": usage_info["cache_read_tokens"],
+                            "cache_creation_tokens": usage_info["cache_creation_tokens"],
+                        }
+                    )
 
                 if event.delta.stop_reason:
                     # Anthropic stop reasons: end_turn, max_tokens, stop_sequence, tool_use

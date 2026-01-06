@@ -17,6 +17,7 @@ export interface WaterfallSpan {
   tokens: number | null;
   metrics?: Record<string, any>;
   llm_details?: Record<string, any>; // Complete LLM call details (for LLM_CALL spans)
+  tool_details?: Record<string, any>; // Complete tool call details (for TOOL_CALL spans)
 }
 
 interface WaterfallProps {
@@ -129,6 +130,17 @@ export function Waterfall({ spans, totalDuration, onSpanClick }: WaterfallProps)
       const firstToken = span.metrics?.["first_token_ms"];
       if (firstToken !== null && firstToken !== undefined) {
         info.push(`TTFT: ${formatDuration(firstToken)}`);
+      }
+
+      // Add cache info to secondary info for LLM calls
+      const cacheRead = span.metrics?.["cache_read_tokens"] || span.metrics?.["tokens.cache_read"] || span.metrics?.["prompt_tokens_details.cached_tokens"];
+      const cacheCreation = span.metrics?.["cache_creation_tokens"] || span.metrics?.["tokens.cache_creation"];
+      
+      if (cacheRead) {
+        info.push(`Hit: ${formatTokens(cacheRead)}`);
+      }
+      if (cacheCreation) {
+        info.push(`Write: ${formatTokens(cacheCreation)}`);
       }
     }
     

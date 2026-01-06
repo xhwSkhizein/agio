@@ -13,6 +13,8 @@ interface TraceDetailData {
   duration_ms: number | null;
   status: string;
   total_tokens: number;
+  total_cache_read_tokens: number;
+  total_cache_creation_tokens: number;
   total_llm_calls: number;
   total_tool_calls: number;
   max_depth: number;
@@ -136,7 +138,16 @@ export default function TraceDetail() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
           { label: 'DURATION', value: trace.duration_ms ? `${(trace.duration_ms / 1000).toFixed(2)}s` : '-', icon: Clock, color: 'text-blue-400/80', bg: 'bg-blue-500/5' },
-          { label: 'TOTAL TOKENS', value: trace.total_tokens.toLocaleString(), icon: Zap, color: 'text-yellow-400/80', bg: 'bg-yellow-500/5' },
+          { 
+            label: 'TOTAL TOKENS', 
+            value: trace.total_tokens.toLocaleString(), 
+            icon: Zap, 
+            color: 'text-yellow-400/80', 
+            bg: 'bg-yellow-500/5',
+            subValue: (trace.total_cache_read_tokens || trace.total_cache_creation_tokens) ? 
+              `Hit: ${trace.total_cache_read_tokens.toLocaleString()} / Write: ${trace.total_cache_creation_tokens.toLocaleString()}` : 
+              undefined
+          },
           { label: 'LLM CALLS', value: trace.total_llm_calls, icon: MessageSquare, color: 'text-emerald-400/80', bg: 'bg-emerald-500/5' },
           { label: 'TOOL CALLS', value: trace.total_tool_calls, icon: Wrench, color: 'text-cyan-400/80', bg: 'bg-cyan-500/5' },
         ].map((m, i) => (
@@ -149,6 +160,9 @@ export default function TraceDetail() {
                 <span className="text-[9px] font-black text-gray-600 uppercase tracking-widest">{m.label}</span>
               </div>
               <p className="text-xl font-bold text-gray-200 tracking-tight font-mono">{m.value}</p>
+              {'subValue' in m && m.subValue && (
+                <p className="text-[9px] font-mono text-gray-500 mt-1 uppercase tracking-tighter">{m.subValue}</p>
+              )}
             </div>
             <m.icon className={`absolute -right-4 -bottom-4 w-16 h-16 opacity-[0.02] ${m.color} group-hover:scale-110 transition-transform duration-500`} />
           </div>
@@ -217,7 +231,7 @@ export default function TraceDetail() {
       {/* Span Detail Modal */}
       {selectedSpan && (
         <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-6 animate-in fade-in duration-300"
+          className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-6 md:pl-[calc(15rem+1.5rem)] animate-in fade-in duration-300"
           onClick={() => setSelectedSpan(null)}
         >
           <div
@@ -317,6 +331,11 @@ export default function TraceDetail() {
                 </div>
               )}
 
+              {/* Tool Call Details (for TOOL_CALL spans) */}
+              {selectedSpan.kind === 'tool_call' && selectedSpan.tool_details && (
+                <ToolCallDetailsPanel toolDetails={selectedSpan.tool_details} />
+              )}
+
               {/* LLM Call Details (for LLM_CALL spans) */}
               {selectedSpan.kind === 'llm_call' && selectedSpan.llm_details && (
                 <LLMCallDetailsPanel llmDetails={selectedSpan.llm_details} />
@@ -325,6 +344,115 @@ export default function TraceDetail() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function ToolCallDetailsPanel({ toolDetails }: { toolDetails: Record<string, any> }) {
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['input', 'output']));
+
+  const toggleSection = (section: string) => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(section)) next.delete(section);
+      else next.add(section);
+      return next;
+    });
+  };
+
+  return (
+    <div className="border-t border-white/10 pt-8 space-y-6">
+      <div className="flex items-center gap-2">
+        <Wrench className="w-4 h-4 text-primary-400" />
+        <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Tool Execution Details</h4>
+      </div>
+
+      <div className="divide-y divide-white/5 border border-white/10 rounded-3xl bg-black/40 overflow-hidden">
+        {/* Input Arguments */}
+        <DetailSection
+          title="Input Arguments"
+          isExpanded={expandedSections.has('input')}
+          onToggle={() => toggleSection('input')}
+        >
+          <div className="pt-2">
+            <div className="bg-black/40 rounded-2xl border border-white/5 p-5">
+              <pre className="text-[11px] font-mono text-gray-300 leading-relaxed break-words whitespace-pre-wrap">
+                {typeof toolDetails.input_args === 'string' 
+                  ? toolDetails.input_args 
+                  : JSON.stringify(toolDetails.input_args, null, 2)}
+              </pre>
+            </div>
+          </div>
+        </DetailSection>
+
+        {/* Output/Result */}
+        <DetailSection
+          title="Execution Result"
+          isExpanded={expandedSections.has('output')}
+          onToggle={() => toggleSection('output')}
+        >
+          <div className="pt-2">
+            {toolDetails.error ? (
+              <div className="bg-red-500/5 border border-red-500/20 rounded-2xl p-6">
+                <div className="flex items-center gap-2 mb-3 text-red-400">
+                  <AlertCircle className="w-4 h-4" />
+                  <span className="text-[10px] font-black uppercase tracking-widest">Tool Error</span>
+                </div>
+                <p className="text-xs text-red-300 font-mono leading-relaxed break-words">{toolDetails.error}</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {toolDetails.content_for_user && (
+                  <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-2xl p-6">
+                    <div className="flex items-center gap-2 mb-3 text-emerald-400/80">
+                      <Terminal className="w-3.5 h-3.5" />
+                      <span className="text-[10px] font-black uppercase tracking-widest">Formatted Output</span>
+                    </div>
+                    <div className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">
+                      {toolDetails.content_for_user}
+                    </div>
+                  </div>
+                )}
+                <div className="bg-black/40 rounded-2xl border border-white/5 p-6">
+                  <div className="flex items-center gap-2 mb-3 text-gray-500">
+                    <Hash className="w-3.5 h-3.5" />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Raw Output</span>
+                  </div>
+                  <pre className="text-xs text-gray-400 font-mono leading-relaxed whitespace-pre-wrap break-words">
+                    {typeof toolDetails.output === 'string' 
+                      ? toolDetails.output 
+                      : JSON.stringify(toolDetails.output, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            )}
+          </div>
+        </DetailSection>
+
+        {/* Metrics */}
+        {toolDetails.metrics && (
+          <DetailSection
+            title="Tool Metrics"
+            isExpanded={expandedSections.has('metrics')}
+            onToggle={() => toggleSection('metrics')}
+          >
+            <div className="pt-2">
+              <div className="grid grid-cols-2 gap-4">
+                {Object.entries(toolDetails.metrics).map(([key, value]) => (
+                  <div key={key} className="bg-white/5 border border-white/5 rounded-xl px-4 py-3">
+                    <span className="text-[9px] uppercase tracking-widest text-gray-600 mb-1.5 font-black">
+                      {key.replace(/_/g, ' ')}
+                    </span>
+                    <span className="text-sm font-mono font-medium text-blue-400">
+                      {String(value)}ms
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </DetailSection>
+        )}
+      </div>
     </div>
   );
 }

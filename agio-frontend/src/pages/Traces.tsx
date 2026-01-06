@@ -10,6 +10,8 @@ interface TraceSummary {
   duration_ms: number | null;
   status: string;
   total_tokens: number;
+  total_cache_read_tokens: number;
+  total_cache_creation_tokens: number;
   total_llm_calls: number;
   total_tool_calls: number;
   max_depth: number;
@@ -292,7 +294,14 @@ export default function Traces() {
                     <span className="text-[8px] font-black text-gray-700 uppercase tracking-widest">Token Load</span>
                     <div className="flex items-center gap-1.5 text-gray-400">
                       <Zap className="w-3 h-3 text-yellow-500/60" />
-                      <span className="text-[13px] font-bold font-mono uppercase tracking-tighter">{trace.total_tokens.toLocaleString()}</span>
+                      <div className="flex flex-col">
+                        <span className="text-[13px] font-bold font-mono uppercase tracking-tighter">{trace.total_tokens.toLocaleString()}</span>
+                        {(trace.total_cache_read_tokens > 0 || trace.total_cache_creation_tokens > 0) && (
+                          <span className="text-[8px] text-gray-600 font-mono tracking-tighter">
+                            HIT: {trace.total_cache_read_tokens.toLocaleString()}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   

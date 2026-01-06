@@ -9,6 +9,8 @@ export interface Metrics {
   duration_ms?: number
   prompt_tokens?: number
   completion_tokens?: number
+  cache_read_tokens?: number
+  cache_creation_tokens?: number
 }
 
 interface SSEEventData {
@@ -57,6 +59,8 @@ function normalizeMetrics(raw: Metrics): Metrics {
         ? inputTokens + outputTokens
         : undefined
     ),
+    cache_read_tokens: raw.cache_read_tokens,
+    cache_creation_tokens: raw.cache_creation_tokens,
     duration_ms: raw.duration_ms,
   }
 }
@@ -80,6 +84,8 @@ export function mergeMetrics(base: Metrics, other: Metrics): Metrics {
     input_tokens: sumOrUndefined(base.input_tokens, other.input_tokens),
     output_tokens: sumOrUndefined(base.output_tokens, other.output_tokens),
     total_tokens: sumOrUndefined(base.total_tokens, other.total_tokens),
+    cache_read_tokens: sumOrUndefined(base.cache_read_tokens, other.cache_read_tokens),
+    cache_creation_tokens: sumOrUndefined(base.cache_creation_tokens, other.cache_creation_tokens),
     duration_ms: maxOrUndefined(base.duration_ms, other.duration_ms),
   }
 }
