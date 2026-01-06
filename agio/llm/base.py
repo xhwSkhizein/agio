@@ -13,7 +13,7 @@ Does NOT handle:
 """
 
 from abc import ABC, abstractmethod
-from typing import AsyncIterator
+from typing import AsyncIterator, Any
 
 from pydantic import BaseModel, ConfigDict, Field
 

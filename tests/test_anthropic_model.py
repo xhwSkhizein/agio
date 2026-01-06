@@ -226,12 +226,17 @@ async def test_arun_stream_usage(mock_anthropic):
         event1.type = "message_start"
         event1.message.usage.input_tokens = 10
         event1.message.usage.output_tokens = 5
+        event1.message.usage.cache_read_input_tokens = 0
+        event1.message.usage.cache_creation_input_tokens = 0
         yield event1
 
         # message_delta with usage
         event2 = MagicMock()
         event2.type = "message_delta"
         event2.usage.output_tokens = 15
+        event2.usage.input_tokens = 10
+        event2.usage.cache_read_input_tokens = 0
+        event2.usage.cache_creation_input_tokens = 0
         event2.delta.stop_reason = "end_turn"
         yield event2
 

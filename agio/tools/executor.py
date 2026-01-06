@@ -86,15 +86,28 @@ class ToolExecutor:
         try:
             if isinstance(fn_args_str, str):
                 args = json.loads(fn_args_str)
+            elif isinstance(fn_args_str, dict):
+                args = fn_args_str
             else:
-                args = fn_args_str or {}
+                args = {}
         except json.JSONDecodeError as e:
-            return self._create_error_result(
-                call_id=call_id,
-                tool_name=fn_name,
-                error=f"Invalid JSON arguments: {e}",
-                start_time=start_time,
-            )
+            # Check if it's a fallback dictionary from Anthropic conversion
+            try:
+                # If the string itself looks like a dict that was stringified
+                if fn_args_str.startswith("{") and fn_args_str.endswith("}"):
+                    import ast
+                    args = ast.literal_eval(fn_args_str)
+                    if not isinstance(args, dict):
+                        raise ValueError("Not a dict")
+                else:
+                    raise e
+            except Exception:
+                return self._create_error_result(
+                    call_id=call_id,
+                    tool_name=fn_name,
+                    error=f"Invalid JSON arguments: {e}. Raw: {fn_args_str[:100]}...",
+                    start_time=start_time,
+                )
 
         args["tool_call_id"] = call_id
 

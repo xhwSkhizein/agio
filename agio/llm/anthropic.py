@@ -117,6 +117,17 @@ class AnthropicModel(Model):
                                         "failed_to_decode_tool_arguments",
                                         arguments=args,
                                     )
+                                    # Fallback to empty dict to avoid API 400 error
+                                    # Anthropic requires 'input' to be a dictionary
+                                    args = {"__raw_arguments__": args}
+
+                            if not isinstance(args, dict):
+                                logger.error(
+                                    "invalid_tool_arguments_type",
+                                    arguments=args,
+                                    type=type(args).__name__,
+                                )
+                                args = {"__raw_arguments__": args}
 
                             content_blocks.append(
                                 {
