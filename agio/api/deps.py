@@ -1,15 +1,14 @@
 """
 API dependency injection.
 
-Provides unified dependency injection for the API layer.
-All dependencies are obtained through ConfigSystem.
+Provides simplified dependency injection for the API layer.
+Most dependencies are obtained from AgioApp instance.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING
 
-from fastapi import Depends, HTTPException
+from fastapi import Request
 
-from agio.config import ComponentType, ConfigSystem, get_config_system
 from agio.runtime.permission import (
     ConsentStore,
     ConsentWaiter,
@@ -20,105 +19,27 @@ from agio.storage.session import SessionStore
 from agio.storage.trace.store import TraceStore
 from agio.utils.logging import get_logger
 
+if TYPE_CHECKING:
+    from agio.api.agio_app import AgioApp
+
 logger = get_logger(__name__)
 
 
-def get_config_sys() -> ConfigSystem:
-    """Get global ConfigSystem instance."""
-    return get_config_system()
+def get_agio_app(request: Request) -> "AgioApp":
+    """Get AgioApp from request state."""
+    return request.app.state.agio_app
 
 
-# Singleton InMemorySessionStore for fallback
-_default_session_store: SessionStore | None = None
+def get_session_store(request: Request) -> SessionStore:
+    """Get SessionStore from AgioApp."""
+    agio_app = get_agio_app(request)
+    return agio_app.session_store
 
 
-def get_session_store(
-    config_sys: ConfigSystem = Depends(get_config_sys),
-) -> SessionStore:
-    """
-    Get SessionStore instance.
-
-    Priority:
-    1. Get from ConfigSystem if already built
-    2. Fall back to singleton InMemorySessionStore
-    """
-    global _default_session_store
-
-    # Try to get session_store from config system
-    stores = config_sys.list_configs(ComponentType.SESSION_STORE)
-    if stores:
-        # Prefer mongodb_session_store if available
-        for store_config in stores:
-            name = store_config.get("name")
-            if name:
-                try:
-                    store = config_sys.get_or_none(name, ComponentType.SESSION_STORE)
-                    if store is not None:
-                        return store
-                except Exception as e:
-                    logger.warning("get_session_store_failed", name=name, error=str(e))
-
-    # Fallback: create singleton InMemorySessionStore
-    if _default_session_store is None:
-        from agio.storage.session import InMemorySessionStore
-
-        _default_session_store = InMemorySessionStore()
-
-    return _default_session_store
-
-
-def get_agent(
-    name: str,
-    config_sys: ConfigSystem = Depends(get_config_sys),
-) -> Any:
-    """
-    Get Agent instance by name.
-
-    Raises:
-        HTTPException: If agent not found
-    """
-    try:
-        return config_sys.get(name, ComponentType.AGENT)
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=f"Agent '{name}' not found: {e}")
-
-
-# Singleton InMemoryTraceStore for fallback
-_default_trace_store: TraceStore | None = None
-
-
-def get_trace_store(
-    config_sys: ConfigSystem = Depends(get_config_sys),
-) -> TraceStore | None:
-    """
-    Get TraceStore instance from ConfigSystem.
-
-    Priority:
-    1. Get from ConfigSystem if already built
-    2. Fall back to singleton in-memory TraceStore
-    """
-    global _default_trace_store
-
-    # Try to get trace_store from config system
-    stores = config_sys.list_configs(ComponentType.TRACE_STORE)
-    if stores:
-        for store_config in stores:
-            name = store_config.get("name")
-            if name:
-                try:
-                    store = config_sys.get_or_none(name, ComponentType.TRACE_STORE)
-                    if store is not None:
-                        return store
-                except Exception as e:
-                    logger.warning("get_trace_store_failed", name=name, error=str(e))
-
-    # Fallback: create singleton in-memory TraceStore
-    if _default_trace_store is None:
-        from agio.storage.trace.store import TraceStore
-
-        _default_trace_store = TraceStore()
-
-    return _default_trace_store
+def get_trace_store(request: Request) -> TraceStore | None:
+    """Get TraceStore from AgioApp."""
+    agio_app = get_agio_app(request)
+    return agio_app.trace_store
 
 
 # Singleton ConsentWaiter
@@ -153,10 +74,7 @@ def get_permission_service() -> "PermissionService":
 _consent_store: "ConsentStore | None" = None
 
 
-def get_consent_store(
-    config_sys: ConfigSystem = Depends(get_config_sys),
-    session_store: SessionStore = Depends(get_session_store),
-) -> "ConsentStore":
+def get_consent_store(request: Request) -> "ConsentStore":
     """
     Get ConsentStore instance.
 
@@ -170,10 +88,10 @@ def get_consent_store(
     from agio.runtime.permission import InMemoryConsentStore, MongoConsentStore
     from agio.storage.session import MongoSessionStore
 
+    session_store = get_session_store(request)
+
     # Try to reuse MongoDB connection from MongoSessionStore
     if isinstance(session_store, MongoSessionStore):
-        # Reuse MongoDB connection (connection will be established on first use)
-        # Note: client may be None initially, but will be set when _ensure_connection is called
         _consent_store = MongoConsentStore(
             client=session_store.client, db_name=session_store.db_name
         )
@@ -189,15 +107,15 @@ def get_consent_store(
 _permission_manager: "PermissionManager | None" = None
 
 
-def get_permission_manager(
-    consent_store: "ConsentStore" = Depends(get_consent_store),
-    consent_waiter: "ConsentWaiter" = Depends(get_consent_waiter),
-    permission_service: "PermissionService" = Depends(get_permission_service),
-) -> "PermissionManager":
+def get_permission_manager(request: Request) -> "PermissionManager":
     """Get global PermissionManager instance"""
     global _permission_manager
     if _permission_manager is None:
         from agio.runtime.permission import PermissionManager
+
+        consent_store = get_consent_store(request)
+        consent_waiter = get_consent_waiter()
+        permission_service = get_permission_service()
 
         _permission_manager = PermissionManager(
             consent_store=consent_store,

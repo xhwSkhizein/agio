@@ -6,7 +6,7 @@ import pytest
 
 from agio.tools.builtin.bash_tool import BashTool
 from agio.runtime.control import AbortSignal
-from agio.runtime.protocol import ExecutionContext
+from agio.runtime.context import ExecutionContext
 from agio.runtime import Wire
 
 pytestmark = pytest.mark.skipif(

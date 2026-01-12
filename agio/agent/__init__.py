@@ -7,12 +7,10 @@ This module contains:
 - Context building, summarization, and control flow utilities
 """
 
+from agio.runtime.context import ExecutionContext, RunnableType
+
 from .agent import Agent
-from .context import (
-    build_context_from_sequence_range,
-    build_context_from_steps,
-    validate_context,
-)
+from .helper import build_context_from_steps
 from .executor import AgentExecutor, MetricsTracker, ToolCallAccumulator
 from .summarizer import (
     DEFAULT_TERMINATION_USER_PROMPT,
@@ -22,12 +20,12 @@ from .summarizer import (
 
 __all__ = [
     "Agent",
+    "ExecutionContext",
+    "RunnableType",
     "AgentExecutor",
     "ToolCallAccumulator",
     "MetricsTracker",
     "build_context_from_steps",
-    "build_context_from_sequence_range",
-    "validate_context",
     "build_termination_messages",
     "DEFAULT_TERMINATION_USER_PROMPT",
     "_format_termination_reason",

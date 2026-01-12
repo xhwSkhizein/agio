@@ -11,7 +11,7 @@ from agio.tools.builtin.web_fetch_tool.playwright.browser_pool import (
     BrowserPool,
 )
 from agio.runtime.control import AbortSignal
-from agio.runtime.protocol import ExecutionContext
+from agio.runtime.context import ExecutionContext
 from agio.runtime import Wire
 
 

@@ -2,32 +2,29 @@
 Runtime module - Common runtime infrastructure.
 
 This module contains:
-- RunnableExecutor: Unified Run lifecycle management for all Runnable types
-- ResumeExecutor: Unified Session Resume mechanism for Agent
+- ExecutionContext: Immutable execution context
+- AgentTool: Adapter to convert Agent into Tool
 - Wire: Event streaming channel
 - EventFactory: Context-bound event factory
 """
 
-from agio.runtime.control import AbortSignal, fork_session
-from agio.runtime.event_factory import EventFactory
-from agio.runtime.protocol import ExecutionContext, Runnable, RunnableType, RunOutput
-from agio.runtime.runnable_executor import RunnableExecutor
-from agio.runtime.runnable_tool import (
+from agio.runtime.agent_tool import (
+    AgentTool,
     CircularReferenceError,
     MaxDepthExceededError,
-    RunnableTool,
     as_tool,
 )
+from agio.runtime.context import ExecutionContext, RunnableType
+from agio.runtime.control import AbortSignal, fork_session
+from agio.runtime.event_factory import EventFactory
 from agio.runtime.wire import Wire
 
 __all__ = [
-    "Runnable",
     "RunnableType",
-    "RunOutput",
     "ExecutionContext",
-    "RunnableExecutor",
     "Wire",
-    "RunnableTool",
+    "EventFactory",
+    "AgentTool",
     "as_tool",
     "CircularReferenceError",
     "MaxDepthExceededError",

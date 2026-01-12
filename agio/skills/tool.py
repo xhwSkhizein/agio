@@ -17,7 +17,7 @@ from agio.utils.logging import get_logger
 
 if TYPE_CHECKING:
     from agio.runtime.control import AbortSignal
-    from agio.runtime.protocol import ExecutionContext
+    from agio.runtime.context import ExecutionContext
 
 logger = get_logger(__name__)
 

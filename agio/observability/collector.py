@@ -41,6 +41,144 @@ class TraceCollector:
         """
         self.store = store
 
+        # Internal state for push mode
+        self._trace: Trace | None = None
+        self._span_stack: dict[str, Span] = {}
+        self._current_span: Span | None = None
+        self._assistant_step_cache: dict[str, "Step"] = {}
+
+    def start(
+        self,
+        trace_id: str | None = None,
+        agent_id: str | None = None,
+        session_id: str | None = None,
+        user_id: str | None = None,
+        input_query: str | None = None,
+    ) -> None:
+        """Initialize trace collection state."""
+        self._trace = Trace(
+            trace_id=trace_id or str(uuid4()),
+            agent_id=agent_id,
+            session_id=session_id,
+            user_id=user_id,
+            input_query=input_query,
+        )
+        self._span_stack = {}
+        self._current_span = None
+        self._assistant_step_cache = {}
+
+    async def collect(self, event: StepEvent) -> None:
+        """Process a single event in push mode."""
+        if not self._trace:
+            # If start() wasn't called, we can't collect.
+            # Ideally should raise error or auto-start, but safe fallback is log/ignore?
+            # For strictness, let's assume start() must be called.
+            return
+
+        current_span, updated_cache = self._process_event(
+            event,
+            self._trace,
+            self._span_stack,
+            self._current_span,
+            self._assistant_step_cache,
+        )
+
+        self._current_span = current_span
+        if updated_cache:
+            self._assistant_step_cache.update(updated_cache)
+
+        # Incremental save at critical checkpoints
+        should_save = event.type in {
+            StepEventType.RUN_STARTED,
+            StepEventType.STEP_COMPLETED,
+            StepEventType.RUN_COMPLETED,
+            StepEventType.RUN_FAILED,
+        }
+
+        if should_save and self.store:
+            # Save asynchronously in background to avoid blocking
+            import asyncio
+
+            asyncio.create_task(self._save_trace_safe())
+
+        # Inject trace fields into event
+        event.trace_id = self._trace.trace_id
+        if current_span:
+            event.span_id = current_span.span_id
+            event.parent_span_id = current_span.parent_span_id
+
+    async def stop(self) -> None:
+        """Finalize and save trace."""
+        if not self._trace:
+            return
+
+        trace = self._trace
+
+        # Cleanup
+        if not trace.end_time:
+            # If active span exists, mark as error or OK?
+            # wrap_stream defaulted to OK if not explicitly set.
+            status = SpanStatus.OK
+            if self._current_span and self._current_span.status == SpanStatus.UNSET:
+                # If we are stopping abruptly, maybe we should respect current state?
+                pass
+            trace.complete(status=status)
+
+        # Final save to ensure complete state
+        # Note: Trace is also saved incrementally during execution (see collect())
+        # This final save ensures the complete end state and OTLP export
+        if self.store:
+            try:
+                await self.store.save_trace(trace)
+            except Exception as e:
+                logger.error("trace_save_failed", trace_id=trace.trace_id, error=str(e))
+
+        # Export to OTLP (async, non-blocking)
+        try:
+            from agio.observability import get_otlp_exporter
+
+            exporter = get_otlp_exporter()
+            if exporter.enabled:
+                await exporter.export_trace(trace)
+        except Exception as e:
+            logger.warning("otlp_export_failed", trace_id=trace.trace_id, error=str(e))
+
+        # Reset state
+        self._trace = None
+        self._span_stack = {}
+        self._current_span = None
+        self._assistant_step_cache = {}
+
+    def fail(self, error: Exception) -> None:
+        """Mark trace as failed."""
+        if not self._trace:
+            return
+
+        self._trace.complete(status=SpanStatus.ERROR)
+        if self._current_span:
+            self._current_span.complete(
+                status=SpanStatus.ERROR,
+                error_message=str(error),
+            )
+        logger.error(
+            "trace_collection_failed", trace_id=self._trace.trace_id, error=str(error)
+        )
+
+    async def _save_trace_safe(self) -> None:
+        """Save trace to store with error handling (non-blocking)."""
+        if not self._trace or not self.store:
+            return
+
+        try:
+            await self.store.save_trace(self._trace)
+        except Exception as e:
+            # Log but don't raise - incremental saves should not break execution
+            logger.warning(
+                "trace_incremental_save_failed",
+                trace_id=self._trace.trace_id,
+                error=str(e),
+            )
+
     async def wrap_stream(
         self,
         event_stream: AsyncIterator[StepEvent],
@@ -64,77 +202,24 @@ class TraceCollector:
         Yields:
             StepEvent: Original events with injected trace_id/span_id
         """
-        # Initialize trace
-        trace = Trace(
-            trace_id=trace_id or str(uuid4()),
+        self.start(
+            trace_id=trace_id,
             agent_id=agent_id,
             session_id=session_id,
             user_id=user_id,
             input_query=input_query,
         )
 
-        # Span stack: track currently active span hierarchy
-        span_stack: dict[str, Span] = {}  # key: run_id or stage_id
-        current_span: Span | None = None
-
-        # Assistant Step cache: map tool_call_id -> Assistant Step (for extracting tool input args)
-        assistant_step_cache: dict[str, "Step"] = {}  # tool_call_id -> Assistant Step
-
         try:
             async for event in event_stream:
-                # Process event and update trace (including nested events)
-                current_span, updated_cache = self._process_event(
-                    event, trace, span_stack, current_span, assistant_step_cache
-                )
-                if updated_cache:
-                    assistant_step_cache.update(updated_cache)
-
-                # Inject trace fields into event
-                event.trace_id = trace.trace_id
-                if current_span:
-                    event.span_id = current_span.span_id
-                    event.parent_span_id = current_span.parent_span_id
-
+                await self.collect(event)
                 yield event
 
         except Exception as e:
-            # Mark trace as failed on exception
-            trace.complete(status=SpanStatus.ERROR)
-            if current_span:
-                current_span.complete(
-                    status=SpanStatus.ERROR,
-                    error_message=str(e),
-                )
-            logger.error(
-                "trace_collection_failed", trace_id=trace.trace_id, error=str(e)
-            )
-            # Ensure the last event we saw (or the root if none) is saved before raising
-            # This handles cases where an error occurs before any RUN_FAILED event is generated
+            self.fail(e)
             raise
         finally:
-            # Save trace
-            if not trace.end_time:
-                trace.complete(status=SpanStatus.OK)
-
-            if self.store:
-                try:
-                    await self.store.save_trace(trace)
-                except Exception as e:
-                    logger.error(
-                        "trace_save_failed", trace_id=trace.trace_id, error=str(e)
-                    )
-
-            # Export to OTLP (async, non-blocking)
-            try:
-                from agio.observability import get_otlp_exporter
-
-                exporter = get_otlp_exporter()
-                if exporter.enabled:
-                    await exporter.export_trace(trace)
-            except Exception as e:
-                logger.warning(
-                    "otlp_export_failed", trace_id=trace.trace_id, error=str(e)
-                )
+            await self.stop()
 
     def _process_event(
         self,

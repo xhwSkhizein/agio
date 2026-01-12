@@ -61,13 +61,26 @@ class ToolRegistry:
             "BashTool",
         ),
         # Web tools
+        "web_search_api": (
+            "agio.tools.builtin.web_search_api_tool",
+            "WebSearchApiTool",
+        ),
+        "web_reader_api": (
+            "agio.tools.builtin.web_reader_api_tool",
+            "WebReaderApiTool",
+        ),
+        "get_tool_result": (
+            "agio.tools.builtin.get_tool_result_tool",
+            "GetToolResultTool",
+        ),
+        # Legacy names (deprecated)
         "web_search": (
-            "agio.tools.builtin.web_search_tool",
-            "WebSearchTool",
+            "agio.tools.builtin.web_search_api_tool",
+            "WebSearchApiTool",
         ),
         "web_fetch": (
-            "agio.tools.builtin.web_fetch_tool",
-            "WebFetchTool",
+            "agio.tools.builtin.web_reader_api_tool",
+            "WebReaderApiTool",
         ),
     }
 

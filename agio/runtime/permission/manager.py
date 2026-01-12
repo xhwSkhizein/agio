@@ -16,12 +16,11 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from agio.config import ConfigSystem, get_config_system
 from agio.domain import StepEvent, StepEventType
 from agio.runtime.permission.consent_store import ConsentStore
 from agio.runtime.permission.consent_waiter import ConsentWaiter
 from agio.runtime.permission.service import PermissionDecision, PermissionService
-from agio.runtime.protocol import ExecutionContext
+from agio.runtime.context import ExecutionContext
 from agio.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -50,7 +49,7 @@ class PermissionManager:
         consent_store: ConsentStore,
         consent_waiter: ConsentWaiter,
         permission_service: PermissionService,
-        config_system: ConfigSystem | None = None,
+        tool_configs: dict[str, dict] | None = None,
         cache_ttl: int = 300,  # Cache TTL (seconds)
         cache_size: int = 1000,  # Cache size
     ):
@@ -61,14 +60,14 @@ class PermissionManager:
             consent_store: ConsentStore instance
             consent_waiter: ConsentWaiter instance
             permission_service: PermissionService instance
-            config_system: ConfigSystem instance (default: get from global)
+            tool_configs: Tool configurations dict {tool_name: config}
             cache_ttl: Cache TTL in seconds (default: 300)
             cache_size: Maximum cache size (default: 1000)
         """
         self.consent_store = consent_store
         self.consent_waiter = consent_waiter
         self.permission_service = permission_service
-        self.config_system = config_system or get_config_system()
+        self._tool_configs = tool_configs or {}
         # LRU cache: key = (user_id, tool_name, args_hash), value = (ConsentResult, timestamp)
         self._cache: dict[str, tuple[ConsentResult, float]] = {}
         self._cache_ttl = cache_ttl
@@ -305,21 +304,8 @@ class PermissionManager:
                 del self._cache[key]
 
     def _get_tool_config(self, tool_name: str) -> dict[str, Any] | None:
-        """Get tool configuration from ConfigSystem"""
-        try:
-            from agio.config import ComponentType
-
-            configs = self.config_system.list_configs(ComponentType.TOOL)
-            for config in configs:
-                if (
-                    config.get("name") == tool_name
-                    or config.get("tool_name") == tool_name
-                ):
-                    return config
-            return None
-        except Exception as e:
-            logger.warning("get_tool_config_failed", tool_name=tool_name, error=str(e))
-            return None
+        """Get tool configuration from tool_configs dict."""
+        return self._tool_configs.get(tool_name)
 
     def _summarize_args(self, tool_name: str, tool_args: dict[str, Any]) -> str:
         """Summarize tool arguments for display"""

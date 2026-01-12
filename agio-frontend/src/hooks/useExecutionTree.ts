@@ -93,7 +93,7 @@ function buildExecutionTreeFromSteps(steps: BackendStep[]): ExecutionTree {
       if (step.role === 'user') {
         // Add user step to execution only if this is a nested execution
         // Top-level user messages will be added to tree.messages later
-        if (firstStep.parent_run_id) {
+        if (exec.parentRunId) {
           exec.steps.push({
             type: 'user',
             stepId: step.id,

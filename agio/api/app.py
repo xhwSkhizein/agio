@@ -18,25 +18,21 @@ async def lifespan(app: FastAPI):
     """Lifespan event handler for startup and shutdown."""
     logger.info("agio_api_starting")
 
-    # Initialize ConfigSystem
-    from agio.config import get_config_system
+    # Ensure AgioApp is initialized and attached to state
+    from agio.api.agio_app import AgioApp
+    
+    if not hasattr(app.state, "agio_app"):
+        app.state.agio_app = AgioApp()
 
-    config_dir = os.getenv("AGIO_CONFIG_DIR", "examples/configs")
-
+    # Manual Component Registration (Replacing ConfigSystem)
     try:
-        config_sys = get_config_system()
-        await config_sys.load_from_directory(config_dir)
-        await config_sys.build_all()
-
-        logger.info(
-            "agio_api_initialized",
-            config_dir=config_dir,
-            components=len(config_sys.list_components()),
-        )
+        from agio.api.setup import initialize_components
+        await initialize_components(app.state.agio_app)
 
     except Exception as e:
-        logger.error("agio_api_init_failed", error=str(e), exc_info=True)
-        raise
+        logger.error("agio_api_manual_init_failed", error=str(e), exc_info=True)
+        # We don't raise here to allow API to start even if init fails
+        pass
 
     yield
 

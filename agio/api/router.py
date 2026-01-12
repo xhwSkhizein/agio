@@ -17,10 +17,8 @@ def create_router(prefix: str = "/agio") -> APIRouter:
     """
     from agio.api.routes import (
         agents,
-        config,
         health,
         metrics,
-        runnables,
         sessions,
         tool_consent,
         traces,
@@ -31,14 +29,8 @@ def create_router(prefix: str = "/agio") -> APIRouter:
     # Health check
     router.include_router(health.router, tags=["Health"])
 
-    # Configuration management
-    router.include_router(config.router, tags=["Config"])
-
-    # Agent management
+    # Agent management and execution
     router.include_router(agents.router, tags=["Agents"])
-
-    # Runnable API (unified Agent)
-    router.include_router(runnables.router, tags=["Runnables"])
 
     # Session management
     router.include_router(sessions.router, tags=["Sessions"])

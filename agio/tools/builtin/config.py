@@ -210,6 +210,51 @@ class WebFetchConfig:
     )
 
 
+@dataclass
+class WebSearchApiConfig:
+    """Configuration for WebSearchApiTool."""
+
+    base_url: str = field(
+        default_factory=lambda: _get_env_str(
+            "AGIO_WEB_SEARCH_API_BASE_URL", "https://oaiaiai.space.z.ai"
+        )
+    )
+    timeout_seconds: int = field(
+        default_factory=lambda: _get_env_int("AGIO_WEB_SEARCH_API_TIMEOUT", "30")
+    )
+    max_results: int = field(
+        default_factory=lambda: _get_env_int("AGIO_WEB_SEARCH_API_MAX_RESULTS", "10")
+    )
+    recency_days: int = field(
+        default_factory=lambda: _get_env_int("AGIO_WEB_SEARCH_API_RECENCY_DAYS", "7")
+    )
+    max_retries: int = field(
+        default_factory=lambda: _get_env_int("AGIO_WEB_SEARCH_API_MAX_RETRIES", "3")
+    )
+
+
+@dataclass
+class WebReaderApiConfig:
+    """Configuration for WebReaderApiTool."""
+
+    base_url: str = field(
+        default_factory=lambda: _get_env_str(
+            "AGIO_WEB_READER_API_BASE_URL", "https://oaiaiai.space.z.ai"
+        )
+    )
+    timeout_seconds: int = field(
+        default_factory=lambda: _get_env_int("AGIO_WEB_READER_API_TIMEOUT", "30")
+    )
+    max_content_length: int = field(
+        default_factory=lambda: _get_env_int(
+            "AGIO_WEB_READER_API_MAX_CONTENT_LENGTH", "4096"
+        )
+    )
+    max_retries: int = field(
+        default_factory=lambda: _get_env_int("AGIO_WEB_READER_API_MAX_RETRIES", "3")
+    )
+
+
 def create_config_from_dict(config_class: type, data: dict) -> Any:
     """Create config object from dictionary, supporting partial fields."""
     import dataclasses
@@ -247,6 +292,8 @@ __all__ = [
     "BashConfig",
     "WebSearchConfig",
     "WebFetchConfig",
+    "WebSearchApiConfig",
+    "WebReaderApiConfig",
     "create_config_from_dict",
     "filter_config_kwargs",
 ]

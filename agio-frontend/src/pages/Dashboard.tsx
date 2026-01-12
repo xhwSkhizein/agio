@@ -124,7 +124,7 @@ export default function Dashboard() {
               <div key={i} className="h-24 bg-white/5 rounded-2xl border border-white/10 border-dashed animate-pulse" />
             ))}
           </div>
-        ) : !agents || agents?.items.length === 0 ? (
+        ) : !agents?.items?.length ? (
           <div className="bg-white/5 border border-white/10 border-dashed rounded-3xl p-16 text-center">
             <Layout className="w-16 h-16 text-gray-700 mx-auto mb-4 opacity-20" />
             <h3 className="text-lg font-bold text-gray-400 mb-2">No Agents Available</h3>
@@ -132,7 +132,7 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {agents?.items.map((agent) => (
+            {agents?.items?.map((agent) => (
               <AgentCard key={agent.name} agent={agent} />
             ))}
           </div>
@@ -145,7 +145,7 @@ export default function Dashboard() {
 interface AgentCardProps {
   agent: {
     name: string
-    model: string
+    model?: string | null
     tools: (string | { type?: string; name?: string | null; description?: string | null })[]
     system_prompt: string | null
   }
@@ -166,7 +166,7 @@ function AgentCard({ agent }: AgentCardProps) {
               {agent.name.replace(/_/g, ' ')}
             </div>
             <div className="text-[9px] font-bold font-mono text-gray-700 mt-0.5 uppercase tracking-tighter">
-              MODEL: {agent.model.split('/').pop()}
+              MODEL: {agent.model?.split('/').pop() || 'UNKNOWN'}
             </div>
           </div>
         </div>

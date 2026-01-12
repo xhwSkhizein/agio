@@ -141,7 +141,7 @@ async def test_agent_error_propagation():
     """Test that Agent errors are properly logged and propagated."""
     from agio.agent import Agent
     from agio.llm import Model
-    from agio.runtime.protocol import ExecutionContext
+    from agio.runtime.context import ExecutionContext
     from agio.runtime.wire import Wire
     
     class FailingModel(Model):

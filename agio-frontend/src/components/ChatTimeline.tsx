@@ -45,7 +45,12 @@ export function ChatTimeline({
   items.sort((a, b) => {
     const timeA = a.type === 'message' ? a.data.timestamp : (a.data.startTime || 0)
     const timeB = b.type === 'message' ? b.data.timestamp : (b.data.startTime || 0)
-    return timeA - timeB
+    if (timeA !== timeB) return timeA - timeB
+    
+    // Tie-breaker: messages before executions for same timestamp
+    if (a.type === 'message' && b.type === 'execution') return -1
+    if (a.type === 'execution' && b.type === 'message') return 1
+    return 0
   })
 
   return (

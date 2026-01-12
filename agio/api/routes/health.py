@@ -3,14 +3,20 @@ Health check routes.
 """
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
-from agio.api.deps import get_config_sys
-from agio.config import ConfigSystem
+if TYPE_CHECKING:
+    from agio.api.agio_app import AgioApp
 
 router = APIRouter(prefix="/health")
+
+
+def get_agio_app(request: Request) -> "AgioApp":
+    """Get AgioApp from request state."""
+    return request.app.state.agio_app
 
 
 class HealthResponse(BaseModel):
@@ -21,8 +27,7 @@ class HealthResponse(BaseModel):
 
 class ReadyResponse(BaseModel):
     ready: bool
-    components: int
-    configs: int
+    agents: int
 
 
 @router.get("", response_model=HealthResponse)
@@ -37,14 +42,12 @@ async def health_check() -> HealthResponse:
 
 @router.get("/ready", response_model=ReadyResponse)
 async def ready_check(
-    config_sys: ConfigSystem = Depends(get_config_sys),
+    agio_app: "AgioApp" = Depends(get_agio_app),
 ) -> ReadyResponse:
     """Readiness check - verifies system is fully initialized."""
-    components = config_sys.list_components()
-    configs = config_sys.list_configs()
+    agents = agio_app.list_agents()
 
     return ReadyResponse(
-        ready=len(components) > 0,
-        components=len(components),
-        configs=len(configs),
+        ready=len(agents) > 0,
+        agents=len(agents),
     )

@@ -9,7 +9,9 @@ from agio.tools.builtin.glob_tool import GlobTool
 from agio.tools.builtin.grep_tool import GrepTool
 from agio.tools.builtin.ls_tool import LSTool
 from agio.tools.builtin.web_fetch_tool import WebFetchTool
+from agio.tools.builtin.web_reader_api_tool import WebReaderApiTool
 from agio.tools.builtin.web_search_tool import WebSearchTool
+from agio.tools.builtin.web_search_api_tool import WebSearchApiTool
 
 __all__ = [
     # Tool classes
@@ -22,5 +24,8 @@ __all__ = [
     "GrepTool",
     "LSTool",
     "WebFetchTool",
+    "WebReaderApiTool",
     "WebSearchTool",
+    "WebSearchApiTool",
 ]
+

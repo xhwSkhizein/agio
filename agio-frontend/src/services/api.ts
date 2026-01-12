@@ -50,7 +50,7 @@ export interface ToolInfo {
 
 export interface Agent {
   name: string;
-  model: string;
+  model?: string | null;
   tools: (string | ToolInfo)[];
   system_prompt: string | null;
   tags: string[];
@@ -252,30 +252,31 @@ export const sessionService = {
 };
 
 // Runnable Service (unified Agent API)
-export interface RunnableInfo {
+export interface AgentInfo {
   id: string;
   type: string; // "Agent"
   description?: string;
 }
 
-export interface RunnableListResponse {
-  agents: RunnableInfo[];
+export interface AgentListResponse {
+  items: AgentInfo[];
+  total: number;
 }
 
 export const runnableService = {
-  async listRunnables(): Promise<RunnableListResponse> {
-    const response = await api.get("/runnables");
+  async listRunnables(): Promise<AgentListResponse> {
+    const response = await api.get("/agents");
     return response.data;
   },
 
   async getRunnableInfo(runnableId: string): Promise<any> {
-    const response = await api.get(`/runnables/${runnableId}`);
+    const response = await api.get(`/agents/${runnableId}`);
     return response.data;
   },
 
   // Get SSE stream URL for running a Runnable
   getRunUrl(runnableId: string): string {
-    return `${API_BASE_URL}/runnables/${runnableId}/run`;
+    return `${API_BASE_URL}/agents/${runnableId}/run`;
   },
 };
 

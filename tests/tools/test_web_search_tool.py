@@ -7,7 +7,7 @@ import pytest
 
 from agio.tools.builtin.web_search_tool import WebSearchTool
 from agio.runtime.control import AbortSignal
-from agio.runtime.protocol import ExecutionContext
+from agio.runtime.context import ExecutionContext
 from agio.runtime import Wire
 
 

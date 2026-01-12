@@ -191,7 +191,7 @@ export default function ChatV2() {
     abortControllerRef.current = new AbortController()
 
     try {
-      const apiUrl = `/agio/runnables/${selectedAgentId}/run`
+      const apiUrl = `/agio/agents/${selectedAgentId}/run`
       const requestBody = {
         query: userMessage,
         session_id: currentSessionId,

@@ -212,7 +212,7 @@ export default function Chat() {
 
     try {
       // Use unified runnable API for agents
-      const apiUrl = `/agio/runnables/${selectedAgentId}/run`
+      const apiUrl = `/agio/agents/${selectedAgentId}/run`
 
       const requestBody = {
         query: userMessage,

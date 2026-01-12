@@ -18,7 +18,7 @@ from typing import Any
 from uuid import uuid4
 
 from agio.domain import MessageRole, Step, StepMetrics
-from agio.runtime.protocol import ExecutionContext, RunnableType
+from agio.runtime.context import ExecutionContext, RunnableType
 
 
 class StepFactory:

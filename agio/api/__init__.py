@@ -25,6 +25,7 @@ Usage:
 
 import os
 
+from .agio_app import AgioApp
 from .app import create_app
 from .router import create_router
 from .static import create_app_with_frontend, get_frontend_dist_path, mount_frontend
@@ -62,6 +63,7 @@ def is_api_enabled() -> bool:
 
 
 __all__ = [
+    "AgioApp",
     "create_app",
     "create_app_with_frontend",
     "create_router",

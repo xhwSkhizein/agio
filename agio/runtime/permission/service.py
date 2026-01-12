@@ -9,8 +9,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from agio.config import ConfigSystem, get_config_system
-from agio.runtime.protocol import ExecutionContext
+from agio.config import settings
+from agio.runtime.context import ExecutionContext
 from agio.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -32,14 +32,14 @@ class PermissionService:
     Generates permission decisions based on tool configuration and context.
     """
 
-    def __init__(self, config_system: ConfigSystem | None = None) -> None:
+    def __init__(self, tool_configs: dict[str, dict] | None = None) -> None:
         """
         Initialize permission service.
 
         Args:
-            config_system: ConfigSystem instance (default: get from global)
+            tool_configs: Tool configurations dict {tool_name: config}
         """
-        self.config_system = config_system or get_config_system()
+        self._tool_configs = tool_configs or {}
 
     async def check_permission(
         self,
@@ -96,7 +96,7 @@ class PermissionService:
 
     def _get_tool_config(self, tool_name: str) -> dict[str, Any] | None:
         """
-        Get tool configuration from ConfigSystem.
+        Get tool configuration from tool_configs dict.
 
         Args:
             tool_name: Tool name
@@ -104,37 +104,7 @@ class PermissionService:
         Returns:
             Tool configuration dict or None if not found
         """
-        try:
-            # Try to get tool instance from ConfigSystem
-            tool_instance = self.config_system.get_or_none(tool_name)
-            if tool_instance:
-                # If we have the instance, try to get config
-                configs = self.config_system.list_configs("tool")
-                for config_doc in configs:
-                    config = config_doc.get("config", {})
-                    if config.get("name") == tool_name:
-                        return config
-
-            # Fallback: search configs directly
-            from agio.config import ComponentType
-
-            configs = self.config_system.list_configs(ComponentType.TOOL)
-            for config in configs:
-                if (
-                    config.get("name") == tool_name
-                    or config.get("tool_name") == tool_name
-                ):
-                    return config
-
-            return None
-
-        except Exception as e:
-            logger.warning(
-                "get_tool_config_failed",
-                tool_name=tool_name,
-                error=str(e),
-            )
-            return None
+        return self._tool_configs.get(tool_name)
 
     def _generate_suggested_patterns(
         self, tool_name: str, tool_args: dict[str, Any]

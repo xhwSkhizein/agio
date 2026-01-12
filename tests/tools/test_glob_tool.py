@@ -3,7 +3,7 @@
 import pytest
 
 from agio.tools.builtin.glob_tool import GlobTool
-from agio.runtime.protocol import ExecutionContext
+from agio.runtime.context import ExecutionContext
 from agio.runtime import Wire
 from agio.runtime.control import AbortSignal
 

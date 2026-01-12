@@ -12,7 +12,7 @@ from typing import Any
 from agio.domain import ToolResult
 from agio.runtime.control import AbortSignal
 from agio.runtime.permission.manager import PermissionManager
-from agio.runtime.protocol import ExecutionContext
+from agio.runtime.context import ExecutionContext
 from agio.tools import BaseTool
 from agio.tools.cache import ToolResultCache, get_tool_cache
 from agio.utils.logging import get_logger

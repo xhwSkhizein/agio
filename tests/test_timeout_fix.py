@@ -13,8 +13,8 @@ import pytest
 from agio.agent import Agent
 from agio.config import ExecutionConfig
 from agio.llm import Model, StreamChunk
-from agio.runtime import RunnableTool
-from agio.runtime.protocol import ExecutionContext
+from agio.runtime import AgentTool
+from agio.runtime.context import ExecutionContext
 from agio.runtime.wire import Wire
 from agio.tools import BaseTool
 from agio.tools.executor import ToolExecutor
@@ -92,7 +92,7 @@ async def test_timeout_signal_propagation():
     )
 
     # Wrap as tool
-    agent_tool = RunnableTool(nested_agent, description="Nested agent with slow tool")
+    agent_tool = AgentTool(nested_agent, description="Nested agent with slow tool")
 
     # Create tool executor with short timeout
     tool_executor = ToolExecutor(
@@ -162,6 +162,7 @@ async def test_agent_respects_context_timeout():
     """Test that Agent checks context.timeout_at in check_limits."""
 
     from agio.agent.executor import RunState
+    from agio.runtime.pipeline import StepPipeline
 
     wire = Wire()
     context = ExecutionContext(
@@ -172,7 +173,9 @@ async def test_agent_respects_context_timeout():
     )
 
     config = ExecutionConfig(max_steps=10)
-    state = RunState.create(context, config, [], None)
+    # Create a dummy pipeline
+    pipeline = StepPipeline(context)
+    state = RunState.create(context, config, [], pipeline)
 
     # Initially no timeout
     assert state.check_limits() is None

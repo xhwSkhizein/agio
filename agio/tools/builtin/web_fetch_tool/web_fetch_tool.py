@@ -12,7 +12,7 @@ from typing import Any
 from agio.domain import ToolResult
 from agio.llm.base import Model
 from agio.runtime.control import AbortSignal
-from agio.runtime.protocol import ExecutionContext
+from agio.runtime.context import ExecutionContext
 from agio.storage.citation import (
     CitationSourceRaw,
     CitationSourceRepository,

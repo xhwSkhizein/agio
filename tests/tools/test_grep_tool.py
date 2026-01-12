@@ -18,7 +18,7 @@ class TestGrepTool:
     @pytest.fixture
     def context(self):
         """创建执行上下文"""
-        from agio.runtime.protocol import ExecutionContext
+        from agio.runtime.context import ExecutionContext
         from agio.runtime import Wire
 
         return ExecutionContext(

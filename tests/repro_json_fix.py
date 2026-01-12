@@ -3,7 +3,7 @@ import json
 from unittest.mock import MagicMock
 from agio.llm.anthropic import AnthropicModel
 from agio.tools.executor import ToolExecutor
-from agio.runtime.protocol import ExecutionContext
+from agio.runtime.context import ExecutionContext
 from agio.runtime.control import AbortSignal
 
 def test_anthropic_conversion_fallback():

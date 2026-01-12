@@ -26,19 +26,17 @@ from agio.domain import (
 )
 from agio.llm import Model
 from agio.runtime.control import AbortSignal
-from agio.runtime.event_factory import EventFactory
 from agio.runtime.permission.manager import PermissionManager
-from agio.runtime.protocol import ExecutionContext, RunOutput
-from agio.runtime.sequence_manager import SequenceManager
+from agio.runtime.context import ExecutionContext
+from agio.domain.models import RunOutput
 from agio.runtime.step_factory import StepFactory
-from agio.runtime.step_repository import StepRepository
-from agio.storage.session import SessionStore
 from agio.tools import BaseTool
 from agio.tools.executor import ToolExecutor
 from agio.utils.logging import get_logger
 
 if TYPE_CHECKING:
     from typing import Self
+    from agio.runtime.pipeline import StepPipeline
 
 
 logger = get_logger(__name__)
@@ -127,9 +125,8 @@ class RunState:
     context: "ExecutionContext"
     config: "ExecutionConfig"
     messages: list[dict]
-    repo: "StepRepository"
+    pipeline: "StepPipeline"
     tracker: "MetricsTracker"
-    ef: "EventFactory"
     sf: "StepFactory"
     start_time: float = field(default_factory=time.time)
     current_step: int = 0
@@ -141,15 +138,14 @@ class RunState:
         context: "ExecutionContext",
         config: "ExecutionConfig",
         messages: list[dict],
-        session_store: "SessionStore | None",
+        pipeline: "StepPipeline",
     ) -> "Self":
         return cls(
             context=context,
             config=config,
             messages=messages,
-            repo=StepRepository(session_store, auto_flush_size=10),
+            pipeline=pipeline,
             tracker=MetricsTracker(),
-            ef=EventFactory(context),
             sf=StepFactory(context),
         )
 
@@ -179,14 +175,13 @@ class RunState:
 
     async def record_step(self, step: "Step", *, append_message: bool = True) -> None:
         """Queue for persistence, track metrics, emit event, optionally append to messages."""
-        await self.repo.queue(step)
+        await self.pipeline.commit_step(step)
         self.tracker.track(step)
-        await self.context.wire.write(self.ef.step_completed(step.id, step))
         if append_message:
             self.messages.append(StepAdapter.to_llm_message(step))
 
     async def emit_delta(self, step_id: str, delta: "StepDelta") -> None:
-        await self.context.wire.write(self.ef.step_delta(step_id, delta))
+        await self.pipeline.emit_step_delta(step_id, delta)
 
     def build_output(self) -> "RunOutput":
         return RunOutput(
@@ -205,7 +200,7 @@ class RunState:
         )
 
     async def cleanup(self) -> None:
-        await self.repo.flush()
+        pass
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -296,15 +291,13 @@ class AgentExecutor:
         self,
         model: "Model",
         tools: list["BaseTool"],
-        session_store: "SessionStore | None" = None,
-        sequence_manager: "SequenceManager | None" = None,
+        pipeline: "StepPipeline",
         config: "ExecutionConfig | None" = None,
         permission_manager: PermissionManager | None = None,
     ):
         self.model = model
         self.tools = tools
-        self.session_store = session_store
-        self.sequence_manager = sequence_manager
+        self.pipeline = pipeline
         self.config = config or ExecutionConfig()
         self.tool_executor = ToolExecutor(
             tools,
@@ -325,7 +318,7 @@ class AgentExecutor:
         pending_tool_calls: list[dict] | None = None,
         abort_signal: "AbortSignal | None" = None,
     ) -> "RunOutput":
-        state = RunState.create(context, self.config, messages, self.session_store)
+        state = RunState.create(context, self.config, messages, self.pipeline)
 
         try:
             await self._run_loop(state, pending_tool_calls, abort_signal)
@@ -379,6 +372,7 @@ class AgentExecutor:
             step = await self._stream_assistant_step(state, abort_signal)
 
             if not step.tool_calls:
+                state.termination_reason = "completed"
                 return  # Normal completion
 
             await self._execute_tools(state, step.tool_calls, abort_signal)
@@ -512,9 +506,7 @@ class AgentExecutor:
             raise asyncio.CancelledError(abort_signal.reason)
 
     async def _allocate_sequence(self, context: "ExecutionContext") -> int:
-        if self.sequence_manager:
-            return await self.sequence_manager.allocate(context.session_id, context)
-        return 1
+        return await self.pipeline.allocate_sequence()
 
     def _get_request_params(self) -> dict | None:
         if hasattr(self.model, "temperature"):

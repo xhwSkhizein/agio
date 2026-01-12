@@ -25,7 +25,7 @@ from agio.domain import (
     create_step_completed_event,
     create_step_delta_event,
 )
-from agio.runtime.protocol import ExecutionContext, RunnableType
+from agio.runtime.context import ExecutionContext, RunnableType
 
 
 class EventFactory:

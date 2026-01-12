@@ -8,6 +8,7 @@ This module contains all core data models:
 - Session: Conversation session
 """
 
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any
@@ -368,6 +369,24 @@ class Run(BaseModel):
 
     # --- Observability ---
     trace_id: str | None = None  # Associated trace ID
+
+
+@dataclass
+class RunOutput:
+    """
+    Execution result from Agent.run().
+
+    Contains both the response and execution metrics.
+    """
+
+    response: str | None = None
+    run_id: str | None = None
+    session_id: str | None = None
+    metrics: "RunMetrics | None" = None
+
+    # Additional context
+    termination_reason: str | None = None  # "max_steps", "max_iterations", etc.
+    error: str | None = None
 
 
 class AgentSession(BaseModel):

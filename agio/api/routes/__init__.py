@@ -2,12 +2,13 @@
 Routes package initialization.
 """
 
-from . import agents, config, health, metrics, sessions
+from . import agents, health, metrics, sessions, tool_consent, traces
 
 __all__ = [
     "agents",
-    "config",
     "health",
     "metrics",
     "sessions",
+    "tool_consent",
+    "traces",
 ]

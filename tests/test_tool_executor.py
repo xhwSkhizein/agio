@@ -6,7 +6,7 @@ from agio.domain import ToolResult
 from agio.tools.executor import ToolExecutor
 from agio.runtime import Wire
 from agio.tools import BaseTool
-from agio.runtime.protocol import ExecutionContext
+from agio.runtime.context import ExecutionContext
 
 
 class SuccessTool(BaseTool):

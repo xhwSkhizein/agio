@@ -5,7 +5,7 @@ from pathlib import Path
 
 from agio.tools.builtin.file_read_tool import FileReadTool
 from agio.runtime.control import AbortSignal
-from agio.runtime.protocol import ExecutionContext
+from agio.runtime.context import ExecutionContext
 from agio.runtime import Wire
 
 

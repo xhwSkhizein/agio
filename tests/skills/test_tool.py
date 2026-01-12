@@ -10,7 +10,7 @@ import pytest
 import pytest_asyncio
 
 from agio.domain.events import ToolResult
-from agio.runtime.protocol import ExecutionContext
+from agio.runtime.context import ExecutionContext
 from agio.skills.loader import SkillLoader
 from agio.skills.registry import SkillRegistry
 from agio.skills.tool import SkillTool

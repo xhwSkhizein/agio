@@ -11,7 +11,7 @@ from agio.domain import ToolResult
 from agio.runtime.control import AbortSignal
 
 if TYPE_CHECKING:
-    from agio.runtime.protocol import ExecutionContext
+    from agio.runtime.context import ExecutionContext
 
 
 class RiskLevel(str, Enum):

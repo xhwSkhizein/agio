@@ -5,12 +5,11 @@ Trace API routes for observability.
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from agio.api.deps import get_trace_store
-from agio.config import ConfigSystem, get_config_system
 from agio.observability.trace import Span, SpanKind, SpanStatus, Trace
 from agio.storage.trace.store import TraceQuery
 
@@ -148,6 +147,7 @@ class LLMCallSummary(BaseModel):
 
 @router.get("/", response_model=list[TraceSummary])
 async def list_traces(
+    request: Request,
     agent_id: str | None = None,
     session_id: str | None = None,
     status: str | None = None,
@@ -157,7 +157,6 @@ async def list_traces(
     max_duration_ms: float | None = None,
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
-    config_system: ConfigSystem = Depends(get_config_system),
 ):
     """
     Query trace list.
@@ -165,7 +164,9 @@ async def list_traces(
     Returns:
         Trace summary list (without full span details)
     """
-    store = get_trace_store(config_sys=config_system)
+    store = get_trace_store(request)
+    if not store:
+        return []
     query = TraceQuery(
         agent_id=agent_id,
         session_id=session_id,
@@ -184,7 +185,7 @@ async def list_traces(
 @router.get("/{trace_id}", response_model=TraceDetail)
 async def get_trace(
     trace_id: str,
-    config_system: ConfigSystem = Depends(get_config_system),
+    request: Request,
 ):
     """
     Get single trace detail.
@@ -192,7 +193,9 @@ async def get_trace(
     Returns:
         Complete trace (with all spans)
     """
-    store = get_trace_store(config_sys=config_system)
+    store = get_trace_store(request)
+    if not store:
+        raise HTTPException(status_code=404, detail="Trace store not configured")
     trace = await store.get_trace(trace_id)
     if not trace:
         raise HTTPException(status_code=404, detail="Trace not found")
@@ -202,14 +205,16 @@ async def get_trace(
 @router.get("/{trace_id}/waterfall", response_model=WaterfallData)
 async def get_trace_waterfall(
     trace_id: str,
-    config_system: ConfigSystem = Depends(get_config_system),
+    request: Request,
 ):
     """
     Get trace waterfall chart data.
 
     Returns optimized format for frontend rendering.
     """
-    store = get_trace_store(config_sys=config_system)
+    store = get_trace_store(request)
+    if not store:
+        raise HTTPException(status_code=404, detail="Trace store not configured")
     trace = await store.get_trace(trace_id)
     if not trace:
         raise HTTPException(status_code=404, detail="Trace not found")
@@ -218,10 +223,12 @@ async def get_trace_waterfall(
 
 @router.get("/stream")
 async def stream_traces(
-    config_system: ConfigSystem = Depends(get_config_system),
+    request: Request,
 ):
     """SSE real-time push for new traces"""
-    store = get_trace_store(config_sys=config_system)
+    store = get_trace_store(request)
+    if not store:
+        raise HTTPException(status_code=404, detail="Trace store not configured")
     queue = store.subscribe()
 
     async def event_generator():
@@ -246,6 +253,7 @@ async def stream_traces(
 
 @router.get("/spans/llm-calls", response_model=list[LLMCallSummary])
 async def list_llm_calls(
+    request: Request,
     agent_id: str | None = Query(None, description="Filter by agent ID"),
     session_id: str | None = Query(None, description="Filter by session ID"),
     run_id: str | None = Query(None, description="Filter by run ID"),
@@ -255,7 +263,6 @@ async def list_llm_calls(
     end_time: datetime | None = Query(None, description="End time filter"),
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
-    config_system: ConfigSystem = Depends(get_config_system),
 ):
     """
     Query LLM calls from all traces.
@@ -263,7 +270,9 @@ async def list_llm_calls(
     Returns:
         List of LLM call summaries extracted from Trace spans
     """
-    store = get_trace_store(config_sys=config_system)
+    store = get_trace_store(request)
+    if not store:
+        return []
 
     # Query traces with filters
     query = TraceQuery(

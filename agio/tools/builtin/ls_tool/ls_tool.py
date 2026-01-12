@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from agio.domain import ToolResult
 from agio.runtime.control import AbortSignal
-from agio.runtime.protocol import ExecutionContext
+from agio.runtime.context import ExecutionContext
 from agio.tools.base import BaseTool, RiskLevel, ToolCategory
 from agio.tools.builtin.common.configurable_tool import ConfigurableToolMixin
 from agio.tools.builtin.config import LSConfig

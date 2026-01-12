@@ -9,10 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from agio.api.deps import get_config_sys, get_session_store
-from agio.config import ConfigSystem
+from agio.api.deps import get_session_store
 from agio.runtime import Wire, fork_session
-from agio.runtime.resume_executor import ResumeExecutor
 from agio.storage.session import SessionStore
 
 router = APIRouter(prefix="/sessions")
@@ -423,82 +421,3 @@ async def fork_session_endpoint(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-# ============================================================================
-# Resume Session
-# ============================================================================
-
-
-class ResumeRequest(BaseModel):
-    """Request to resume a session."""
-
-    runnable_id: str | None = (
-        None  # Optional - auto-inferred from Steps if not provided
-    )
-
-
-@router.post("/{session_id}/resume")
-async def resume_session_endpoint(
-    session_id: str,
-    request: ResumeRequest = ResumeRequest(),
-    session_store: SessionStore = Depends(get_session_store),
-    config_sys: ConfigSystem = Depends(get_config_sys),
-):
-    """
-    Resume a session.
-
-    Automatically infers runnable_id from Steps if not provided.
-    Continues from pending tool_calls.
-
-    Args:
-        session_id: Session ID to resume
-        request: Optional runnable_id (auto-inferred if not provided)
-
-    Returns SSE stream of step events.
-    """
-    # Validate session exists
-    steps = await session_store.get_steps(session_id, limit=1)
-    if not steps:
-        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
-
-    # Create ResumeExecutor
-    executor = ResumeExecutor(store=session_store, config_system=config_sys)
-
-    # Resume execution via SSE stream
-    async def event_generator():
-        wire = Wire()
-
-        async def _run():
-            try:
-                await executor.resume_session(
-                    session_id=session_id,
-                    runnable_id=request.runnable_id,
-                    wire=wire,
-                )
-            finally:
-                await wire.close()
-
-        task = asyncio.create_task(_run())
-
-        try:
-            async for event in wire.read():
-                yield {
-                    "event": event.type.value,
-                    "data": event.model_dump_json(),
-                }
-        except Exception as e:
-            yield {"event": "error", "data": json.dumps({"error": str(e)})}
-        finally:
-            if not task.done():
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
-
-    return EventSourceResponse(
-        event_generator(),
-        headers={
-            "Connection": "close",
-            "X-Accel-Buffering": "no",
-        },
-    )

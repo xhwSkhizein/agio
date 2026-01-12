@@ -40,22 +40,64 @@ pip install agio[dev]
 
 For complete architecture and usage documentation, please refer to:
 
-- [Architecture Design](./docs/ARCHITECTURE.md) - Overall architecture overview and design philosophy
-- [Configuration System](./docs/CONFIG_SYSTEM_V2.md) - Configuration-driven architecture and usage guide
-- [Tool Configuration](./docs/TOOL_CONFIGURATION.md) - Tool configuration methods and environment variable support
-- [Agent System](./docs/AGENT_SYSTEM.md) - Agent execution engine and LLM call loop
-- [Observability](./docs/OBSERVABILITY.md) - Distributed tracing and Trace querying
-- [API Control Panel](./docs/API_CONTROL_PANEL.md) - RESTful API and streaming event interfaces
-- [API Integration Guide](./agio/api/README.md) - How to integrate Agio API and frontend into existing FastAPI applications
+**Getting Started:**
+- [Quick Start](./docs/guides/quick-start.md) - 5-minute quick start guide
+
+**Architecture:**
+- [Architecture Overview](./docs/architecture/overview.md) - Design philosophy and system architecture
+- [Agent System](./docs/architecture/agent-system.md) - Agent execution engine detailed
+- [Observability](./docs/architecture/observability.md) - Distributed tracing and monitoring
+
+**Guides:**
+- [Tool Configuration](./docs/guides/tool-configuration.md) - Tool configuration and usage
+- [API Guide](./docs/guides/api-guide.md) - RESTful API and SSE interface
+
+**Development:**
+- [Development and Deployment](./docs/development/dev-and-deploy.md) - Development and deployment guide
+
+📖 **[Browse all documentation](./docs/README.md)**
+
 
 ## 🚀 Quick Start
 
+### Basic Usage
+
+Create and run an Agent programmatically:
+
+```python
+import asyncio
+from agio import Agent, OpenAIModel
+
+async def main():
+    # Create a model
+    model = OpenAIModel(
+        model_name="gpt-4o",
+        api_key="your-api-key"  # or use environment variable OPENAI_API_KEY
+    )
+    
+    # Create an Agent
+    agent = Agent(
+        model=model,
+        name="my_agent",
+        system_prompt="You are a helpful assistant.",
+        max_steps=10
+    )
+    
+    # Run the Agent (streaming mode)
+    async for event in agent.run_stream("Hello! What can you help me with?"):
+        if event.type == "STEP_CREATED" and event.step:
+            print(f"{event.step.role}: {event.step.content}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
 ### Start API Server
 
-After installation, you can use the command-line tool to start the Agio API server:
+You can also use the API server (requires configuration files):
 
 ```bash
-# Use default configuration (0.0.0.0:8900)
+# Start server with default settings
 agio-server
 
 # Custom host and port
@@ -66,21 +108,6 @@ agio-server --reload
 
 # Production mode (multi-process)
 agio-server --workers 4
-```
-
-### Basic Usage
-
-```python
-from agio import Agent, ExecutionConfig, get_config_system
-
-# Initialize configuration system
-config_system = get_config_system()
-
-# Create Agent
-agent = Agent.from_config("your-agent-config.yaml")
-
-# Run Agent
-result = await agent.run("Hello, Agio!")
 ```
 
 ### Integrate into Existing FastAPI Application
@@ -145,21 +172,57 @@ async def root():
 #### Method 4: Use Agio Library Only (No API Server)
 
 ```python
-from agio import Agent, get_config_system
+from agio import Agent, OpenAIModel, MongoSessionStore
 
-# Use Agio core functionality directly without starting API server
-config_system = get_config_system()
-await config_system.load_from_directory("./configs")
+# Create model
+model = OpenAIModel(model_name="gpt-4o")
 
-agent = await config_system.get_agent("my-agent")
-result = await agent.run("Hello!")
+# Optional: Create session store for conversation history
+session_store = MongoSessionStore(
+    uri="mongodb://localhost:27017",
+    db_name="agio"
+)
+
+# Create Agent
+agent = Agent(
+    model=model,
+    session_store=session_store,
+    name="my-agent",
+    system_prompt="You are a helpful assistant.",
+)
+
+# Run Agent
+async for event in agent.run_stream("Hello!"):
+    if event.type == "STEP_CREATED" and event.step:
+        print(f"{event.step.role}: {event.step.content}")
 ```
 
-### Configuration-Driven
+### Using Tools
 
-Agio uses YAML configuration files to define Agents and tools. Example configuration files are located in the `configs/` directory.
+Add tools to your Agent to extend its capabilities:
 
-See [configs/README.md](./configs/README.md) for details.
+```python
+from agio import Agent, OpenAIModel
+from agio.tools import get_tool_registry
+
+# Get tool registry
+tool_registry = get_tool_registry()
+
+# Create tools
+bash_tool = tool_registry.get("bash")
+file_read_tool = tool_registry.get("file_read")
+
+# Create Agent with tools
+agent = Agent(
+    model=OpenAIModel(model_name="gpt-4o"),
+    tools=[bash_tool, file_read_tool],
+    system_prompt="You are a helpful assistant with access to bash and file reading tools.",
+)
+
+# Agent can now use tools
+async for event in agent.run_stream("List files in current directory"):
+    if event.type == "STEP_CREATED" and event.step:
+        print(f"{event.step.role}: {event.step.content}")
 
 
 ## 📄 License

@@ -2,42 +2,55 @@
 Agent - Top-level agent class.
 
 This is the main entry point for creating and running agents.
-Implements the Runnable protocol for multi-agent orchestration.
+Agent is the first-class citizen for execution.
 
 Wire-based Architecture:
-- Wire is created at API entry point
-- Agent.run() writes events to wire, returns RunOutput
+- run_stream() creates Wire internally and yields events
+- run() requires ExecutionContext with wire (for nested calls)
 - All nested executions share the same wire
 """
 
+import asyncio
 import datetime
 import os
+from typing import AsyncIterator
+from uuid import uuid4
 
-from agio.agent.context import build_context_from_steps
+from agio.agent.helper import build_context_from_steps
 from agio.agent.executor import AgentExecutor
-from agio.config import ExecutionConfig
+from agio.config.schema import ExecutionConfig
 from agio.config.template import renderer
-from agio.domain import AgentSession
+from agio.domain import StepEvent
+from agio.domain.models import RunOutput
 from agio.llm import Model
 from agio.runtime.control import AbortSignal
-from agio.runtime.protocol import ExecutionContext, RunnableType, RunOutput
+from agio.runtime.context import ExecutionContext, RunnableType
+from agio.runtime.lifecycle import RunLifecycle
+from agio.runtime.pipeline import StepPipeline
+from agio.runtime.permission.manager import PermissionManager
 from agio.runtime.step_factory import StepFactory
+from agio.runtime.wire import Wire
+from agio.skills.manager import SkillManager
 from agio.storage.session.base import SessionStore
 from agio.tools import BaseTool
-from agio.runtime.permission.manager import PermissionManager
-from agio.skills.manager import SkillManager
-from agio.runtime.sequence_manager import SequenceManager
+from agio.utils.logging import get_logger
+from agio.observability import TraceCollector
+from agio.storage.trace.store import TraceStore
+
+
+logger = get_logger(__name__)
 
 
 class Agent:
     """
-    Agent Configuration Container.
+    Agent - First-class execution unit.
 
     Holds the configuration for Model and Tools.
-    Delegates execution to AgentRunner.
+    Provides direct execution methods:
+    - run(input, context) -> RunOutput (for nested calls, requires context with wire)
+    - run_stream(input, ...) -> AsyncIterator[StepEvent] (creates Wire internally)
 
-    Implements the Runnable protocol for multi-agent orchestration:
-    - run(input, context) -> RunOutput (writes events to context.wire)
+    Run lifecycle (RUN_STARTED/COMPLETED/FAILED) is managed internally.
     """
 
     def __init__(
@@ -65,7 +78,6 @@ class Agent:
         self.max_steps: int = max_steps
         self.enable_termination_summary: bool = enable_termination_summary
         self.termination_summary_prompt: str | None = termination_summary_prompt
-        self._sequence_manager: SequenceManager | None = None
 
     @property
     def id(self) -> str:
@@ -77,116 +89,204 @@ class Agent:
         """Return runnable type identifier."""
         return RunnableType.AGENT
 
-    def _get_sequence_manager(self):
-        """Get or create sequence manager (internal resource)."""
-        if not self.session_store:
-            return None
-
-        if self._sequence_manager is None:
-            self._sequence_manager = SequenceManager(self.session_store)
-
-        return self._sequence_manager
-
     async def run(
         self,
-        input: str,
+        user_input: str,
         *,
         context: "ExecutionContext",
+        pipeline: "StepPipeline | None" = None,
         abort_signal: "AbortSignal | None" = None,
     ) -> "RunOutput":
-        """
-        Execute Agent, writing Step events to context.wire.
+        """Execute Agent with Run lifecycle management."""
+        # 1. Initialize Pipeline if not provided
+        if pipeline is None:
+            # Note: We don't pass trace_collector here by default to avoid double collection
+            # if run_stream is wrapping the stream.
+            pipeline = StepPipeline(context, self.session_store)
 
-        This is the core execution method. Step events are written to wire,
-        which is created and consumed by the API layer.
+        # 2. Use Lifecycle Management
+        # We need access to the Lifecycle object to set output.
+        lifecycle = RunLifecycle(
+            context, pipeline, user_input, self.id, RunnableType.AGENT
+        )
+        async with lifecycle:
+            result = await self._execute_core(
+                user_input, context, pipeline, abort_signal
+            )
+            lifecycle.set_output(result)
+            return result
 
-        Note: Run lifecycle events (RUN_STARTED/COMPLETED/FAILED) are handled
-        by RunnableExecutor, not here.
-
-        Args:
-            input: Input string (user message)
-            context: Execution context with wire and run_id (required)
-
-        Returns:
-            RunOutput with response and metrics
-        """
-
-        # Use context session_id (ExecutionContext guarantees session_id is present)
+    async def _execute_core(
+        self,
+        user_input: str,
+        context: "ExecutionContext",
+        pipeline: "StepPipeline",
+        abort_signal: "AbortSignal | None" = None,
+    ) -> "RunOutput":
+        """Core execution logic."""
         session_id = context.session_id
-        current_user_id = context.user_id or self.user_id
-
-        session = AgentSession(session_id=session_id, user_id=current_user_id)
         config = ExecutionConfig(
             max_steps=self.max_steps,
             enable_termination_summary=self.enable_termination_summary,
             termination_summary_prompt=self.termination_summary_prompt,
         )
 
-        # Get sequence manager (internal resource)
-        seq_mgr = self._get_sequence_manager()
+        # 1) Handle Sequence & User Step
+        seq = await pipeline.allocate_sequence()
 
-        # 1) Create and save user step
-        if seq_mgr:
-            seq = await seq_mgr.allocate(session.session_id, context)
-        else:
-            seq = 1
-
-        sf = StepFactory(context)
-        user_step = sf.user_step(
+        user_step = StepFactory(context).user_step(
             sequence=seq,
-            content=input,
+            content=user_input,
             runnable_id=self.id,
             runnable_type=RunnableType.AGENT,
         )
 
-        if self.session_store:
-            await self.session_store.save_step(user_step)
+        await pipeline.commit_step(user_step)
 
-        # 2) Render system_prompt at runtime (if it contains Jinja2 syntax)
-        prompt_context = {
-            "work_dir": os.getcwd(),
-            "date": datetime.datetime.now().strftime("%Y-%m-%d"),
-        }
-        rendered_prompt = renderer.render(self.system_prompt or "", **prompt_context)
-
-        # Inject skills section if skill manager is available
-        if self.skill_manager:
-            skills_section = self.skill_manager.render_skills_section()
-            if skills_section:
-                if rendered_prompt:
-                    rendered_prompt = f"{rendered_prompt}\n\n{skills_section}"
-                else:
-                    rendered_prompt = skills_section
+        # 2) Render Prompt
+        rendered_prompt = self._build_system_prompt()
 
         # 3) Build LLM messages
         if self.session_store:
             messages = await build_context_from_steps(
-                session.session_id,
+                session_id,
                 self.session_store,
                 system_prompt=rendered_prompt,
-                # Remove run_id=context.run_id to get full session history
-                runnable_id=self.id,  # Keep runnable_id to isolate different agents
+                runnable_id=self.id,
             )
         else:
-            messages = []
-            if rendered_prompt:
-                messages.append({"role": "system", "content": rendered_prompt})
+            messages = (
+                [{"role": "system", "content": rendered_prompt}]
+                if rendered_prompt
+                else []
+            )
 
-        # 3) Execute with AgentExecutor (returns RunOutput)
-        executor = AgentExecutor(
+        # 4) Execute
+        return await AgentExecutor(
             model=self.model,
-            tools=self.tools or [],
-            session_store=self.session_store,
-            sequence_manager=seq_mgr,
+            tools=self.tools,
+            pipeline=pipeline,
             config=config,
             permission_manager=self.permission_manager,
+        ).execute(messages=messages, context=context, abort_signal=abort_signal)
+
+    def _build_system_prompt(self) -> str:
+        prompt_context = {
+            "work_dir": os.getcwd(),
+            "date": datetime.datetime.now().strftime("%Y-%m-%d"),
+        }
+        parts: list[str] = []
+        base_prompt = renderer.render(self.system_prompt or "", **prompt_context)
+        if base_prompt:
+            parts.append(base_prompt)
+
+        if self.skill_manager:
+            skills_section = self.skill_manager.render_skills_section()
+            if skills_section:
+                parts.append(skills_section)
+
+        return "\n\n".join(parts)
+
+    def _build_execution_context(
+        self,
+        run_id: str,
+        session_id: str,
+        wire: Wire,
+        user_id: str | None = None,
+        metadata: dict | None = None,
+    ) -> ExecutionContext:
+        """Internal helper to build ExecutionContext."""
+        return ExecutionContext(
+            run_id=run_id,
+            session_id=session_id,
+            wire=wire,
+            user_id=user_id or self.user_id,
+            runnable_type=RunnableType.AGENT,
+            runnable_id=self.id,
+            metadata=metadata or {},
         )
 
-        return await executor.execute(
-            messages=messages,
-            context=context,
-            abort_signal=abort_signal,
+    async def run_stream(
+        self,
+        user_input: str,
+        *,
+        session_id: str | None = None,
+        user_id: str | None = None,
+        metadata: dict | None = None,
+        trace_store: "TraceStore | None" = None,
+        cleanup_timeout: float = 5.0,
+    ) -> AsyncIterator[StepEvent]:
+        """
+        Streaming execution - creates Wire internally and yields events.
+
+        This is the primary entry point for top-level execution.
+        Wire and ExecutionContext are created internally.
+        """
+        run_id = str(uuid4())
+        session_id = session_id or str(uuid4())
+        wire = Wire()
+
+        context = self._build_execution_context(
+            run_id, session_id, wire, user_id, metadata
         )
+
+        pipeline = StepPipeline(context, self.session_store)
+
+        async def _run_task():
+            try:
+                await self.run(user_input, context=context, pipeline=pipeline)
+            except Exception as e:
+                logger.exception(
+                    "run_stream_failed",
+                    run_id=run_id,
+                    agent_id=self.id,
+                    error=str(e),
+                    exc_info=True,
+                )
+                raise
+
+        # Prepare event stream
+        event_stream = wire.read()
+        if trace_store:
+            collector = TraceCollector(store=trace_store)
+            # Use wrap_stream (Pull Mode) for now to ensure we catch all events,
+            # including those from AgentExecutor which might not use Pipeline yet.
+            event_stream = collector.wrap_stream(
+                event_stream,
+                agent_id=self.id,
+                session_id=session_id,
+                user_id=user_id,
+                input_query=user_input,
+            )
+
+        # Start execution task
+        async def _run_and_close():
+            """Run task and close wire when done."""
+            try:
+                await _run_task()
+            finally:
+                # Close wire immediately after task completes
+                # This signals the event stream to stop
+                await wire.close()
+
+        # Execute and stream events
+        task = asyncio.create_task(_run_and_close())
+        try:
+            async for event in event_stream:
+                yield event
+        finally:
+            # Wait for task to complete if still running
+            if not task.done():
+                try:
+                    async with asyncio.timeout(cleanup_timeout):
+                        await task
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "run_stream_cleanup_timeout",
+                        agent_id=self.id,
+                        timeout=cleanup_timeout,
+                    )
+                    task.cancel()
 
 
 __all__ = ["Agent"]
